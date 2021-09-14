@@ -244,12 +244,14 @@ class PTEmu:
                 self.emu[dt].optimize(max_f_eval=max_f_eval)
                 self.emu[dt].optimize_restarts(num_restarts=num_restarts)
         else:
-            if data_type in ['PL','s12']:
-                self.emu[data_type] = self.training['shape'].GPy_model(data_type)
-            else:
-                self.emu[data_type] = self.training['all'].GPy_model(data_type)
-            self.emu[data_type].optimize(max_f_eval=max_f_eval)
-            self.emu[data_type].optimize_restarts(num_restarts=num_restarts)
+            data_type = [data_type] if not isinstance(data_type, list) else data_type
+            for dt in data_type:
+                if dt in ['PL','s12']:
+                    self.emu[dt] = self.training['shape'].GPy_model(dt)
+                else:
+                    self.emu[dt] = self.training['all'].GPy_model(dt)
+                self.emu[dt].optimize(max_f_eval=max_f_eval)
+                self.emu[dt].optimize_restarts(num_restarts=num_restarts)
 
 
     def save_emulator(self, fname_base, data_type=None):
@@ -261,12 +263,14 @@ class PTEmu:
                 with open('{}_ratios_ell{}.pickle'.format(fname_base, ell), "wb") as f:
                     pickle.dump(self.emu[ell], f)
         else:
-            if data_type in ['PL','s12']:
-                with open('{}_{}.pickle'.format(fname_base, data_type), "wb") as f:
-                    pickle.dump(self.emu[data_type], f)
-            else:
-                with open('{}_ratios_ell{}.pickle'.format(fname_base, data_type), "wb") as f:
-                    pickle.dump(self.emu[data_type], f)
+            data_type = [data_type] if not isinstance(data_type, list) else data_type
+            for dt in data_type:
+                if dt in ['PL','s12']:
+                    with open('{}_{}.pickle'.format(fname_base, dt), "wb") as f:
+                        pickle.dump(self.emu[dt], f)
+                else:
+                    with open('{}_ratios_ell{}.pickle'.format(fname_base, dt), "wb") as f:
+                        pickle.dump(self.emu[dt], f)
 
 
     def load_emulator(self, fname_base, data_type=None):
@@ -276,34 +280,38 @@ class PTEmu:
             for ell in [0,2,4]:
                 self.emu[ell] = pickle.load(open('{}_ratios_ell{}.pickle'.format(fname_base, ell), "rb"))
         else:
-            if data_type in ['PL','s12']:
-                self.emu[data_type] = pickle.load(open('{}_{}.pickle'.format(fname_base, data_type), "rb"))
-            else:
-                self.emu[data_type] = pickle.load(open('{}_ratios_ell{}.pickle'.format(fname_base, data_type), "rb"))
+            data_type = [data_type] if not isinstance(data_type, list) else data_type
+            for dt in data_type:
+                if dt in ['PL','s12']:
+                    self.emu[dt] = pickle.load(open('{}_{}.pickle'.format(fname_base, dt), "rb"))
+                else:
+                    self.emu[dt] = pickle.load(open('{}_ratios_ell{}.pickle'.format(fname_base, dt), "rb"))
 
 
-    def define_data_set(self, k, obs, cov, nbar, Nrealizations=300):
+    def define_data_set(self, k, obs, cov, nbar, theory_cov=False, Nrealizations=300):
         self.k_data = k
-        self.P_data = obs
+        self.P_data = obs if obs.ndim > 1 else obs[:,None]
+        self.n_ell = self.P_data.shape[1]
         self.Cov_data = cov
         self.nbar = nbar
+        self.theory_cov = theory_cov
         self.Nrealizations = Nrealizations
 
 
     def AHfactor(self, nbin):
-        return 1. # (self.Nrealizations - nbin -2)*1./(self.Nrealizations - 1)
+        return 1. if self.theory_cov else (self.Nrealizations - nbin -2)*1./(self.Nrealizations - 1)
 
 
     def set_kmax(self, kmax):
         if not isinstance(kmax, list):
-            self.kmax = [kmax,kmax,kmax]
+            self.kmax = [kmax for i in range(self.n_ell)]
         else:
             self.kmax = kmax
 
         nbin_total = self.k_data.shape[0]
 
-        self.nbin = [0,0,0]
-        for l in range(3):
+        self.nbin = [0 for i in range(self.n_ell)]
+        for l in range(self.n_ell):
             for i in range(nbin_total):
                 if self.k_data[i] < self.kmax[l]:
                     self.nbin[l] += 1
@@ -312,13 +320,13 @@ class PTEmu:
 
         self.k_bins = []
         self.P_data_kmax = np.array([])
-        for l in range(3):
+        for l in range(self.n_ell):
             self.k_bins.append(self.k_data[:self.nbin[l]])
             self.P_data_kmax = np.concatenate((self.P_data_kmax,self.P_data[:self.nbin[l],l])) if self.P_data_kmax.size else self.P_data[:self.nbin[l],l]
 
         self.Cov_data_kmax = np.zeros([sum(self.nbin),sum(self.nbin)])
-        for l1 in range(3):
-            for l2 in range(3):
+        for l1 in range(self.n_ell):
+            for l2 in range(self.n_ell):
                 self.Cov_data_kmax[sum(self.nbin[:l1]):sum(self.nbin[:l1+1]),sum(self.nbin[:l2]):sum(self.nbin[:l2+1])] = self.Cov_data[l1*nbin_total:l1*nbin_total+self.nbin[l1],l2*nbin_total:l2*nbin_total+self.nbin[l2]]
         self.InvCov_data_kmax = self.AHfactor(sum(self.nbin))*np.linalg.inv(self.Cov_data_kmax)
 
@@ -511,16 +519,19 @@ class PTEmu:
         return np.dot(bij,Pk_bij.T)
 
 
-    def chi2(self, params, kmax, mode='generic'):
+    def chi2(self, params, kmax, mode='generic', alpha_tr_lo=None):
         if not self.kmax_is_set or (self.kmax != kmax and self.kmax != [kmax,kmax,kmax]):
             self.set_kmax(kmax)
 
         Pell_model = np.zeros(sum(self.nbin))
-        ell = [2*l for l in range(3) if self.nbin[l] > 0]
+        ell = [2*l for l in range(self.n_ell) if self.nbin[l] > 0]
         if mode == 'generic':
             Pell = self.Pell(params, ell)
         elif mode == 'LCDM':
-            Pell = self.Pell_LCDM(params, ell)
+            Pell = self.Pell_LCDM(params, ell, alpha_tr_lo=alpha_tr_lo)
+
+        if Pell.ndim == 1:
+            Pell = Pell[:,None]
 
         for i,l in enumerate(ell):
             n = int(l/2)
