@@ -520,7 +520,7 @@ class PTEmu:
 
 
     def chi2(self, params, kmax, mode='generic', alpha_tr_lo=None):
-        if not self.kmax_is_set or (self.kmax != kmax and self.kmax != [kmax,kmax,kmax]):
+        if not self.kmax_is_set or (self.kmax != kmax and self.kmax != [kmax for i in range(self.n_ell)]):
             self.set_kmax(kmax)
 
         Pell_model = np.zeros(sum(self.nbin))
