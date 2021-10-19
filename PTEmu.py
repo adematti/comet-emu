@@ -288,12 +288,13 @@ class PTEmu:
                     self.emu[dt] = pickle.load(open('{}_ratios_ell{}.pickle'.format(fname_base, dt), "rb"))
 
 
-    def define_data_set(self, k, obs, cov, nbar, theory_cov=False, Nrealizations=300):
+    def define_data_set(self, k, obs, cov, nbar, use_Mpc=True, theory_cov=False, Nrealizations=300):
         self.k_data = k
         self.P_data = obs if obs.ndim > 1 else obs[:,None]
         self.n_ell = self.P_data.shape[1]
         self.Cov_data = cov
         self.nbar = nbar
+        self.use_Mpc = use_Mpc
         self.theory_cov = theory_cov
         self.Nrealizations = Nrealizations
 
@@ -535,8 +536,15 @@ class PTEmu:
 
         for i,l in enumerate(ell):
             n = int(l/2)
-            spline = interp1d(self.k_table*self.fid_LCDM_params['h'], Pell[:,i], kind='cubic')
-            Pell_model[sum(self.nbin[:n]):sum(self.nbin[:n+1])] = spline(self.k_bins[n])
+
+            if self.use_Mpc:
+                spline = interp1d(self.k_table*self.fid_LCDM_params['h'], Pell[:,i], kind='cubic')
+                Pell_model[sum(self.nbin[:n]):sum(self.nbin[:n+1])] = spline(self.k_bins[n])
+            else:
+                spline = interp1d(self.k_table*(self.fid_LCDM_params['h']/params['h']),
+                                Pell[:,i]*self.params['h']**3, kind='cubic')
+                Pell_model[sum(self.nbin[:n]):sum(self.nbin[:n+1])] = spline(self.k_bins[n])
+
         diff = Pell_model - self.P_data_kmax
 
         return diff @ self.InvCov_data_kmax @ diff.T
