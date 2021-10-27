@@ -18,8 +18,6 @@ class PTEmu_tables:
         self.model = None
         self.model_transformed = None
 
-        self.nk = 76
-        self.nkloop = 56
         self.n_diagrams = 20
 
     def set_param_ranges(self, ranges):
@@ -60,7 +58,10 @@ class PTEmu_tables:
         self.n_samples = self.samples.shape[0]
 
 
-    def load_table(self, fname, data_type=None):
+    def load_table(self, fname, nk, nkloop, data_type=None):
+        self.nk = nk
+        self.nkloop = nkloop
+
         temp = np.loadtxt(fname)
         if data_type is not None:
             if self.model is None:
@@ -227,10 +228,12 @@ class PTEmu:
 
     def load_table(self, type, fname, data_type=None, validation=False):
         self.k_table = np.loadtxt('../tables/k_vector.dat')
+        self.nk = k_table.shape[0]
+        self.nkloop = sum(k_table > 0.01)
         if validation:
-            self.validation[type].load_table(fname, data_type=data_type)
+            self.validation[type].load_table(fname, nk, nkloop, data_type=data_type)
         else:
-            self.training[type].load_table(fname, data_type=data_type)
+            self.training[type].load_table(fname, nk, nkloop, data_type=data_type)
 
 
     def train_emulator(self, max_f_eval=1000, num_restarts=5, data_type=None):
@@ -296,6 +299,7 @@ class PTEmu:
         self.nbar = nbar
         self.theory_cov = theory_cov
         self.Nrealizations = Nrealizations
+        self.kmax_is_set = False
 
 
     def AHfactor(self, nbin):
