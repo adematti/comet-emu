@@ -228,12 +228,12 @@ class PTEmu:
 
     def load_table(self, type, fname, data_type=None, validation=False):
         self.k_table = np.loadtxt('../tables/k_vector.dat')
-        self.nk = k_table.shape[0]
-        self.nkloop = sum(k_table > 0.01)
+        self.nk = self.k_table.shape[0]
+        self.nkloop = sum(self.k_table > 0.01)
         if validation:
-            self.validation[type].load_table(fname, nk, nkloop, data_type=data_type)
+            self.validation[type].load_table(fname, self.nk, self.nkloop, data_type=data_type)
         else:
-            self.training[type].load_table(fname, nk, nkloop, data_type=data_type)
+            self.training[type].load_table(fname, self.nk, self.nkloop, data_type=data_type)
 
 
     def train_emulator(self, max_f_eval=1000, num_restarts=5, data_type=None):
