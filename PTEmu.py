@@ -178,7 +178,7 @@ class PTEmu:
         self.params_list = [p for p in params.keys()]
         self.bias_params_list = ['b1','b2','g2','g21','c0','c2','c4','cnlo','N0','N20','N22']
 
-        self.params = {p:0. for p in self.params_list+self.bias_params_list}
+        self.params = {p:0. for p in self.params_list+self.bias_params_list+['h','As','z']}
         self.fid_LCDM_params = fid_LCDM_params
 
         self.nk = 76
@@ -196,6 +196,9 @@ class PTEmu:
         self.validation['all']   = PTEmu_tables(self.params_list, validation=True)
 
         self.emu = {}
+
+        self.Pk_lin    = None
+        self.Pk_ratios = np.array([None, None, None])
 
         # self.LCDM     = cosmology.setCosmology('planck18', {'print_warnings': False, 'persistence':''})
         # self.LCDM.H0  = 100*self.fid_LCDM_params['h']
@@ -386,6 +389,11 @@ class PTEmu:
 
 
     def update_params(self, params, flag):
+        if flag == 'generic':
+            emu_params_updated = any([params[p] != self.params[p] for p in self.params_list])
+        elif flag == 'LCDM':
+            emu_params_updated = any([params[p] != self.params[p] for p in self.params_shape_list+['h','As','z']])
+
         try:
             if flag == 'generic':
                 for p in self.params_list:
@@ -401,6 +409,8 @@ class PTEmu:
                 self.params[p] = params[p]
             else:
                 self.params[p] = 0.
+
+        return emu_params_updated
 
 
     def get_bias_coeff(self, ell):
@@ -420,27 +430,28 @@ class PTEmu:
 
     def Pell(self, params, ell):
         ell = [ell] if not isinstance(ell, list) else ell
-        self.update_params(params, 'generic')
+        emu_params_updated = self.update_params(params, 'generic')
         params_shape = np.array([self.params[p] for p in self.params_shape_list])
         params_all   = np.array([self.params[p] for p in self.params_list])
 
-        Pk_lin = self.training['shape'].transform_inv(self.emu['PL'].predict(params_shape[None,:])[0][0], 'PL')
-        sigma12 = self.training['shape'].transform_inv(self.emu['s12'].predict(params_shape[None,:])[0][0], 's12')
-
-        Pk_lin *= (self.params['s12']/sigma12)**2
+        if self.Pk_lin is None or emu_params_updated:
+            sigma12 = self.training['shape'].transform_inv(self.emu['s12'].predict(params_shape[None,:])[0][0], 's12')
+            self.Pk_lin = self.training['shape'].transform_inv(self.emu['PL'].predict(params_shape[None,:])[0][0], 'PL')
+            self.Pk_lin *= (self.params['s12']/sigma12)**2
 
         Pell_list = np.zeros([self.nk,len(ell)])
         for i,l in enumerate(ell):
             bij = self.get_bias_coeff(l)
-            Pk_ratios = self.training['all'].transform_inv(self.emu[l].predict(params_all[None,:])[0][0], l)
+            if self.Pk_ratios[i] is None or emu_params_updated:
+                self.Pk_ratios[i] = self.training['all'].transform_inv(self.emu[l].predict(params_all[None,:])[0][0], l)
 
             Pk_bij = np.zeros([self.nk,self.n_diagrams])
             for n in range(7):
-                Pk_bij[:,n] = Pk_ratios[n*self.nk:(n+1)*self.nk]*Pk_lin
+                Pk_bij[:,n] = self.Pk_ratios[i][n*self.nk:(n+1)*self.nk]*self.Pk_lin
             for n in range(7,10):
-                Pk_bij[:,n] = Pk_ratios[n*self.nk:(n+1)*self.nk]
+                Pk_bij[:,n] = self.Pk_ratios[i][n*self.nk:(n+1)*self.nk]
             for n in range(10):
-                Pk_bij[(self.nk-self.nkloop):,10+n] = Pk_ratios[10*self.nk+n*self.nkloop:10*self.nk+(n+1)*self.nkloop]*Pk_lin[(self.nk-self.nkloop):]
+                Pk_bij[(self.nk-self.nkloop):,10+n] = self.Pk_ratios[i][10*self.nk+n*self.nkloop:10*self.nk+(n+1)*self.nkloop]*self.Pk_lin[(self.nk-self.nkloop):]
 
             Pell_list[:,i] = np.dot(bij,Pk_bij.T)
 
@@ -449,38 +460,46 @@ class PTEmu:
 
     def Pell_LCDM(self, params, ell, alpha_tr_lo=None):
         ell = [ell] if not isinstance(ell, list) else ell
-        self.update_params(params, 'LCDM')
+        emu_params_updated = self.update_params(params, 'LCDM')
         params_shape = np.array([self.params[p] for p in self.params_shape_list])
 
-        Pk_lin = self.training['shape'].transform_inv(self.emu['PL'].predict(params_shape[None,:])[0][0], 'PL')
-        sigma12 = self.training['shape'].transform_inv(self.emu['s12'].predict(params_shape[None,:])[0][0], 's12')
+        if self.Pk_lin is None or emu_params_updated:
+            sigma12 = self.training['shape'].transform_inv(self.emu['s12'].predict(params_shape[None,:])[0][0], 's12')
+            self.Pk_lin = self.training['shape'].transform_inv(self.emu['PL'].predict(params_shape[None,:])[0][0], 'PL')
 
-        # compute growth factors corresponding to fiducial and target parameters
-        Om0  = (params['wc']+params['wb'])/params['h']**2
-        Dfid = self.growthFactor(self.fid_LCDM_params['z'], (params['wc']+params['wb'])/self.fid_LCDM_params['h']**2)
-        D    = self.growthFactor(params['z'], Om0)
-        # self.update_LCDM_h_wc_wb(self.fid_LCDM_params['h'], params['wc'], params['wb'])
-        # Dfid = self.LCDM.growthFactorUnnormalized(self.fid_LCDM_params['z'])
-        # self.update_LCDM_h_wc_wb(params['h'], params['wc'], params['wb'])
-        # D = self.LCDM.growthFactorUnnormalized(params['z'])
+            # compute growth factors corresponding to fiducial and target parameters
+            Om0  = (params['wc']+params['wb'])/params['h']**2
+            Dfid = self.growthFactor(self.fid_LCDM_params['z'], (params['wc']+params['wb'])/self.fid_LCDM_params['h']**2)
+            D    = self.growthFactor(params['z'], Om0)
+            # self.update_LCDM_h_wc_wb(self.fid_LCDM_params['h'], params['wc'], params['wb'])
+            # Dfid = self.LCDM.growthFactorUnnormalized(self.fid_LCDM_params['z'])
+            # self.update_LCDM_h_wc_wb(params['h'], params['wc'], params['wb'])
+            # D = self.LCDM.growthFactorUnnormalized(params['z'])
 
-        # compute AP parameters and growth rate
-        if alpha_tr_lo is None:
-            alpha_lo = self.H_fid/self.Hz(params['z'], Om0, 100*params['h'])
-            alpha_tr = self.angularDiameterDistance(params['z'], Om0)/params['h']/self.Dm_fid
-        else:
-            alpha_lo = alpha_tr_lo[1]
-            alpha_tr = alpha_tr_lo[0]
-        f = self.growthRate(params['z'], Om0)
-        # alpha_lo = self.H_fid/self.LCDM.Hz(params['z'])
-        # alpha_tr = self.LCDM.angularDiameterDistance(params['z'])*(1+params['z'])/params['h']/self.Dm_fid
-        # f = - (1.+params['z'])*self.LCDM.growthFactor(params['z'], derivative=1)/self.LCDM.growthFactor(params['z'])
+            # compute AP parameters and growth rate
+            if alpha_tr_lo is None:
+                self.params['alpha_lo'] = self.H_fid/self.Hz(params['z'], Om0, 100*params['h'])
+                self.params['alpha_tr'] = self.angularDiameterDistance(params['z'], Om0)/params['h']/self.Dm_fid
+            else:
+                self.params['alpha_lo'] = alpha_tr_lo[1]
+                self.params['alpha_tr'] = alpha_tr_lo[0]
+                #alpha_lo = alpha_tr_lo[1]
+                #alpha_tr = alpha_tr_lo[0]
+            self.params['f'] = self.growthRate(params['z'], Om0)
+            #f = self.growthRate(params['z'], Om0)
+            # alpha_lo = self.H_fid/self.LCDM.Hz(params['z'])
+            # alpha_tr = self.LCDM.angularDiameterDistance(params['z'])*(1+params['z'])/params['h']/self.Dm_fid
+            # f = - (1.+params['z'])*self.LCDM.growthFactor(params['z'], derivative=1)/self.LCDM.growthFactor(params['z'])
 
-        # rescale linear power spectrum and sigma12
-        Pk_lin *= params['As']/self.fid_LCDM_params['As']*(D/Dfid)**2
-        sigma12 *= np.sqrt(params['As']/self.fid_LCDM_params['As'])*(D/Dfid)
+            # rescale linear power spectrum and sigma12
+            self.Pk_lin *= params['As']/self.fid_LCDM_params['As']*(D/Dfid)**2
+            self.params['s12'] = sigma12*np.sqrt(params['As']/self.fid_LCDM_params['As'])*(D/Dfid)
+            #sigma12 *= np.sqrt(params['As']/self.fid_LCDM_params['As'])*(D/Dfid)
 
-        params_all = np.concatenate((params_shape, np.array([sigma12, alpha_tr, alpha_lo, f])))
+            #params_all = np.concatenate((params_shape, np.array([sigma12, alpha_tr, alpha_lo, f])))
+
+        params_all = np.array([self.params[p] for p in self.params_list])
+        # params_all = np.concatenate((params_shape, np.array([self.sigma12, alpha_tr, alpha_lo, f])))
         # print(params_all)
 
         Pell_list = np.zeros([self.nk,len(ell)])
@@ -493,15 +512,16 @@ class PTEmu:
             bij[7] *= (self.fid_LCDM_params['h']/params['h'])**3
             bij[8:10] *= (self.fid_LCDM_params['h']/params['h'])**5
 
-            Pk_ratios = self.training['all'].transform_inv(self.emu[l].predict(params_all[None,:])[0][0], l)
+            if self.Pk_ratios[i] is None or emu_params_updated:
+                self.Pk_ratios[i] = self.training['all'].transform_inv(self.emu[l].predict(params_all[None,:])[0][0], l)
 
             Pk_bij = np.zeros([self.nk,self.n_diagrams])
             for n in range(7):
-                Pk_bij[:,n] = Pk_ratios[n*self.nk:(n+1)*self.nk]*Pk_lin
+                Pk_bij[:,n] = self.Pk_ratios[i][n*self.nk:(n+1)*self.nk]*self.Pk_lin
             for n in range(7,10):
-                Pk_bij[:,n] = Pk_ratios[n*self.nk:(n+1)*self.nk]
+                Pk_bij[:,n] = self.Pk_ratios[i][n*self.nk:(n+1)*self.nk]
             for n in range(10):
-                Pk_bij[(self.nk-self.nkloop):,10+n] = Pk_ratios[10*self.nk+n*self.nkloop:10*self.nk+(n+1)*self.nkloop]*Pk_lin[(self.nk-self.nkloop):]
+                Pk_bij[(self.nk-self.nkloop):,10+n] = self.Pk_ratios[i][10*self.nk+n*self.nkloop:10*self.nk+(n+1)*self.nkloop]*self.Pk_lin[(self.nk-self.nkloop):]
 
             Pell_list[:,i] = np.dot(bij,Pk_bij.T)
 
