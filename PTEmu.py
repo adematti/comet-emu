@@ -181,8 +181,6 @@ class PTEmu:
         self.params = {p:0. for p in self.params_list+self.bias_params_list+['h','As','z']}
         self.fid_LCDM_params = fid_LCDM_params
 
-        self.nk = 76
-        self.nkloop = 56
         self.n_diagrams = 20
         self.kHD = 0.4
         self.kmax_is_set = False
@@ -229,8 +227,8 @@ class PTEmu:
             self.training[type].load_samples(fname)
 
 
-    def load_table(self, type, fname, data_type=None, validation=False):
-        self.k_table = np.loadtxt('../tables/k_vector.dat')
+    def load_table(self, type, fname, fname_kvector, data_type=None, validation=False):
+        self.k_table = np.loadtxt(fname_kvector)
         self.nk = self.k_table.shape[0]
         self.nkloop = sum(self.k_table > 0.01)
         if validation:
@@ -483,10 +481,7 @@ class PTEmu:
             else:
                 self.params['alpha_lo'] = alpha_tr_lo[1]
                 self.params['alpha_tr'] = alpha_tr_lo[0]
-                #alpha_lo = alpha_tr_lo[1]
-                #alpha_tr = alpha_tr_lo[0]
             self.params['f'] = self.growthRate(params['z'], Om0)
-            #f = self.growthRate(params['z'], Om0)
             # alpha_lo = self.H_fid/self.LCDM.Hz(params['z'])
             # alpha_tr = self.LCDM.angularDiameterDistance(params['z'])*(1+params['z'])/params['h']/self.Dm_fid
             # f = - (1.+params['z'])*self.LCDM.growthFactor(params['z'], derivative=1)/self.LCDM.growthFactor(params['z'])
@@ -494,9 +489,6 @@ class PTEmu:
             # rescale linear power spectrum and sigma12
             self.Pk_lin *= params['As']/self.fid_LCDM_params['As']*(D/Dfid)**2
             self.params['s12'] = sigma12*np.sqrt(params['As']/self.fid_LCDM_params['As'])*(D/Dfid)
-            #sigma12 *= np.sqrt(params['As']/self.fid_LCDM_params['As'])*(D/Dfid)
-
-            #params_all = np.concatenate((params_shape, np.array([sigma12, alpha_tr, alpha_lo, f])))
 
         params_all = np.array([self.params[p] for p in self.params_list])
         # params_all = np.concatenate((params_shape, np.array([self.sigma12, alpha_tr, alpha_lo, f])))
