@@ -230,7 +230,7 @@ class PTEmu:
     def load_table(self, type, fname, fname_kvector, data_type=None, validation=False):
         self.k_table = np.loadtxt(fname_kvector)
         self.nk = self.k_table.shape[0]
-        self.nkloop = sum(self.k_table > 0.01)
+        self.nkloop = sum(self.k_table > 0.007)
         if validation:
             self.validation[type].load_table(fname, self.nk, self.nkloop, data_type=data_type)
         else:
@@ -292,17 +292,34 @@ class PTEmu:
                     self.emu[dt] = pickle.load(open('{}_ratios_ell{}.pickle'.format(fname_base, dt), "rb"))
 
 
-    def define_data_set(self, k, obs, cov, nbar, use_Mpc=True, theory_cov=False, Nrealizations=300):
-        self.k_data = k
-        self.P_data = obs if obs.ndim > 1 else obs[:,None]
+    def define_data_set(self, k, obs, cov, nbar, use_Mpc=True, hfid=None, theory_cov=True, Nrealizations=None):
+        self.k_data = np.copy(k)
+        self.P_data = np.copy(obs) if obs.ndim > 1 else np.copy(obs)[:,None]
         self.n_ell = self.P_data.shape[1]
-        self.Cov_data = cov
-        self.nbar = nbar
+        self.Cov_data = np.copy(cov)
+        self.nbar = np.copy(nbar)
         self.use_Mpc = use_Mpc
-        self.theory_cov = theory_cov
-        self.Nrealizations = Nrealizations
-        self.kmax_is_set = False
 
+        if not self.use_Mpc:
+            if hfid is not None:
+                self.hfid_data = hfid
+                self.k_data *= self.hfid_data
+                self.P_data *= (1./self.hfid_data)**3
+                self.Cov_data *= (1./self.hfid_data)**6
+                self.nbar *= (self.hfid_data/self.fid_LCDM_params['h'])**3 # convert to units of (Mpc/hfid_emu)^-3
+            else:
+                raise ValueError('If data is not given in Mpc units, need to provide hfid.')
+        else:
+            self.nbar *= (1./self.fid_LCDM_params['h'])**3 # convert to units of (Mpc/hfid_emu)^-3
+
+        self.theory_cov = theory_cov
+        if not self.theory_cov:
+            if Nrealizations is not None:
+                self.Nrealizations = Nrealizations
+            else:
+                raise ValueError('For non-analytical covariance matrix, need to specify Nrealizations.')
+
+        self.kmax_is_set = False
 
     def AHfactor(self, nbin):
         return 1. if self.theory_cov else (self.Nrealizations - nbin -2)*1./(self.Nrealizations - 1)
@@ -316,10 +333,12 @@ class PTEmu:
 
         nbin_total = self.k_data.shape[0]
 
+        unit_factor = 1. if self.use_Mpc else self.hfid_data
+
         self.nbin = [0 for i in range(self.n_ell)]
         for l in range(self.n_ell):
             for i in range(nbin_total):
-                if self.k_data[i] < self.kmax[l]:
+                if self.k_data[i] < self.kmax[l]*unit_factor:
                     self.nbin[l] += 1
                 else:
                     break
@@ -379,11 +398,11 @@ class PTEmu:
             self.Dm_fid = self.angularDiameterDistance(params_fid['z'], Om0)/params_fid['h']
 
 
-    def update_LCDM_h_wc_wb(self, h, wc, wb):
-        self.LCDM.H0 = 100*h
-        self.LCDM.Om0 = (wc + wb)/h**2
-        self.LCDM.Ob0 = wb/h**2
-        self.LCDM.checkForChangedCosmology()
+    # def update_LCDM_h_wc_wb(self, h, wc, wb):
+    #     self.LCDM.H0 = 100*h
+    #     self.LCDM.Om0 = (wc + wb)/h**2
+    #     self.LCDM.Ob0 = wb/h**2
+    #     self.LCDM.checkForChangedCosmology()
 
 
     def update_params(self, params, flag):
@@ -553,13 +572,16 @@ class PTEmu:
         for i,l in enumerate(ell):
             n = int(l/2)
 
-            if self.use_Mpc:
-                spline = interp1d(self.k_table*self.fid_LCDM_params['h'], Pell[:,i], kind='cubic')
-                Pell_model[sum(self.nbin[:n]):sum(self.nbin[:n+1])] = spline(self.k_bins[n])
-            else:
-                spline = interp1d(self.k_table*(self.fid_LCDM_params['h']/params['h']),
-                                Pell[:,i]*self.params['h']**3, kind='cubic')
-                Pell_model[sum(self.nbin[:n]):sum(self.nbin[:n+1])] = spline(self.k_bins[n])
+            # if self.use_Mpc:
+            #     spline = interp1d(self.k_table*self.fid_LCDM_params['h'], Pell[:,i], kind='cubic')
+            #     Pell_model[sum(self.nbin[:n]):sum(self.nbin[:n+1])] = spline(self.k_bins[n])
+            # else:
+            #     spline = interp1d(self.k_table*(self.fid_LCDM_params['h']/params['h']),
+            #                     Pell[:,i]*self.params['h']**3, kind='cubic')
+            #     Pell_model[sum(self.nbin[:n]):sum(self.nbin[:n+1])] = spline(self.k_bins[n])
+
+            spline = interp1d(self.k_table, Pell[:,i], kind='cubic')
+            Pell_model[sum(self.nbin[:n]):sum(self.nbin[:n+1])] = spline(self.k_bins[n])
 
         diff = Pell_model - self.P_data_kmax
 
