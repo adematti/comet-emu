@@ -557,7 +557,7 @@ class PTEmu:
         elif flag == 'TEMPLATE':
             emu_params_updated = any([params[p] != self.params[p] for p in self.params_list+['h']])
         elif flag == 'LCDM':
-            emu_params_updated = any([params[p] != self.params[p] for p in self.params_shape_list+['alpha_tr','alpha_lo','h','As','z']])
+            emu_params_updated = any([params[p] != self.params[p] for p in self.params_shape_list+['h','As','z']])
 
         try:
             if flag == 'TEMPLATE' and self.use_Mpc:
@@ -667,11 +667,13 @@ class PTEmu:
 
     def Pell_LCDM_fid_ktable(self, params, ell, alpha_tr_lo=None):
         ell = [ell] if not isinstance(ell, list) else ell
-        if alpha_tr_lo is not None:
-            self.params['alpha_tr'] = alpha_tr_lo[0]
-            self.params['alpha_lo'] = alpha_tr_lo[1]
         emu_params_updated = self.update_params(params, 'LCDM')
         params_shape = np.array([self.params[p] for p in self.params_shape_list])
+        if alpha_tr_lo is not None:
+            if any([self.params[p] != alpha_tr_lo[i] for i,p in enumerate(['alpha_tr','alpha_lo'])]):
+                self.params['alpha_tr'] = alpha_tr_lo[0]
+                self.params['alpha_lo'] = alpha_tr_lo[1]
+                emu_params_updated = True
 
         if self.Pk_lin is None or emu_params_updated:
             sigma12 = self.training['SHAPE'].transform_inv(self.emu['s12'].predict(params_shape[None,:])[0][0], 's12')
