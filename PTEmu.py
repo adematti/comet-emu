@@ -113,9 +113,14 @@ class Tables:
 
     def assign_samples(self, samples_hdu):
         self.n_samples = samples_hdu.header['NAXIS2']
-        self.samples = np.zeros([self.n_samples,self.n_params])
-        for i,p in enumerate(self.params):
-            self.samples[:,i] = samples_hdu.data[p]
+        if self.validation:
+            self.samples = np.zeros([self.n_samples,samples_hdu.header['TFIELDS']])
+            for i,p in enumerate([samples_hdu.header['TTYPE{}'.format(n+1)] for n in range(samples_hdu.header['TFIELDS'])]):
+                self.samples[:,i] = samples_hdu.data[p]
+        else:
+            self.samples = np.zeros([self.n_samples,self.n_params])
+            for i,p in enumerate(self.params):
+                self.samples[:,i] = samples_hdu.data[p]
 
 
     def load_table(self, fname, nk, nkloop, data_type=None):
@@ -190,6 +195,8 @@ class Tables:
                         self.model[diagram_full] = table_hdu.data[diagram_full]
             if not self.validation:
                 self.transform_emulator_data()
+            else:
+                self.convert_dictionary()
         else:
             raise KeyError('HDU table does not contain valid identifiers.')
 
@@ -300,6 +307,16 @@ class Tables:
                 self.model_transformed[ell] = self.transform(temp, data_type=ell)
 
 
+    def convert_dictionary(self):
+        temp = np.zeros([self.n_samples, self.nk, 1+self.n_diagrams*3])
+        temp[:,:,0] = self.model['PL']
+        for ell in [0,2,4]:
+            for cnt,diagram in enumerate(self.names_diagrams):
+                diagram_full = '{}_ell{}'.format(diagram, ell)
+                temp[:, :, 1+cnt+self.n_diagrams*int(ell/2)] = self.model[diagram_full]
+        self.model = temp
+
+
     def GPy_model(self, data_type):
         kernel = GPy.kern.RBF(input_dim=self.n_params, variance=np.var(self.model_transformed[data_type]), lengthscale=np.ones(self.n_params), ARD=True)
         return GPy.models.GPRegression(self.samples, self.model_transformed[data_type], kernel)
@@ -337,6 +354,8 @@ class PTEmu:
         self.Pell_spline = {}
 
         self.emu_params_updated = False
+
+        self.use_Mpc = True
 
 
     def generate_samples(self, type, ranges, n_samples, n_trials=0, validation=False):
@@ -378,9 +397,9 @@ class PTEmu:
             params_shape_fits = [hdul['PARAMS_SHAPE'].header['TTYPE{}'.format(n+1)] for n in range(hdul['PARAMS_SHAPE'].header['TFIELDS'])]
             if not set(self.params_shape_list) == set(params_shape_fits):
                 raise KeyError('Fits table list of shape parameters does not match.')
-        params_full_fits = [hdul['PARAMS_FULL'].header['TTYPE{}'.format(n+1)] for n in range(hdul['PARAMS_FULL'].header['TFIELDS'])]
-        if not set(self.params_list) == set(params_full_fits):
-            raise KeyError('Fits table list of all parameters does not match.')
+            params_full_fits = [hdul['PARAMS_FULL'].header['TTYPE{}'.format(n+1)] for n in range(hdul['PARAMS_FULL'].header['TFIELDS'])]
+            if not set(self.params_list) == set(params_full_fits):
+                raise KeyError('Fits table list of all parameters does not match.')
 
         self.k_table = hdul['K_TABLE'].data['bins']
         self.nk = self.k_table.shape[0]
@@ -452,8 +471,8 @@ class PTEmu:
 
 
     def define_data_set(self, use_Mpc=True, k_data=None, P_data=None, Cov_data=None, nbar=None, kHD=None, theory_cov=True, Nrealizations=None):
-        self.use_Mpc = use_Mpc
-
+        if use_Mpc is not None:
+            self.use_Mpc = use_Mpc
         if k_data is not None:
             self.k_data = np.copy(k_data)
         if P_data is not None:
@@ -484,8 +503,8 @@ class PTEmu:
         #    self.nbar *= (1./self.fid_LCDM_params['h'])**3 # convert to units of (Mpc/hfid_emu)^-3, necessary because the table is in units of 1/hfid_emu^3
         #    self.kHd  *= 1./self.fid_LCDM_params['h']      # convert to units of hfid_emu/Mpc
 
-        self.nbar *= (1./self.fid_LCDM_params['h'])**3 # convert to units of (Mpc/hfid_emu)^-3 or (Mpc h/hfid_emu)^-3, necessary because the table is in units of 1/hfid_emu^3
-        self.kHD  *= 1./self.fid_LCDM_params['h']      # convert to units of hfid_emu 1/Mpc or hfid_emu/h 1/Mpc
+        self.nbar_emu = self.nbar*(1./self.fid_LCDM_params['h'])**3 # convert to units of (Mpc/hfid_emu)^-3 or (Mpc h/hfid_emu)^-3, necessary because the table is in units of 1/hfid_emu^3
+        self.kHD_emu  = self.kHD*1./self.fid_LCDM_params['h']      # convert to units of hfid_emu 1/Mpc or hfid_emu/h 1/Mpc
 
         self.splines_up_to_date = [False]*3
 
@@ -538,6 +557,20 @@ class PTEmu:
         self.kmax_is_set = True
 
 
+    def get_Pell_data(self, ell, kmax):
+        if not self.kmax_is_set or (self.kmax != kmax and self.kmax != [kmax for i in range(self.n_ell)]):
+            self.set_kmax(kmax)
+        n = int(ell/2)
+        return self.P_data_kmax[sum(self.nbin[:n]):sum(self.nbin[:n+1])]
+
+
+    def get_std_data(self, ell, kmax):
+        if not self.kmax_is_set or (self.kmax != kmax and self.kmax != [kmax for i in range(self.n_ell)]):
+            self.set_kmax(kmax)
+        n = int(ell/2)
+        return np.sqrt(np.diag(self.Cov_data_kmax)[sum(self.nbin[:n]):sum(self.nbin[:n+1])])
+
+
     def define_fiducial_cosmology(self, params_fid=None, HDm_fid=None):
         if HDm_fid is not None:
             self.cosmo = Cosmo(0.3, 67) # initialising with arbitrary parameters
@@ -558,6 +591,9 @@ class PTEmu:
             emu_params_updated = any([params[p] != self.params[p] for p in self.params_list+['h']])
         elif flag == 'LCDM':
             emu_params_updated = any([params[p] != self.params[p] for p in self.params_shape_list+['h','As','z']])
+
+        if emu_params_updated:
+            self.Pk_ratios = {0:None, 2:None, 4:None}
 
         try:
             if flag == 'TEMPLATE' and self.use_Mpc:
@@ -595,8 +631,8 @@ class PTEmu:
         N0   = self.params['N0'] if self.use_Mpc else self.params['N0']/self.params['h']**3
         N20  = self.params['N20'] if self.use_Mpc else self.params['N20']/self.params['h']**5
         N22  = self.params['N22'] if self.use_Mpc else self.params['N22']/self.params['h']**5
-        return np.array([b1**2, b1, 1., cell/self.kHD**2, b1**2*cnlo/self.kHD**4, b1*cnlo/self.kHD**4,
-                         cnlo/self.kHD**4, N0/self.nbar, N20/self.nbar/self.kHD**2, N22/self.nbar/self.kHD**2,
+        return np.array([b1**2, b1, 1., cell/self.kHD_emu**2, b1**2*cnlo/self.kHD_emu**4, b1*cnlo/self.kHD_emu**4,
+                         cnlo/self.kHD_emu**4, N0/self.nbar_emu, N20/self.nbar_emu/self.kHD_emu**2, N22/self.nbar_emu/self.kHD_emu**2,
                          b1**2, b1*b2, b1*g2, b1*g21, b2**2, b2*g2, g2**2, b2, g2, g21])
 
 
@@ -870,9 +906,9 @@ class PTEmu:
         k_all = np.unique(k_all)
         if 'f' in self.params_list:
             Pell = self.Pell(k_all, params, ell=[0,2,4])
-            Pell[0] += 1./self.nbar/(self.fid_LCDM_params['h'])**3
+            Pell[0] += 1./self.nbar_emu/(self.fid_LCDM_params['h'])**3
         else:
-            Pell = self.Pell(k_all, params, ell=0) + 1./self.nbar/(self.fid_LCDM_params['h'])**3
+            Pell = self.Pell(k_all, params, ell=0) + 1./self.nbar_emu/(self.fid_LCDM_params['h'])**3
 
         for i,l1 in enumerate(ell):
             for j,l2 in enumerate(ell):
@@ -902,9 +938,9 @@ class PTEmu:
         k_all = np.unique(k_all)
         if 'f' in self.params_list:
             Pell = self.Pell_LCDM(k_all, params, ell=[0,2,4], alpha_tr_lo=alpha_tr_lo)
-            Pell[0] += 1./self.nbar/(self.fid_LCDM_params['h'])**3
+            Pell[0] += 1./self.nbar_emu/(self.fid_LCDM_params['h'])**3
         else:
-            Pell = self.Pell_LCDM(k_all, params, ell=0, alpha_tr_lo=alpha_tr_lo) + 1./self.nbar/(self.fid_LCDM_params['h'])**3
+            Pell = self.Pell_LCDM(k_all, params, ell=0, alpha_tr_lo=alpha_tr_lo) + 1./self.nbar_emu/(self.fid_LCDM_params['h'])**3
 
         if volume is None:
             Om0 = (self.params['wc']+self.params['wb'])/self.params['h']**2
@@ -942,9 +978,9 @@ class PTEmu:
         k_all = np.unique(k_all)
         if 'f' in self.params_list:
             Pell = self.Pell_from_table(table, k_all, params, ell=[0,2,4])
-            Pell[0] += 1./self.nbar/(self.fid_LCDM_params['h'])**3
+            Pell[0] += 1./self.nbar_emu/(self.fid_LCDM_params['h'])**3
         else:
-            Pell = self.Pell_from_table(table, k_all, params, ell=0) + 1./self.nbar/(self.fid_LCDM_params['h'])**3
+            Pell = self.Pell_from_table(table, k_all, params, ell=0) + 1./self.nbar_emu/(self.fid_LCDM_params['h'])**3
 
         if volume is None:
             Om0 = (params['wc']+params['wb'])/params['h']**2
