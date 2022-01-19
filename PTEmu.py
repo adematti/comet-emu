@@ -471,6 +471,7 @@ class PTEmu:
         self.params_shape_list    = [key for key,val in params.items() if 'SHAPE' in val]
         self.params_add_emu_list  = [p for p in params.keys() if p not in self.params_shape_list+['s12','alpha_tr','alpha_lo','f']]
         self.params_list          = [p for p in params.keys()]
+        self.params_list_emu      = ['avir_emu' if p == 'avir' else p for p in self.params_list]
         self.bias_params_list     = ['b1','b2','g2','g21','c0','c2','c4','cnlo','N0','N20','N22']
         self.de_model_params_list = {'lambda':['h','As','Ok','z'],
                                      'w0':['h','As','Ok','w0','z'],
@@ -755,9 +756,9 @@ class PTEmu:
         # convert avir into Mpc/hfid_emu units
         if 'avir' in self.params_add_emu_list:
             if self.use_Mpc:
-                self.params['avir_use'] = self.params['avir']*self.fid_LCDM_params['h']
+                self.params['avir_emu'] = self.params['avir']*self.fid_LCDM_params['h']
             else:
-                self.params['avir_use'] = self.params['avir']*self.fid_LCDM_params['h']/self.params['h']
+                self.params['avir_emu'] = self.params['avir']*self.fid_LCDM_params['h']/self.params['h']
 
         for p in self.bias_params_list:
             if p in params.keys():
@@ -787,7 +788,7 @@ class PTEmu:
         ell = [ell] if not isinstance(ell, list) else ell
         emu_params_updated = self.update_params(params)
         params_shape = np.array([self.params[p] for p in self.params_shape_list])
-        params_all   = np.array([self.params[p] for p in self.params_list])
+        params_all   = np.array([self.params[p] for p in self.params_list_emu])
 
         if self.Pk_lin is None or emu_params_updated:
             sigma12 = self.training['SHAPE'].transform_inv(self.emu['s12'].predict(params_shape[None,:])[0][0], 's12')
@@ -848,7 +849,7 @@ class PTEmu:
             self.params['s12'] = sigma12[0]*np.sqrt(params['As']/self.fid_LCDM_params['As'])*(D/Dfid)
             self.params['f'] = f
 
-        params_all = np.array([self.params[p] for p in self.params_list],dtype=object)
+        params_all = np.array([self.params[p] for p in self.params_list_emu],dtype=object)
 
         Pell_list = np.zeros([self.nk,len(ell)])
         for i,l in enumerate(ell):
@@ -1041,46 +1042,6 @@ class PTEmu:
                     cov[sum(nbin[:i]):sum(nbin[:i+1]),sum(nbin[:j]):sum(nbin[:j+1])] = cov[sum(nbin[:j]):sum(nbin[:j+1]),sum(nbin[:i]):sum(nbin[:i+1])].T
 
         return cov
-
-
-    # def Pell_covariance_LCDM(self, k, params, ell, dk, alpha_tr_lo=None, volume=None, zmin=None, zmax=None, fsky=15000./(360**2/np.pi), volfac=1):
-    #     ell = [ell] if not isinstance(ell, list) else ell
-    #     if not isinstance(k, list):
-    #         k = [np.array(k)]*len(ell)
-    #     elif isinstance(k, list) and len(k) != len(ell):
-    #         raise ValueError("If 'k' is given as a list, it must match the length of 'ell'.")
-    #     else:
-    #         k = [np.array(x) for x in k]
-    #
-    #     nbin = [x.shape[0] for x in k]
-    #     cov = np.zeros([sum(nbin),sum(nbin)])
-    #
-    #     for i in range(len(ell)):
-    #         k_all = k[i] if i==0 else np.hstack((k_all,k[i]))
-    #     k_all = np.unique(k_all)
-    #     if 'f' in self.params_list:
-    #         Pell = self.Pell_LCDM(k_all, params, ell=[0,2,4], alpha_tr_lo=alpha_tr_lo)
-    #         Pell[0] += 1./self.nbar_emu/(self.fid_LCDM_params['h'])**3
-    #     else:
-    #         Pell = self.Pell_LCDM(k_all, params, ell=0, alpha_tr_lo=alpha_tr_lo) + 1./self.nbar_emu/(self.fid_LCDM_params['h'])**3
-    #
-    #     if volume is None:
-    #         Om0 = (self.params['wc']+self.params['wb'])/self.params['h']**2
-    #         H0 = 100*self.params['h']
-    #         self.cosmo.update_cosmology(Om0=Om0, H0=H0)
-    #         volume = volfac*self.cosmo.comoving_volume(zmin, zmax, fsky)
-    #         if not self.use_Mpc:
-    #             volume *= self.params['h']**3
-    #
-    #     for i,l1 in enumerate(ell):
-    #         for j,l2 in enumerate(ell):
-    #             if j >= i:
-    #                 kij, id1, id2 = np.intersect1d(k[i],k[j],return_indices=True)
-    #                 cov[sum(nbin[:i]):sum(nbin[:i+1]),sum(nbin[:j]):sum(nbin[:j+1])][id1,id2] = self.Gaussian_covariance(l1, l2, k_all, dk, Pell, volume)[np.intersect1d(k_all, kij, return_indices=True)[1]]
-    #             else:
-    #                 cov[sum(nbin[:i]):sum(nbin[:i+1]),sum(nbin[:j]):sum(nbin[:j+1])] = cov[sum(nbin[:j]):sum(nbin[:j+1]),sum(nbin[:i]):sum(nbin[:i+1])].T
-    #
-    #     return cov
 
 
     def Pell_covariance_from_table(self, table, k, params, ell, dk, volume=None, zmin=None, zmax=None, fsky=15000./(360**2/np.pi), volfac=1):
