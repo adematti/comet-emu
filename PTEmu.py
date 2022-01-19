@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.interpolate import interp1d
 from scipy.spatial.distance import cdist
-from scipy.integrate import quad
+from scipy.integrate import quad, solve_ivp
 from scipy.special import beta, betainc
 from astropy.io import fits
 from astropy import cosmology
@@ -11,23 +11,69 @@ from pyDOE import *
 
 
 class Cosmo:
-    def __init__(self, Om0, H0):
+    def __init__(self, Om0, H0, Ok0=0, Or0=0, de_model='lambda', w0=-1, wa=0):
         self.Om0 = Om0
+        self.Ok0 = Ok0
+        self.Or0 = Or0
         self.H0 = H0
-        self.Ode0 = 1. - self.Om0
-        self.cosmo_astropy = None
+        self.Ode0 = 1. - self.Om0 - self.Ok0 - self.Or0
+
+        self.hubble_distance = 2.998E5/self.H0
+
+        self.de_model = de_model
+        self.w0 = w0
+        self.wa = wa
+
+        self.flat = True if self.Ok0 == 0 else False
+        self.relspecies = False if self.Or0 == 0 else True
 
 
-    def update_cosmology(self, Om0, H0):
+    def update_cosmology(self, Om0, H0, Ok0=0, Or0=0, de_model='lambda', w0=-1, wa=0):
         self.Om0 = Om0
+        self.Ok0 = Ok0
+        self.Or0 = Or0
         self.H0 = H0
-        self.Ode0 = 1. - self.Om0
-        if self.cosmo_astropy is not None:
-            self.cosmo_astropy = cosmology.LambdaCDM(H0=self.H0,Om0=self.Om0,Ode0=self.Ode0)
+        self.Ode0 = 1. - self.Om0 - self.Ok0 - self.Or0
+
+        self.hubble_distance = 2.998E5/self.H0
+
+        self.de_model = de_model
+        self.w0 = w0
+        self.wa = wa
+
+        self.flat = True if self.Ok0 == 0 else False
+        self.relspecies = False if self.Or0 == 0 else True
+
+
+    def DE_z(self, z):
+        if self.de_model == 'lambda':
+            de_z = 1.
+        elif self.de_model == 'w0':
+            de_z = (1.+z)**(3.*(1.+self.w0))
+        elif self.de_model == 'w0wa':
+            a = 1./(1.+z)
+            de_z = a**(-3.*(1.+self.w0+self.wa))*np.exp(-3.*self.wa*(1.-a))
+        return de_z
+
+
+    def wz(self, z):
+        if self.de_model == 'lambda':
+            w = -1.*np.ones_like(z)
+        elif self.de_model == 'w0':
+            w = self.w0*np.ones_like(z)
+        elif self.de_model == 'w0wa':
+            w = self.w0 + self.wa*z/(1.+z)
+        return w
 
 
     def Ez(self, z):
-        return np.sqrt(self.Om0*(1+z)**3+1-self.Om0)
+        ainv = 1.+z
+        Ez2 = self.Om0*ainv**3 + self.Ode0*self.DE_z(z)
+        if not self.flat:
+            Ez2 += self.Ok0*ainv**2
+        if self.relspecies:
+            Ez2 += self.Or0*ainv**4
+        return np.sqrt(Ez2)
 
 
     def one_over_Ez(self, z):
@@ -38,23 +84,119 @@ class Cosmo:
         return self.H0*self.Ez(z)
 
 
+    def Om(self, z):
+        return self.Om0*(1.+z)**3/(self.Ez(z))**2
+
+
+    def Ode(self, z):
+        return self.Ode0/(self.Ez(z))**2*self.DE_z(z)
+
+
+    def comoving_transverse_distance(self, z):
+        r = quad(self.one_over_Ez, 0, z)[0]
+        if self.flat:
+            dm = r
+        elif self.Ok0 > 0:
+            sqrt_Ok0 = np.sqrt(self.Ok0)
+            dm = np.sinh(sqrt_Ok0*r)/sqrt_Ok0
+        else:
+            sqrt_Ok0 = np.sqrt(-self.Ok0)
+            dm = np.sin(sqrt_Ok0*r)/sqrt_Ok0
+        return self.hubble_distance*dm
+
+
     def angular_diameter_distance(self, z):
-        return 2.998E3*quad(self.one_over_Ez, 0, z)[0]
+        return self.comoving_transverse_distance(z)/(1.+z)
 
 
-    def growth_factor(self, z):
-        zp1 = 1./(1+z)**3
-        return 5./6*betainc(5./6,2./3,self.Ode0*zp1/(self.Om0+self.Ode0*zp1))*(self.Om0/self.Ode0)**(1./3)*np.sqrt(1 + self.Om0/(self.Ode0*zp1))*beta(5./6,2./3)
+    def growth_factor(self, z, get_growth_rate=False):
+        def Ez_for_D(z):
+            ainv = 1.+z
+            Ez2 = self.Om0*ainv**3 + self.Ode0*self.DE_z(z)
+            if not self.flat:
+                Ez2 += self.Ok0*ainv**2
+            if self.relspecies:
+                Ez2 += self.Or0
+            return np.sqrt(Ez2)
+
+        def integrand(z):
+            return (1.+z)/(Ez_for_D(z))**3
+
+        def growth_factor_from_ODE(z_eval):
+            def derivatives_D(a, y):
+                z  = 1./a - 1.
+                D  = y[0]
+                Dp = y[1]
+
+                wa   = self.wz(z)
+                Oma  = self.Om(z)
+                Odea = self.Ode(z)
+
+                u1 = -(2. - 0.5*(Oma + (3.*wa+1.)*Odea))/a
+                u2 = 1.5*Oma/a**2
+
+                return [Dp, u1*Dp + u2*D]
+
+            a_eval = np.array([1./(1. + z_eval)])
+            a_min = np.fmin(a_eval, 1E-4)*0.99
+            a_max = a_eval*1.01
+
+            dic = solve_ivp(derivatives_D, (a_min, a_max), [a_min, 1.0],
+                            t_eval=a_eval, atol=1E-6, rtol=1E-6, vectorized=True)
+            D  = dic['y'][0,:]
+
+            if (dic['status'] != 0) or (D.shape[0] != a_eval.shape[0]):
+                raise Exception('The calculation of the growth factor failed.')
+
+            if get_growth_rate:
+                Dp = dic['y'][1,:]
+                f = a_eval*Dp/D
+                return [D, f]
+            else:
+                return D
+
+        if self.de_model == 'lambda':
+            if self.flat and not self.relspecies:
+                a3 = 1./(1+z)**3
+                Dz = 5./6*betainc(5./6,2./3,self.Ode0*a3/(self.Om0+self.Ode0*a3))*(self.Om0/self.Ode0)**(1./3)*np.sqrt(1 + self.Om0/(self.Ode0*a3))*beta(5./6,2./3)
+            else:
+                # integrate integral expression
+                Dz = 2.5*self.Om0*Ez_for_D(z)*quad(integrand,z,np.inf)[0]
+            if get_growth_rate:
+                Omz = self.Om(z)
+                f = -1. - Omz/2 + self.Ode(z) + 2.5*Omz/Dz/(1.+z)
+                Dz = [Dz, f]
+        else:
+            # do full differential equation integration
+            Dz = growth_factor_from_ODE(z)
+
+        return Dz
 
 
     def growth_rate(self, z):
-        return 5./2*self.Om0*((1+z)/self.Ez(z))**2*(1./self.growth_factor(z)-3./5*(1+z))
+        def Ez_for_D(z):
+            ainv = 1.+z
+            Ez2 = self.Om0*ainv**3 + self.Ode0*self.DE_z(z)
+            if not self.flat:
+                Ez2 += self.Ok0*ainv**2
+            if self.relspecies:
+                Ez2 += self.Or0
+            return np.sqrt(Ez2)
+
+        if self.de_model == 'lambda':
+            Omz = self.Om(z)
+            f = -1. - Omz/2 + self.Ode(z) + 2.5*Omz/self.growth_factor(z)/(1.+z)
+        else:
+            f = self.growth_factor(z, get_growth_rate=True)[1]
+        return f
 
 
     def comoving_volume(self, zmin, zmax, fsky):
-        if self.cosmo_astropy is None:
-            self.cosmo_astropy = cosmology.LambdaCDM(H0=self.H0,Om0=self.Om0,Ode0=self.Ode0)
-        return fsky*4*np.pi*quad(lambda z: self.cosmo_astropy.differential_comoving_volume(z).value, zmin, zmax)[0]
+        def differential_comoving_volume(z):
+            dm = self.comoving_transverse_distance(z)
+            return self.hubble_distance*dm**2/self.Ez(z)
+
+        return fsky*4*np.pi*quad(differential_comoving_volume, zmin, zmax)[0]
 
 
 
@@ -326,16 +468,19 @@ class Tables:
 class PTEmu:
     def __init__(self, params, fid_LCDM_params={'wc':0.11544,'wb':0.0222191,'ns':0.9632,'h':0.695, 'As':2.2078559, 'z':1.0}):
 
-        self.params_shape_list = [key for key,val in params.items() if 'SHAPE' in val]
-        self.params_list       = [p for p in params.keys()]
-        self.bias_params_list  = ['b1','b2','g2','g21','c0','c2','c4','cnlo','N0','N20','N22']
+        self.params_shape_list    = [key for key,val in params.items() if 'SHAPE' in val]
+        self.params_add_emu_list  = [p for p in params.keys() if p not in self.params_shape_list+['s12','alpha_tr','alpha_lo','f']]
+        self.params_list          = [p for p in params.keys()]
+        self.bias_params_list     = ['b1','b2','g2','g21','c0','c2','c4','cnlo','N0','N20','N22']
+        self.de_model_params_list = {'lambda':['h','As','Ok','z'],
+                                     'w0':['h','As','Ok','w0','z'],
+                                     'w0wa':['h','As','Ok','w0','wa','z']}
 
-        self.params          = {p:0. for p in self.params_list+self.bias_params_list+['h','As','z']}
+        self.params          = {p:0. for p in self.params_list + self.bias_params_list + self.de_model_params_list['w0wa']}
+        self.params['w0']    = -1
         self.fid_LCDM_params = fid_LCDM_params
 
         self.n_diagrams = 20
-        # self.kHD = 0.4  # this is in units of hfid_emu/Mpc
-        self.kmax_is_set = False
 
         self.training   = {}
         self.validation = {}
@@ -355,7 +500,8 @@ class PTEmu:
 
         self.emu_params_updated = False
 
-        self.use_Mpc = True
+        self.use_Mpc     = True
+        self.kmax_is_set = False
 
 
     def generate_samples(self, type, ranges, n_samples, n_trials=0, validation=False):
@@ -483,25 +629,10 @@ class PTEmu:
         if nbar is not None:
             self.nbar = np.copy(nbar)
 
-        # in units of hfid_emu/Mpc
         if kHD is None:
             self.kHD = 0.278 if self.use_Mpc else 0.4
         else:
             self.kHD = np.copy(kHD)
-
-        # if not self.use_Mpc:
-        #     if hfid is not None:
-        #         self.hfid_data = hfid
-        #         self.k_data *= self.hfid_data
-        #         self.P_data *= (1./self.hfid_data)**3
-        #         self.Cov_data *= (1./self.hfid_data)**6
-        #         self.nbar *= (self.hfid_data/self.fid_LCDM_params['h'])**3 # convert to units of (Mpc/hfid_emu)^-3
-        #     else:
-        #         raise ValueError('If data is not given in Mpc units, need to provide hfid.')
-        #     self.nb
-        # else:
-        #    self.nbar *= (1./self.fid_LCDM_params['h'])**3 # convert to units of (Mpc/hfid_emu)^-3, necessary because the table is in units of 1/hfid_emu^3
-        #    self.kHd  *= 1./self.fid_LCDM_params['h']      # convert to units of hfid_emu/Mpc
 
         self.nbar_emu = self.nbar*(1./self.fid_LCDM_params['h'])**3 # convert to units of (Mpc/hfid_emu)^-3 or (Mpc h/hfid_emu)^-3, necessary because the table is in units of 1/hfid_emu^3
         self.kHD_emu  = self.kHD*1./self.fid_LCDM_params['h']      # convert to units of hfid_emu 1/Mpc or hfid_emu/h 1/Mpc
@@ -515,7 +646,7 @@ class PTEmu:
             else:
                 raise ValueError('For non-analytical covariance matrix, Nrealizations needs to be specified.')
 
-        # udpate kmax truncated data containers
+        # udpate kmax-truncated data containers
         if self.kmax_is_set:
             self.set_kmax(self.kmax)
 
@@ -571,7 +702,7 @@ class PTEmu:
         return np.sqrt(np.diag(self.Cov_data_kmax)[sum(self.nbin[:n]):sum(self.nbin[:n+1])])
 
 
-    def define_fiducial_cosmology(self, params_fid=None, HDm_fid=None):
+    def define_fiducial_cosmology(self, HDm_fid=None, params_fid=None, de_model='lambda'):
         if HDm_fid is not None:
             self.cosmo = Cosmo(0.3, 67) # initialising with arbitrary parameters
             self.H_fid = HDm_fid[0]
@@ -579,38 +710,54 @@ class PTEmu:
         else:
             Om0 = (params_fid['wc']+params_fid['wb'])/params_fid['h']**2
             H0 = params_fid['h']*100
-            self.cosmo = Cosmo(Om0, H0)
+            Ok0 = 0 if not 'Ok' in params_fid else params_fid['Ok']
+            if de_model == 'lambda':
+                w0 = -1
+                wa = 0
+            elif de_model == 'w0':
+                w0 = params_fid['w0']
+                wa = 0
+            elif de_model == 'wa':
+                w0 = params_fid['w0']
+                wa = params_fid['wa']
+            self.cosmo = Cosmo(Om0, H0, Ok0=Ok0, de_model=de_model, w0=w0, wa=wa)
             self.H_fid = self.cosmo.Hz(params_fid['z'])
-            self.Dm_fid = self.cosmo.angular_diameter_distance(params_fid['z'])/params_fid['h']
+            self.Dm_fid = self.cosmo.comoving_transverse_distance(params_fid['z'])
 
 
-    def update_params(self, params, flag):
-        if flag == 'TEMPLATE' and self.use_Mpc:
-            emu_params_updated = any([params[p] != self.params[p] for p in self.params_list])
-        elif flag == 'TEMPLATE':
-            emu_params_updated = any([params[p] != self.params[p] for p in self.params_list+['h']])
-        elif flag == 'LCDM':
-            emu_params_updated = any([params[p] != self.params[p] for p in self.params_shape_list+['h','As','z']])
-
-        if emu_params_updated:
-            self.Pk_ratios = {0:None, 2:None, 4:None}
-
+    def update_params(self, params, de_model=None):
         try:
-            if flag == 'TEMPLATE' and self.use_Mpc:
+            if de_model is None and self.use_Mpc:
+                emu_params_updated = any([params[p] != self.params[p] for p in self.params_list])
                 for p in self.params_list:
                     self.params[p] = params[p]
                 self.params['As'] = 0.
                 self.params['z'] = 0.
-            elif flag == 'TEMPLATE':
+            elif de_model is None and not self.use_Mpc:
+                emu_params_updated = any([params[p] != self.params[p] for p in self.params_list+['h']])
                 for p in self.params_list+['h']:
                     self.params[p] = params[p]
                 self.params['As'] = 0.
                 self.params['z'] = 0.
-            elif flag == 'LCDM':
-                for p in self.params_shape_list+['h','As','z']:
+            else:
+                expected_params = self.params_shape_list + self.params_add_emu_list + self.de_model_params_list[de_model]
+                if 'Ok' not in params:
+                    expected_params.remove('Ok')
+                emu_params_updated = any([params[p] != self.params[p] for p in expected_params])
+                for p in expected_params:
                     self.params[p] = params[p]
         except KeyError:
             print('Not all required parameter values have been defined.')
+
+        if emu_params_updated:
+            self.Pk_ratios = {0:None, 2:None, 4:None}
+
+        # convert avir into Mpc/hfid_emu units
+        if 'avir' in self.params_add_emu_list:
+            if self.use_Mpc:
+                self.params['avir_use'] = self.params['avir']*self.fid_LCDM_params['h']
+            else:
+                self.params['avir_use'] = self.params['avir']*self.fid_LCDM_params['h']/self.params['h']
 
         for p in self.bias_params_list:
             if p in params.keys():
@@ -638,7 +785,7 @@ class PTEmu:
 
     def Pell_fid_ktable(self, params, ell):
         ell = [ell] if not isinstance(ell, list) else ell
-        emu_params_updated = self.update_params(params, 'TEMPLATE')
+        emu_params_updated = self.update_params(params)
         params_shape = np.array([self.params[p] for p in self.params_shape_list])
         params_all   = np.array([self.params[p] for p in self.params_list])
 
@@ -666,44 +813,9 @@ class PTEmu:
         return Pell_list
 
 
-    def Pell(self, k, params, ell):
+    def Pell_DEmodel_fid_ktable(self, params, ell, de_model, alpha_tr_lo=None):
         ell = [ell] if not isinstance(ell, list) else ell
-        if any([params[p] != self.params[p] for p in params.keys()]):
-            self.splines_up_to_date = [False]*3
-            Pell_list = self.Pell_fid_ktable(params, ell)
-            for i,l in enumerate(ell):
-                if self.use_Mpc:
-                    self.Pell_spline[l] = interp1d(self.k_table, Pell_list[:,i], kind='cubic')
-                else:
-                    self.Pell_spline[l] = interp1d(self.k_table/self.params['h'], Pell_list[:,i]*self.params['h']**3, kind='cubic')
-                self.splines_up_to_date[int(l/2)] = True
-
-        if not isinstance(k, list):
-            k = [np.array(k)]*len(ell)
-        elif isinstance(k, list) and len(k) != len(ell):
-            raise ValueError("If 'k' is given as a list, it must match the length of 'ell'.")
-        else:
-            k = [np.array(x) for x in k]
-
-        Pell_model = []
-        for i,l in enumerate(ell):
-            if self.splines_up_to_date[int(l/2)]:
-                Pell_model.append(self.Pell_spline[l](k[i]))
-            else:
-                Pell = self.Pell_fid_ktable(params, l)
-                if self.use_Mpc:
-                    self.Pell_spline[l] = interp1d(self.k_table, Pell[:,0], kind='cubic')
-                else:
-                    self.Pell_spline[l] = interp1d(self.k_table/self.params['h'], Pell[:,0]*self.params['h']**3, kind='cubic')
-                self.splines_up_to_date[int(l/2)] = True
-                Pell_model.append(self.Pell_spline[l](k[i]))
-
-        return Pell_model if len(ell) > 1 else Pell_model[0]
-
-
-    def Pell_LCDM_fid_ktable(self, params, ell, alpha_tr_lo=None):
-        ell = [ell] if not isinstance(ell, list) else ell
-        emu_params_updated = self.update_params(params, 'LCDM')
+        emu_params_updated = self.update_params(params, de_model=de_model)
         params_shape = np.array([self.params[p] for p in self.params_shape_list])
         if alpha_tr_lo is not None:
             if any([self.params[p] != alpha_tr_lo[i] for i,p in enumerate(['alpha_tr','alpha_lo'])]):
@@ -715,7 +827,7 @@ class PTEmu:
             sigma12 = self.training['SHAPE'].transform_inv(self.emu['s12'].predict(params_shape[None,:])[0][0], 's12')
             self.Pk_lin = self.training['SHAPE'].transform_inv(self.emu['PL'].predict(params_shape[None,:])[0][0], 'PL')
 
-            # compute growth factors corresponding to fiducial and target parameters
+            # compute growth factors corresponding to fiducial and target parameters + growth rate
             Om0_fid = (self.params['wc']+self.params['wb'])/self.fid_LCDM_params['h']**2
             H0_fid = 100*self.fid_LCDM_params['h']
             self.cosmo.update_cosmology(Om0=Om0_fid, H0=H0_fid)
@@ -723,30 +835,24 @@ class PTEmu:
 
             Om0 = (self.params['wc']+self.params['wb'])/self.params['h']**2
             H0 = 100*self.params['h']
-            self.cosmo.update_cosmology(Om0=Om0, H0=H0)
-            D = self.cosmo.growth_factor(self.params['z'])
+            self.cosmo.update_cosmology(Om0=Om0, H0=H0, Ok0=self.params['Ok'], de_model=de_model, w0=self.params['w0'], wa=self.params['wa'])
+            D, f = self.cosmo.growth_factor(self.params['z'], get_growth_rate=True)
 
-            # compute AP parameters and growth rate
+            # compute AP parameters
             if alpha_tr_lo is None:
                 self.params['alpha_lo'] = self.H_fid/self.cosmo.Hz(self.params['z'])
-                self.params['alpha_tr'] = self.cosmo.angular_diameter_distance(self.params['z'])/self.params['h']/self.Dm_fid
-            self.params['f'] = self.cosmo.growth_rate(self.params['z'])
+                self.params['alpha_tr'] = self.cosmo.comoving_transverse_distance(self.params['z'])/self.Dm_fid
 
             # rescale linear power spectrum and sigma12
             self.Pk_lin *= self.params['As']/self.fid_LCDM_params['As']*(D/Dfid)**2
             self.params['s12'] = sigma12[0]*np.sqrt(params['As']/self.fid_LCDM_params['As'])*(D/Dfid)
+            self.params['f'] = f
 
         params_all = np.array([self.params[p] for p in self.params_list],dtype=object)
 
         Pell_list = np.zeros([self.nk,len(ell)])
         for i,l in enumerate(ell):
             bij = self.get_bias_coeff(l)
-
-            # rescale nbar and kHD for change in h
-            # bij[3] *= (self.fid_LCDM_params['h']/self.params['h'])**2
-            # bij[4:7] *= (self.fid_LCDM_params['h']/self.params['h'])**4
-            # bij[7] *= (self.fid_LCDM_params['h']/self.params['h'])**3
-            # bij[8:10] *= (self.fid_LCDM_params['h']/self.params['h'])**5
 
             if self.Pk_ratios[l] is None or emu_params_updated:
                 self.Pk_ratios[l] = self.training['FULL'].transform_inv(self.emu[l].predict(params_all[None,:])[0][0], l)
@@ -764,13 +870,16 @@ class PTEmu:
         return Pell_list
 
 
-    def Pell_LCDM(self, k, params, ell, alpha_tr_lo=None):
+    def Pell(self, k, params, ell, de_model=None, alpha_tr_lo=None):
         ell = [ell] if not isinstance(ell, list) else ell
 
         if any([params[p] != self.params[p] for p in params.keys()]) \
         or (alpha_tr_lo is not None and any([alpha_tr_lo[i] != self.params[p] for i,p in enumerate(['alpha_tr','alpha_lo'])])):
             self.splines_up_to_date = [False]*3
-            Pell_list = self.Pell_LCDM_fid_ktable(params, ell, alpha_tr_lo=alpha_tr_lo)
+            if de_model is None:
+                Pell_list = self.Pell_fid_ktable(params, ell)
+            else:
+                Pell_list = self.Pell_DEmodel_fid_ktable(params, ell, de_model, alpha_tr_lo=alpha_tr_lo)
             for i,l in enumerate(ell):
                 if self.use_Mpc:
                     self.Pell_spline[l] = interp1d(self.k_table, Pell_list[:,i], kind='cubic')
@@ -790,7 +899,10 @@ class PTEmu:
             if self.splines_up_to_date[int(l/2)]:
                 Pell_model.append(self.Pell_spline[l](k[i]))
             else:
-                Pell = self.Pell_LCDM_fid_ktable(params, l, alpha_tr_lo=alpha_tr_lo)
+                if de_model is None:
+                    Pell = self.Pell_fid_ktable(params, l)
+                else:
+                    Pell = self.Pell_DEmodel_fid_ktable(params, l, de_model, alpha_tr_lo=alpha_tr_lo)
                 if self.use_Mpc:
                     self.Pell_spline[l] = interp1d(self.k_table, Pell[:,0], kind='cubic')
                 else:
@@ -889,7 +1001,7 @@ class PTEmu:
         return cov
 
 
-    def Pell_covariance(self, k, params, ell, dk, volume):
+    def Pell_covariance(self, k, params, ell, dk, de_model=None, alpha_tr_lo=None, volume=None, zmin=None, zmax=None, fsky=15000./(360**2/np.pi), volfac=1):
         ell = [ell] if not isinstance(ell, list) else ell
         if not isinstance(k, list):
             k = [np.array(k)]*len(ell)
@@ -905,50 +1017,20 @@ class PTEmu:
             k_all = k[i] if i==0 else np.hstack((k_all,k[i]))
         k_all = np.unique(k_all)
         if 'f' in self.params_list:
-            Pell = self.Pell(k_all, params, ell=[0,2,4])
+            Pell = self.Pell(k_all, params, ell=[0,2,4], de_model=de_model, alpha_tr_lo=alpha_tr_lo)
             Pell[0] += 1./self.nbar_emu/(self.fid_LCDM_params['h'])**3
         else:
-            Pell = self.Pell(k_all, params, ell=0) + 1./self.nbar_emu/(self.fid_LCDM_params['h'])**3
+            Pell = self.Pell(k_all, params, ell=0, de_model=de_model, alpha_tr_lo=alpha_tr_lo) + 1./self.nbar_emu/(self.fid_LCDM_params['h'])**3
 
-        for i,l1 in enumerate(ell):
-            for j,l2 in enumerate(ell):
-                if j >= i:
-                    kij, id1, id2 = np.intersect1d(k[i],k[j],return_indices=True)
-                    cov[sum(nbin[:i]):sum(nbin[:i+1]),sum(nbin[:j]):sum(nbin[:j+1])][id1,id2] = self.Gaussian_covariance(l1, l2, k_all, dk, Pell, volume)[np.intersect1d(k_all, kij, return_indices=True)[1]]
-                else:
-                    cov[sum(nbin[:i]):sum(nbin[:i+1]),sum(nbin[:j]):sum(nbin[:j+1])] = cov[sum(nbin[:j]):sum(nbin[:j+1]),sum(nbin[:i]):sum(nbin[:i+1])].T
-
-        return cov
-
-
-    def Pell_covariance_LCDM(self, k, params, ell, dk, alpha_tr_lo=None, volume=None, zmin=None, zmax=None, fsky=15000./(360**2/np.pi), volfac=1):
-        ell = [ell] if not isinstance(ell, list) else ell
-        if not isinstance(k, list):
-            k = [np.array(k)]*len(ell)
-        elif isinstance(k, list) and len(k) != len(ell):
-            raise ValueError("If 'k' is given as a list, it must match the length of 'ell'.")
-        else:
-            k = [np.array(x) for x in k]
-
-        nbin = [x.shape[0] for x in k]
-        cov = np.zeros([sum(nbin),sum(nbin)])
-
-        for i in range(len(ell)):
-            k_all = k[i] if i==0 else np.hstack((k_all,k[i]))
-        k_all = np.unique(k_all)
-        if 'f' in self.params_list:
-            Pell = self.Pell_LCDM(k_all, params, ell=[0,2,4], alpha_tr_lo=alpha_tr_lo)
-            Pell[0] += 1./self.nbar_emu/(self.fid_LCDM_params['h'])**3
-        else:
-            Pell = self.Pell_LCDM(k_all, params, ell=0, alpha_tr_lo=alpha_tr_lo) + 1./self.nbar_emu/(self.fid_LCDM_params['h'])**3
-
-        if volume is None:
+        if de_model is not None and volume is None:
             Om0 = (self.params['wc']+self.params['wb'])/self.params['h']**2
             H0 = 100*self.params['h']
-            self.cosmo.update_cosmology(Om0=Om0, H0=H0)
+            self.cosmo.update_cosmology(Om0=Om0, H0=H0, Ok0=self.params['Ok'], de_model=de_model, w0=self.params['w0'], wa=self.params['wa'])
             volume = volfac*self.cosmo.comoving_volume(zmin, zmax, fsky)
             if not self.use_Mpc:
                 volume *= self.params['h']**3
+        elif de_model is None and volume is None:
+            raise ValueError("If no dark energy model is specified, a value for the volume must be provided.")
 
         for i,l1 in enumerate(ell):
             for j,l2 in enumerate(ell):
@@ -959,6 +1041,46 @@ class PTEmu:
                     cov[sum(nbin[:i]):sum(nbin[:i+1]),sum(nbin[:j]):sum(nbin[:j+1])] = cov[sum(nbin[:j]):sum(nbin[:j+1]),sum(nbin[:i]):sum(nbin[:i+1])].T
 
         return cov
+
+
+    # def Pell_covariance_LCDM(self, k, params, ell, dk, alpha_tr_lo=None, volume=None, zmin=None, zmax=None, fsky=15000./(360**2/np.pi), volfac=1):
+    #     ell = [ell] if not isinstance(ell, list) else ell
+    #     if not isinstance(k, list):
+    #         k = [np.array(k)]*len(ell)
+    #     elif isinstance(k, list) and len(k) != len(ell):
+    #         raise ValueError("If 'k' is given as a list, it must match the length of 'ell'.")
+    #     else:
+    #         k = [np.array(x) for x in k]
+    #
+    #     nbin = [x.shape[0] for x in k]
+    #     cov = np.zeros([sum(nbin),sum(nbin)])
+    #
+    #     for i in range(len(ell)):
+    #         k_all = k[i] if i==0 else np.hstack((k_all,k[i]))
+    #     k_all = np.unique(k_all)
+    #     if 'f' in self.params_list:
+    #         Pell = self.Pell_LCDM(k_all, params, ell=[0,2,4], alpha_tr_lo=alpha_tr_lo)
+    #         Pell[0] += 1./self.nbar_emu/(self.fid_LCDM_params['h'])**3
+    #     else:
+    #         Pell = self.Pell_LCDM(k_all, params, ell=0, alpha_tr_lo=alpha_tr_lo) + 1./self.nbar_emu/(self.fid_LCDM_params['h'])**3
+    #
+    #     if volume is None:
+    #         Om0 = (self.params['wc']+self.params['wb'])/self.params['h']**2
+    #         H0 = 100*self.params['h']
+    #         self.cosmo.update_cosmology(Om0=Om0, H0=H0)
+    #         volume = volfac*self.cosmo.comoving_volume(zmin, zmax, fsky)
+    #         if not self.use_Mpc:
+    #             volume *= self.params['h']**3
+    #
+    #     for i,l1 in enumerate(ell):
+    #         for j,l2 in enumerate(ell):
+    #             if j >= i:
+    #                 kij, id1, id2 = np.intersect1d(k[i],k[j],return_indices=True)
+    #                 cov[sum(nbin[:i]):sum(nbin[:i+1]),sum(nbin[:j]):sum(nbin[:j+1])][id1,id2] = self.Gaussian_covariance(l1, l2, k_all, dk, Pell, volume)[np.intersect1d(k_all, kij, return_indices=True)[1]]
+    #             else:
+    #                 cov[sum(nbin[:i]):sum(nbin[:i+1]),sum(nbin[:j]):sum(nbin[:j+1])] = cov[sum(nbin[:j]):sum(nbin[:j+1]),sum(nbin[:i]):sum(nbin[:i+1])].T
+    #
+    #     return cov
 
 
     def Pell_covariance_from_table(self, table, k, params, ell, dk, volume=None, zmin=None, zmax=None, fsky=15000./(360**2/np.pi), volfac=1):
@@ -1001,16 +1123,16 @@ class PTEmu:
         return cov
 
 
-    def chi2(self, params, kmax, mode='TEMPLATE', alpha_tr_lo=None):
+    def chi2(self, params, kmax, de_model=None, alpha_tr_lo=None):
         if not self.kmax_is_set or (self.kmax != kmax and self.kmax != [kmax for i in range(self.n_ell)]):
             self.set_kmax(kmax)
 
         Pell_model = np.zeros(sum(self.nbin))
         ell = [2*l for l in range(self.n_ell) if self.nbin[l] > 0]
-        if mode == 'TEMPLATE':
+        if de_model is None:
             Pell = self.Pell_fid_ktable(params, ell)
-        elif mode == 'LCDM':
-            Pell = self.Pell_LCDM_fid_ktable(params, ell, alpha_tr_lo=alpha_tr_lo)
+        else:
+            Pell = self.Pell_DEmodel_fid_ktable(params, ell, de_model, alpha_tr_lo=alpha_tr_lo)
 
         for i,l in enumerate(ell):
             n = int(l/2)
@@ -1048,3 +1170,49 @@ class PTEmu:
         diff = Pell_model - self.P_data_kmax
 
         return diff @ self.InvCov_data_kmax @ diff.T
+
+
+    # def convert_ranges_LCDM(self, ranges, z):
+    #     def s12_params(self, params):
+    #         params_shape = np.array([params[p] for p in self.params_shape_list])
+    #         sigma12 = self.training['SHAPE'].transform_inv(self.emu['s12'].predict(params_shape[None,:])[0][0], 's12')
+    #
+    #         Om0_fid = (params['wc']+params['wb'])/self.fid_LCDM_params['h']**2
+    #         H0_fid = 100*self.fid_LCDM_params['h']
+    #         self.cosmo.update_cosmology(Om0=Om0_fid, H0=H0_fid)
+    #         Dfid = self.cosmo.growth_factor(self.fid_LCDM_params['z'])
+    #
+    #         Om0 = (params['wc']+params['wb'])/params['h']**2
+    #         H0 = 100*params['h']
+    #         self.cosmo.update_cosmology(Om0=Om0, H0=H0)
+    #         D = self.cosmo.growth_factor(params['z'])
+    #
+    #         alpha_lo = self.H_fid/self.cosmo.Hz(params['z'])
+    #         alpha_tr = self.cosmo.comoving_transverse_distance(params['z'])/self.Dm_fid
+    #         f = self.cosmo.growth_rate(params['z'])
+    #
+    #         s12 = sigma12[0]*np.sqrt(params['As']/self.fid_LCDM_params['As'])*(D/Dfid)
+    #         return np.array([s12,alpha_tr,alpha_lo,f])
+    #
+    #     params = {}
+    #     params['z'] = z
+    #
+    #     limit_min = {}
+    #     limit_min['s12'] = [0,1,0,1,0]
+    #     limit_min['alpha_tr'] = [0,1,0,1,0] # doesn't depend on ns, As
+    #     limit_min['alpha_lo'] = [0,1,0,1,0] # doesn't depend on ns, As
+    #     limit_min['f'] = [0,0,0,1,0] # doesn't depend on ns, As
+    #
+    #     ranges_s12 = {}
+    #     for i,p in enumerate(['s12','alpha_tr','alpha_lo','f']):
+    #         ranges_s12[p] = np.zeros(2)
+    #         for pLCDM in self.params_shape_list+['h','As']:
+    #             params[pLCDM] = ranges[pLCDM][limits[p]]
+    #         ranges[p][0] = s12_params(params)[i]
+    #         for pLCDM in self.params_shape_list+['h','As']:
+    #             params[pLCDM] = ranges[pLCDM][1-limits[p]]
+    #         ranges[p][1] = s12_params(params)[i]
+    #
+    #     # check if it leaves emulator ranges and give out warning
+    #
+    #     return ranges_s12
