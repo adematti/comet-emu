@@ -492,7 +492,7 @@ class PTEmu:
         self.validation['FULL']   = Tables(self.params_list, validation=True)
 
         self.emu   = {}
-        self.cosmo = None
+        self.cosmo = Cosmo(0.3, 67) # Initialise with arbitrary values
 
         self.Pk_lin    = None
         self.Pk_ratios = {0:None, 2:None, 4:None}
@@ -501,8 +501,9 @@ class PTEmu:
 
         self.emu_params_updated = False
 
-        self.use_Mpc     = True
-        self.kmax_is_set = False
+        self.use_Mpc      = True
+        self.kmax_is_set  = False
+        self.AP_was_fixed = False
 
 
     def generate_samples(self, type, ranges, n_samples, n_trials=0, validation=False):
@@ -553,6 +554,7 @@ class PTEmu:
         self.nkloop = sum(self.k_table > hdul['K_TABLE'].header['k1loop'])
 
         if validation:
+            self.validation['FULL'].model = None
             self.validation['FULL'].assign_samples(hdul['PARAMS_FULL'])
             self.validation['FULL'].assign_table(hdul['MODEL_FULL'], self.nk, self.nkloop)
         else:
@@ -705,7 +707,6 @@ class PTEmu:
 
     def define_fiducial_cosmology(self, HDm_fid=None, params_fid=None, de_model='lambda'):
         if HDm_fid is not None:
-            self.cosmo = Cosmo(0.3, 67) # initialising with arbitrary parameters
             self.H_fid = HDm_fid[0]
             self.Dm_fid = HDm_fid[1]
         else:
@@ -721,7 +722,7 @@ class PTEmu:
             elif de_model == 'wa':
                 w0 = params_fid['w0']
                 wa = params_fid['wa']
-            self.cosmo = Cosmo(Om0, H0, Ok0=Ok0, de_model=de_model, w0=w0, wa=wa)
+            self.cosmo.update_cosmology(Om0, H0, Ok0=Ok0, de_model=de_model, w0=w0, wa=wa)
             self.H_fid = self.cosmo.Hz(params_fid['z'])
             self.Dm_fid = self.cosmo.comoving_transverse_distance(params_fid['z'])
 
@@ -822,7 +823,11 @@ class PTEmu:
             if any([self.params[p] != alpha_tr_lo[i] for i,p in enumerate(['alpha_tr','alpha_lo'])]):
                 self.params['alpha_tr'] = alpha_tr_lo[0]
                 self.params['alpha_lo'] = alpha_tr_lo[1]
+                self.AP_was_fixed       = True
                 emu_params_updated = True
+        elif alpha_tr_lo is None and self.AP_was_fixed:
+            self.AP_was_fixed = False
+            emu_params_updated = True
 
         if self.Pk_lin is None or emu_params_updated:
             sigma12 = self.training['SHAPE'].transform_inv(self.emu['s12'].predict(params_shape[None,:])[0][0], 's12')
@@ -875,7 +880,8 @@ class PTEmu:
         ell = [ell] if not isinstance(ell, list) else ell
 
         if any([params[p] != self.params[p] for p in params.keys()]) \
-        or (alpha_tr_lo is not None and any([alpha_tr_lo[i] != self.params[p] for i,p in enumerate(['alpha_tr','alpha_lo'])])):
+        or (alpha_tr_lo is not None and any([alpha_tr_lo[i] != self.params[p] for i,p in enumerate(['alpha_tr','alpha_lo'])])) \
+        or (alpha_tr_lo is None and self.AP_was_fixed):
             self.splines_up_to_date = [False]*3
             if de_model is None:
                 Pell_list = self.Pell_fid_ktable(params, ell)
