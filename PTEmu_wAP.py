@@ -157,9 +157,7 @@ class Cosmo:
         if self.de_model == 'lambda':
             if self.flat and not self.relspecies:
                 a3 = 1./(1+z)**3
-                Dz = 5./6*betainc(5./6,2./3,self.Ode0*a3/(self.Om0+self.Ode0*a3)) \
-                   *(self.Om0/self.Ode0)**(1./3)*np.sqrt(1 + self.Om0/(self.Ode0*a3)) \
-                   *beta(5./6,2./3)
+                Dz = 5./6*betainc(5./6,2./3,self.Ode0*a3/(self.Om0+self.Ode0*a3))*(self.Om0/self.Ode0)**(1./3)*np.sqrt(1 + self.Om0/(self.Ode0*a3))*beta(5./6,2./3)
             else:
                 # integrate integral expression
                 Dz = 2.5*self.Om0*Ez_for_D(z)*quad(integrand,z,np.inf)[0]
@@ -210,11 +208,9 @@ class Tables:
         self.model = None
         self.model_transformed = None
 
-        self.n_diagrams = 19
-        self.names_diagrams = ['P0L_b1b1', 'PNL_b1', 'PNL_id', 'P1L_b1b1', 'P1L_b1b2',
-                               'P1L_b1g2','P1L_b1g21','P1L_b2b2','P1L_b2g2','P1L_g2g2',
-                               'P1L_b2','P1L_g2','P1L_g21','Pctr_c0','Pctr_c2','Pctr_c4',
-                               'Pctr_b1b1cnlo', 'Pctr_b1cnlo', 'Pctr_cnlo']
+        self.n_diagrams = 20
+        self.names_diagrams = ['P0L_b1b1', 'PNL_b1', 'PNL_id', 'P1L_b1b1', 'P1L_b1b2','P1L_b1g2','P1L_b1g21','P1L_b2b2','P1L_b2g2','P1L_g2g2','P1L_b2','P1L_g2','P1L_g21',
+                               'Pctr_cell', 'Pctr_b1b1cnlo', 'Pctr_b1cnlo', 'Pctr_cnlo', 'Pnoise_N0', 'Pnoise_N20', 'Pnoise_N22']
 
 
     def set_param_ranges(self, ranges):
@@ -268,6 +264,47 @@ class Tables:
                 self.samples[:,i] = samples_hdu.data[p]
 
 
+    def load_table(self, fname, nk, nkloop, data_type=None):
+        self.nk = nk
+        self.nkloop = nkloop
+
+        temp = np.loadtxt(fname)
+        if data_type is not None:
+            if self.model is None:
+                self.model = {}
+            if data_type == 'PL':
+                self.model['PL'] = np.zeros([self.n_samples, self.nk])
+                for j in range(self.n_samples):
+                    self.model['PL'][j] = temp[j * self.nk:(j + 1) * self.nk]
+            elif data_type == 's12':
+                self.model['s12'] = np.zeros([self.n_samples,1])
+                self.model['s12'][:,0] = temp
+        else:
+            self.model = np.zeros([self.n_samples, self.nk, 1+self.n_diagrams*3])
+            for j in range(self.n_samples):
+                self.model[j, :, 0] = temp[j * self.nk:(j + 1) * self.nk, 0]
+            for l in range(3):
+                for j in range(self.n_samples):
+                    cnt = 0
+                    for i in range(25):
+                        if i not in [15,16,17] and i not in [10,14]:
+                            self.model[j, :, 1+self.n_diagrams*l+cnt] = temp[j * self.nk:(j + 1) * self.nk, 1+25*l+i]
+                            cnt += 1
+                        elif i == 10: # prop. b1
+                            self.model[j, :, 1+self.n_diagrams*l+1] += temp[j * self.nk:(j + 1) * self.nk, 1+25*l+i]
+                        elif i == 14: # prop. 1 (no bias coefficient)
+                            self.model[j, :, 1+self.n_diagrams*l+2] += temp[j * self.nk:(j + 1) * self.nk, 1+25*l+i]
+                        elif i == 15: # k2-correction, prop. to b1^2 (note that this is included in the b1^2 loop correction, without the linear term -> table ID=3 opposed to 0)
+                            self.model[j, :, 1+self.n_diagrams*l+3] += temp[j * self.nk:(j + 1) * self.nk, 1+25*l+i]
+                        elif i == 16: # k2-correction, prop. to b1
+                            self.model[j, :, 1+self.n_diagrams*l+1] += temp[j * self.nk:(j + 1) * self.nk, 1+25*l+i]
+                        elif i == 17: # k2-correction, prop. to 1 (no bias coefficient)
+                            self.model[j, :, 1+self.n_diagrams*l+2] += temp[j * self.nk:(j + 1) * self.nk, 1+25*l+i]
+
+        if not self.validation:
+            self.transform_training_data(data_type=data_type)
+
+
     def assign_table(self, table_hdu, nk, nkloop):
         self.nk     = nk
         self.nkloop = nkloop
@@ -275,12 +312,10 @@ class Tables:
         if 'MODEL_SHAPE' == table_hdu.header['EXTNAME']:
             if self.model is None:
                 self.model = {}
-            for TYPE in [table_hdu.header['TTYPE{}'.format(i+1)] for i in range(table_hdu.header['TFIELDS'])]:
-                self.model[TYPE] = table_hdu.data[TYPE]
-                if self.model[TYPE].ndim == 1:
-                    self.model[TYPE]= self.model[TYPE][:,None]
+            self.model['s12'] = table_hdu.data['s12'][:,None]
+            self.model['PL']  = table_hdu.data['PL']
             if not self.validation:
-                self.transform_emulator_data(data_type=list(self.model.keys()))
+                self.transform_emulator_data(data_type=['s12','PL'])
         elif 'MODEL_FULL' == table_hdu.header['EXTNAME']:
             if self.model is None:
                 self.model = {}
@@ -290,18 +325,13 @@ class Tables:
                     diagram_full = '{}_ell{}'.format(diagram, ell)
                     if diagram == 'PNL_b1':
                         # combine tree-level, one-loop and IR k^2 correction terms
-                        self.model[diagram_full] = table_hdu.data['P0L_b1_ell{}'.format(ell)] \
-                                                 + table_hdu.data['P1L_b1_ell{}'.format(ell)] \
-                                                 + table_hdu.data['Pk2corr_b1_ell{}'.format(ell)]
+                        self.model[diagram_full] = table_hdu.data['P0L_b1_ell{}'.format(ell)] + table_hdu.data['P1L_b1_ell{}'.format(ell)] + table_hdu.data['Pk2corr_b1_ell{}'.format(ell)]
                     elif diagram == 'PNL_id':
                         # combine tree-level, one-loop and IR k^2 correction terms
-                        self.model[diagram_full] = table_hdu.data['P0L_id_ell{}'.format(ell)] \
-                                                 + table_hdu.data['P1L_id_ell{}'.format(ell)] \
-                                                 + table_hdu.data['Pk2corr_id_ell{}'.format(ell)]
+                        self.model[diagram_full] = table_hdu.data['P0L_id_ell{}'.format(ell)] + table_hdu.data['P1L_id_ell{}'.format(ell)] + table_hdu.data['Pk2corr_id_ell{}'.format(ell)]
                     elif diagram == 'P1L_b1b1':
                         # combine one-loop and IR k^2 correction terms
-                        self.model[diagram_full] = table_hdu.data['P1L_b1b1_ell{}'.format(ell)] \
-                                                 + table_hdu.data['Pk2corr_b1b1_ell{}'.format(ell)]
+                        self.model[diagram_full] = table_hdu.data['P1L_b1b1_ell{}'.format(ell)] + table_hdu.data['Pk2corr_b1b1_ell{}'.format(ell)]
                     else:
                         self.model[diagram_full] = table_hdu.data[diagram_full]
             if not self.validation:
@@ -339,8 +369,45 @@ class Tables:
 
 
     def transform_inv(self, table, data_type):
-        return (10**(table*self.std[data_type] + self.mean[data_type]) - self.offset[data_type]) \
-            *self.flip[data_type]
+        return (10**(table*self.std[data_type] + self.mean[data_type]) - self.offset[data_type])*self.flip[data_type]
+
+
+    def transform_training_data(self, data_type=None):
+        if data_type is not None:
+            data_type = [data_type] if not isinstance(data_type,list) else data_type
+            for dt in data_type:
+                if self.model_transformed is None:
+                    self.model_transformed = {}
+                    self.mean   = {}
+                    self.std    = {}
+                    self.flip   = {}
+                    self.offset = {}
+                self.model_transformed[dt] = self.transform(self.model[dt], data_type=dt)
+        else:
+            self.model_transformed = {}
+            self.mean   = {}
+            self.std    = {}
+            self.flip   = {}
+            self.offset = {}
+            for ell in [0,2,4]:
+                temp = np.zeros([self.n_samples, 10*self.nk + 10*self.nkloop])
+                cnt = 0
+                for i in np.array([0,1,2,13,14,15,16])+10*ell:
+                    for j in range(self.n_samples):
+                        temp[j, cnt*self.nk:(cnt+1)*self.nk] = self.model[j,:,1+i]/self.model[j,:,0]
+                    cnt += 1
+                cnt = 0
+                for i in np.array([17,18,19])+10*ell:
+                    for j in range(self.n_samples):
+                        temp[j, 7*self.nk+cnt*self.nk:7*self.nk+(cnt+1)*self.nk] = self.model[j,:,1+i]
+                    cnt += 1
+                cnt = 0
+                for i in np.arange(3,13)+10*ell:
+                    for j in range(self.n_samples):
+                        temp[j, 10*self.nk+cnt*self.nkloop:10*self.nk+(cnt+1)*self.nkloop] = self.model[j,(self.nk-self.nkloop):,1+i]/self.model[j,(self.nk-self.nkloop):,0]
+                    cnt += 1
+
+                self.model_transformed[ell] = self.transform(temp, data_type=ell)
 
 
     def transform_emulator_data(self, data_type=None):
@@ -361,21 +428,21 @@ class Tables:
             self.flip   = {}
             self.offset = {}
             for ell in [0,2,4]:
-                temp = np.zeros([self.n_samples, 7*self.nk + 10*self.nkloop])
+                temp = np.zeros([self.n_samples, 10*self.nk + 10*self.nkloop])
                 cnt = 0
-                # only include the cell_ell counterterm (the others are negligible without AP)
-                for diagram in ['P0L_b1b1', 'PNL_b1', 'PNL_id','Pctr_c{}'.format(ell),
-                                'Pctr_b1b1cnlo','Pctr_b1cnlo','Pctr_cnlo']:
+                for diagram in ['P0L_b1b1', 'PNL_b1', 'PNL_id','Pctr_cell','Pctr_b1b1cnlo','Pctr_b1cnlo','Pctr_cnlo']:
                     diagram_full = '{}_ell{}'.format(diagram, ell)
                     temp[:, cnt*self.nk:(cnt+1)*self.nk] = self.model[diagram_full]/self.model['PL']
                     cnt += 1
                 cnt = 0
-                for diagram in ['P1L_b1b1', 'P1L_b1b2','P1L_b1g2','P1L_b1g21','P1L_b2b2',
-                                'P1L_b2g2','P1L_g2g2','P1L_b2','P1L_g2','P1L_g21']:
+                for diagram in ['Pnoise_N0', 'Pnoise_N20', 'Pnoise_N22']:
                     diagram_full = '{}_ell{}'.format(diagram, ell)
-                    temp[:, 7*self.nk+cnt*self.nkloop:7*self.nk+(cnt+1)*self.nkloop] \
-                        = self.model[diagram_full][:,(self.nk-self.nkloop):] \
-                        / self.model['PL'][:,(self.nk-self.nkloop):]
+                    temp[:, 7*self.nk+cnt*self.nk:7*self.nk+(cnt+1)*self.nk] = self.model[diagram_full]
+                    cnt += 1
+                cnt = 0
+                for diagram in ['P1L_b1b1', 'P1L_b1b2','P1L_b1g2','P1L_b1g21','P1L_b2b2','P1L_b2g2','P1L_g2g2','P1L_b2','P1L_g2','P1L_g21']:
+                    diagram_full = '{}_ell{}'.format(diagram, ell)
+                    temp[:, 10*self.nk+cnt*self.nkloop:10*self.nk+(cnt+1)*self.nkloop] = self.model[diagram_full][:,(self.nk-self.nkloop):]/self.model['PL'][:,(self.nk-self.nkloop):]
                     cnt += 1
 
                 self.model_transformed[ell] = self.transform(temp, data_type=ell)
@@ -388,21 +455,17 @@ class Tables:
             for cnt,diagram in enumerate(self.names_diagrams):
                 diagram_full = '{}_ell{}'.format(diagram, ell)
                 temp[:, :, 1+cnt+self.n_diagrams*int(ell/2)] = self.model[diagram_full]
-                cnt += 1
         self.model = temp
 
 
     def GPy_model(self, data_type):
-        kernel = GPy.kern.RBF(input_dim=self.n_params,
-                              variance=np.var(self.model_transformed[data_type]),
-                              lengthscale=np.ones(self.n_params), ARD=True)
+        kernel = GPy.kern.RBF(input_dim=self.n_params, variance=np.var(self.model_transformed[data_type]), lengthscale=np.ones(self.n_params), ARD=True)
         return GPy.models.GPRegression(self.samples, self.model_transformed[data_type], kernel)
 
 
 
-class PTEmu_woAP:
-    def __init__(self, params, use_Mpc=True,
-                 fid_LCDM_params={'wc':0.11544,'wb':0.0222191,'ns':0.9632,'h':0.695, 'As':2.2078559, 'z':1.0}):
+class PTEmu:
+    def __init__(self, params, use_Mpc=True, fid_LCDM_params={'wc':0.11544,'wb':0.0222191,'ns':0.9632,'h':0.695, 'As':2.2078559, 'z':1.0}):
 
         self.params_shape_list    = [key for key,val in params.items() if 'SHAPE' in val]
         self.params_add_emu_list  = [p for p in params.keys() if p not in self.params_shape_list+['s12','alpha_tr','alpha_lo','f']]
@@ -413,19 +476,17 @@ class PTEmu_woAP:
                                      'w0':['h','As','Ok','w0','z'],
                                      'w0wa':['h','As','Ok','w0','wa','z']}
 
-        self.params             = {p:0. for p in self.params_list + self.bias_params_list + self.de_model_params_list['w0wa']}
-        self.params['w0']       = -1
-        self.params['alpha_tr'] = 1
-        self.params['alpha_lo'] = 1
-        self.fid_LCDM_params    = fid_LCDM_params
+        self.params          = {p:0. for p in self.params_list + self.bias_params_list + self.de_model_params_list['w0wa']}
+        self.params['w0']    = -1
+        self.fid_LCDM_params = fid_LCDM_params
 
-        self.use_Mpc  = use_Mpc
-        self.nbar     = 1. # in units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
+        self.use_Mpc = use_Mpc
+        self.nbar = 1. # in units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
         self.nbar_emu = self.nbar*(1./self.fid_LCDM_params['h'])**3 # convert to units of (Mpc/hfid_emu)^-3 or (Mpc h/hfid_emu)^-3, necessary because the table is in units of 1/hfid_emu^3
-        self.kHD      = 0.278 if self.use_Mpc else 0.4
+        self.kHD = 0.278 if self.use_Mpc else 0.4
         self.kHD_emu  = self.kHD*1./self.fid_LCDM_params['h'] # convert to units of hfid_emu 1/Mpc or hfid_emu/h 1/Mpc
 
-        self.n_diagrams = 19
+        self.n_diagrams = 20
 
         self.training   = {}
         self.validation = {}
@@ -459,6 +520,23 @@ class PTEmu_woAP:
             self.validation[type].save_samples(fname)
         else:
             self.training[type].save_samples(fname)
+
+
+    def load_samples(self, type, fname, validation=False):
+        if validation:
+            self.validation[type].load_samples(fname)
+        else:
+            self.training[type].load_samples(fname)
+
+
+    def load_table(self, type, fname, fname_kvector, data_type=None, validation=False):
+        self.k_table = np.loadtxt(fname_kvector)
+        self.nk = self.k_table.shape[0]
+        self.nkloop = sum(self.k_table > 0.007)
+        if validation:
+            self.validation[type].load_table(fname, self.nk, self.nkloop, data_type=data_type)
+        else:
+            self.training[type].load_table(fname, self.nk, self.nkloop, data_type=data_type)
 
 
     def load_emulator_data(self, fname, validation=False):
@@ -707,11 +785,11 @@ class PTEmu_woAP:
             self.Pk_ratios = {0:None, 2:None, 4:None}
 
         # convert avir into Mpc/hfid_emu units
-        # if 'avir' in self.params_add_emu_list:
-        #     if self.use_Mpc:
-        #         self.params['avir_emu'] = self.params['avir']*self.fid_LCDM_params['h']
-        #     else:
-        #         self.params['avir_emu'] = self.params['avir']*self.fid_LCDM_params['h']/self.params['h']
+        if 'avir' in self.params_add_emu_list:
+            if self.use_Mpc:
+                self.params['avir_emu'] = self.params['avir']*self.fid_LCDM_params['h']
+            else:
+                self.params['avir_emu'] = self.params['avir']*self.fid_LCDM_params['h']/self.params['h']
 
         for p in self.bias_params_list:
             if p in params.keys():
@@ -729,21 +807,12 @@ class PTEmu_woAP:
         g21  = self.params['g21']
         cell = self.params['c{}'.format(ell)] if self.use_Mpc else self.params['c{}'.format(ell)]/self.params['h']**2
         cnlo = self.params['cnlo'] if self.use_Mpc else self.params['cnlo']/self.params['h']**4
+        N0   = self.params['N0'] if self.use_Mpc else self.params['N0']/self.params['h']**3
+        N20  = self.params['N20'] if self.use_Mpc else self.params['N20']/self.params['h']**5
+        N22  = self.params['N22'] if self.use_Mpc else self.params['N22']/self.params['h']**5
         return np.array([b1**2, b1, 1., cell/self.kHD_emu**2, b1**2*cnlo/self.kHD_emu**4, b1*cnlo/self.kHD_emu**4,
-                         cnlo/self.kHD_emu**4, b1**2, b1*b2, b1*g2, b1*g21, b2**2, b2*g2, g2**2, b2, g2, g21])
-
-
-    def get_bias_coeff_for_table(self):
-        b1   = self.params['b1']
-        b2   = self.params['b2']
-        g2   = self.params['g2']
-        g21  = self.params['g21']
-        c0   = self.params['c0'] if self.use_Mpc else self.params['c0']/self.params['h']**2
-        c2   = self.params['c2'] if self.use_Mpc else self.params['c2']/self.params['h']**2
-        c4   = self.params['c4'] if self.use_Mpc else self.params['c4']/self.params['h']**2
-        cnlo = self.params['cnlo'] if self.use_Mpc else self.params['cnlo']/self.params['h']**4
-        return np.array([b1**2, b1, 1., c0/self.kHD_emu**2, c2/self.kHD_emu**2, c4/self.kHD_emu**2, b1**2*cnlo/self.kHD_emu**4, b1*cnlo/self.kHD_emu**4,
-                         cnlo/self.kHD_emu**4, b1**2, b1*b2, b1*g2, b1*g21, b2**2, b2*g2, g2**2, b2, g2, g21])
+                         cnlo/self.kHD_emu**4, N0/self.nbar_emu, N20/self.nbar_emu/self.kHD_emu**2, N22/self.nbar_emu/self.kHD_emu**2,
+                         b1**2, b1*b2, b1*g2, b1*g21, b2**2, b2*g2, g2**2, b2, g2, g21])
 
 
     def Pell_fid_ktable(self, params, ell):
@@ -757,34 +826,38 @@ class PTEmu_woAP:
             self.Pk_lin = self.training['SHAPE'].transform_inv(self.emu['PL'].predict(params_shape[None,:])[0][0], 'PL')
             self.Pk_lin *= (self.params['s12']/sigma12)**2
 
-        Pell = np.zeros([self.nk,len(ell)])
+        Pell_list = np.zeros([self.nk,len(ell)])
         for i,l in enumerate(ell):
             bij = self.get_bias_coeff(l)
             if self.Pk_ratios[l] is None or emu_params_updated:
                 self.Pk_ratios[l] = self.training['FULL'].transform_inv(self.emu[l].predict(params_all[None,:])[0][0], l)
 
-            Pk_bij = np.zeros([self.nk,self.n_diagrams-2])
-            Pk_bij[:,:7]                        = np.multiply(self.Pk_ratios[l][:7*self.nk].reshape((7,self.nk)), self.Pk_lin).T
-            Pk_bij[(self.nk-self.nkloop):,7:17] = np.multiply(self.Pk_ratios[l][7*self.nk:].reshape((10,self.nkloop)), self.Pk_lin[(self.nk-self.nkloop):]).T
+            Pk_bij = np.zeros([self.nk,self.n_diagrams])
+            for n in range(7):
+                Pk_bij[:,n] = self.Pk_ratios[l][n*self.nk:(n+1)*self.nk]*self.Pk_lin
+            for n in range(7,10):
+                Pk_bij[:,n] = self.Pk_ratios[l][n*self.nk:(n+1)*self.nk]
+            for n in range(10):
+                Pk_bij[(self.nk-self.nkloop):,10+n] = self.Pk_ratios[l][10*self.nk+n*self.nkloop:10*self.nk+(n+1)*self.nkloop]*self.Pk_lin[(self.nk-self.nkloop):]
 
-            Pell[:,i] = np.dot(bij,Pk_bij.T)
+            Pell_list[:,i] = np.dot(bij,Pk_bij.T)
 
-            # add shot noise
-            if l == 0:
-                N0   = self.params['N0'] if self.use_Mpc else self.params['N0']/self.params['h']**3
-                N20  = self.params['N20'] if self.use_Mpc else self.params['N20']/self.params['h']**5
-                Pell[:,i] += np.ones_like(self.k_table)*N0/self.nbar + self.k_table**2*N20/self.nbar/self.kHD**2
-            elif l == 2:
-                N22  = self.params['N22'] if self.use_Mpc else self.params['N22']/self.params['h']**5
-                Pell[:,i] += self.k_table**2*N22/self.nbar/self.kHD**2
-
-        return Pell
+        return Pell_list
 
 
-    def Pell_DEmodel_fid_ktable(self, params, ell, de_model):
+    def Pell_DEmodel_fid_ktable(self, params, ell, de_model, alpha_tr_lo=None):
         ell = [ell] if not isinstance(ell, list) else ell
         emu_params_updated = self.update_params(params, de_model=de_model)
         params_shape = np.array([self.params[p] for p in self.params_shape_list])
+        if alpha_tr_lo is not None:
+            if any([self.params[p] != alpha_tr_lo[i] for i,p in enumerate(['alpha_tr','alpha_lo'])]):
+                self.params['alpha_tr'] = alpha_tr_lo[0]
+                self.params['alpha_lo'] = alpha_tr_lo[1]
+                self.AP_was_fixed       = True
+                emu_params_updated = True
+        elif alpha_tr_lo is None and self.AP_was_fixed:
+            self.AP_was_fixed = False
+            emu_params_updated = True
 
         if self.Pk_lin is None or emu_params_updated:
             sigma12 = self.training['SHAPE'].transform_inv(self.emu['s12'].predict(params_shape[None,:])[0][0], 's12')
@@ -801,6 +874,11 @@ class PTEmu_woAP:
             self.cosmo.update_cosmology(Om0=Om0, H0=H0, Ok0=self.params['Ok'], de_model=de_model, w0=self.params['w0'], wa=self.params['wa'])
             D, f = self.cosmo.growth_factor(self.params['z'], get_growth_rate=True)
 
+            # compute AP parameters
+            if alpha_tr_lo is None:
+                self.params['alpha_lo'] = self.H_fid/self.cosmo.Hz(self.params['z'])
+                self.params['alpha_tr'] = self.cosmo.comoving_transverse_distance(self.params['z'])/self.Dm_fid
+
             # rescale linear power spectrum and sigma12
             self.Pk_lin *= self.params['As']/self.fid_LCDM_params['As']*(D/Dfid)**2
             self.params['s12'] = sigma12[0]*np.sqrt(params['As']/self.fid_LCDM_params['As'])*(D/Dfid)
@@ -808,91 +886,68 @@ class PTEmu_woAP:
 
         params_all = np.array([self.params[p] for p in self.params_list_emu],dtype=object)
 
-        Pell = np.zeros([self.nk,len(ell)])
+        Pell_list = np.zeros([self.nk,len(ell)])
         for i,l in enumerate(ell):
             bij = self.get_bias_coeff(l)
 
             if self.Pk_ratios[l] is None or emu_params_updated:
                 self.Pk_ratios[l] = self.training['FULL'].transform_inv(self.emu[l].predict(params_all[None,:])[0][0], l)
 
-            Pk_bij = np.zeros([self.nk,self.n_diagrams-2])
-            Pk_bij[:,:7]                        = np.multiply(self.Pk_ratios[l][:7*self.nk].reshape((7,self.nk)), self.Pk_lin).T
-            Pk_bij[(self.nk-self.nkloop):,7:17] = np.multiply(self.Pk_ratios[l][7*self.nk:].reshape((10,self.nkloop)), self.Pk_lin[(self.nk-self.nkloop):]).T
+            Pk_bij = np.zeros([self.nk,self.n_diagrams])
+            for n in range(7):
+                Pk_bij[:,n] = self.Pk_ratios[l][n*self.nk:(n+1)*self.nk]*self.Pk_lin
+            for n in range(7,10):
+                Pk_bij[:,n] = self.Pk_ratios[l][n*self.nk:(n+1)*self.nk]
+            for n in range(10):
+                Pk_bij[(self.nk-self.nkloop):,10+n] = self.Pk_ratios[l][10*self.nk+n*self.nkloop:10*self.nk+(n+1)*self.nkloop]*self.Pk_lin[(self.nk-self.nkloop):]
 
-            Pell[:,i] = np.dot(bij,Pk_bij.T)
+            Pell_list[:,i] = np.dot(bij,Pk_bij.T)
 
-            # add shot noise
-            if l == 0:
-                N0   = self.params['N0'] if self.use_Mpc else self.params['N0']/self.params['h']**3
-                N20  = self.params['N20'] if self.use_Mpc else self.params['N20']/self.params['h']**5
-                Pell[:,i] += np.ones_like(self.k_table)*N0/self.nbar + self.k_table**2*N20/self.nbar/self.kHD**2
-            elif l == 2:
-                N22  = self.params['N22'] if self.use_Mpc else self.params['N22']/self.params['h']**5
-                Pell[:,i] += self.k_table**2*N22/self.nbar/self.kHD**2
-
-        return Pell
+        return Pell_list
 
 
     def Pell(self, k, params, ell, de_model=None, alpha_tr_lo=None):
-        def P2d(q, mu):
-            t = 0.
-            for l in [0,2,4]:
-                t += eval_legendre(l, mu)*self.Pell_spline[l](q)
-            return t
-
-        def integrand(mu):
-            mu2 = mu**2
-            APfac = np.sqrt(mu2/self.params['alpha_lo']**2 + (1. - mu2)/self.params['alpha_tr']**2)
-            kp = k*APfac
-            mup = mu/self.params['alpha_lo']/APfac
-            return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
-
         ell = [ell] if not isinstance(ell, list) else ell
 
-        if isinstance(k, list):
-            if len(k) != len(ell):
-                raise ValueError("If 'k' is given as a list, it must match the length of 'ell'.")
-            else:
-                k_list = k
-                k = np.unique(np.hstack(k_list))
-        else:
-            k_list = [k]*len(ell)
-
-        if any([params[p] != self.params[p] for p in params.keys()]):
+        if any([params[p] != self.params[p] for p in params.keys()]) \
+        or (alpha_tr_lo is not None and any([alpha_tr_lo[i] != self.params[p] for i,p in enumerate(['alpha_tr','alpha_lo'])])) \
+        or (alpha_tr_lo is None and self.AP_was_fixed):
             self.splines_up_to_date = [False]*3
             if de_model is None:
-                Pell = self.Pell_fid_ktable(params, ell=[0,2,4])
+                Pell_list = self.Pell_fid_ktable(params, ell)
             else:
-                Pell = self.Pell_DEmodel_fid_ktable(params, ell=[0,2,4], de_model=de_model)
-            for i,l in enumerate([0,2,4]):
+                Pell_list = self.Pell_DEmodel_fid_ktable(params, ell, de_model, alpha_tr_lo=alpha_tr_lo)
+            for i,l in enumerate(ell):
                 if self.use_Mpc:
-                    self.Pell_spline[l] = interp1d(self.k_table, Pell[:,i], kind='cubic')
+                    self.Pell_spline[l] = interp1d(self.k_table, Pell_list[:,i], kind='cubic')
                 else:
-                    self.Pell_spline[l] = interp1d(self.k_table/self.params['h'], Pell[:,i]*self.params['h']**3, kind='cubic')
+                    self.Pell_spline[l] = interp1d(self.k_table/self.params['h'], Pell_list[:,i]*self.params['h']**3, kind='cubic')
                 self.splines_up_to_date[int(l/2)] = True
 
-        # update AP parameters
-        if de_model is not None and alpha_tr_lo is None:
-            self.params['alpha_lo'] = self.H_fid/self.cosmo.Hz(self.params['z'])
-            self.params['alpha_tr'] = self.cosmo.comoving_transverse_distance(self.params['z'])/self.Dm_fid
-        elif de_model is not None:
-            self.params['alpha_lo'] = alpha_tr_lo[1]
-            self.params['alpha_tr'] = alpha_tr_lo[0]
-        elif de_model is None and 'alpha_lo' in params and 'alpha_tr' in params:
-            self.params['alpha_lo'] = params['alpha_lo']
-            self.params['alpha_tr'] = params['alpha_tr']
+        if not isinstance(k, list):
+            k = [np.array(k)]*len(ell)
+        elif isinstance(k, list) and len(k) != len(ell):
+            raise ValueError("If 'k' is given as a list, it must match the length of 'ell'.")
+        else:
+            k = [np.array(x) for x in k]
 
-        Pell_model = quad_vec(integrand, 0, 1)[0]
-        Pell_model *= (2*np.array(ell)+1)/(self.params['alpha_tr']**2*self.params['alpha_lo'])
-
-        Pell_dict = {}
+        Pell_model = []
         for i,l in enumerate(ell):
-            Pell_dict['ell{}'.format(l)] = Pell_model[np.intersect1d(k, k_list[i], return_indices=True)[1],i]
+            if self.splines_up_to_date[int(l/2)]:
+                Pell_model.append(self.Pell_spline[l](k[i]))
+            else:
+                if de_model is None:
+                    Pell = self.Pell_fid_ktable(params, l)
+                else:
+                    Pell = self.Pell_DEmodel_fid_ktable(params, l, de_model, alpha_tr_lo=alpha_tr_lo)
+                if self.use_Mpc:
+                    self.Pell_spline[l] = interp1d(self.k_table, Pell[:,0], kind='cubic')
+                else:
+                    self.Pell_spline[l] = interp1d(self.k_table/self.params['h'], Pell[:,0]*self.params['h']**3, kind='cubic')
+                self.splines_up_to_date[int(l/2)] = True
+                Pell_model.append(self.Pell_spline[l](k[i]))
 
-        return Pell_dict
-
-
-    # def Pdw(self, k, mu, params, de_model=None):
+        return Pell_model if len(ell) > 1 else Pell_model[0]
 
 
     def Pell_from_table_fid_ktable(self, table, params, ell):
@@ -904,28 +959,29 @@ class PTEmu_woAP:
             else:
                 self.params[p] = 0.
 
-        bij = self.get_bias_coeff_for_table()
-        bij[3:6] *= (self.params['h']/self.fid_LCDM_params['h'])**2
-        bij[6:9] *= (self.params['h']/self.fid_LCDM_params['h'])**4
-
-        Pell = np.zeros([self.nk,len(ell)])
-
+        Pell_list = np.zeros([self.nk,len(ell)])
         for i,l in enumerate(ell):
+            bij = self.get_bias_coeff(l)
+            bij[3] *= (self.params['h']/self.fid_LCDM_params['h'])**2
+            bij[4:7] *= (self.params['h']/self.fid_LCDM_params['h'])**4
+            bij[7] *= (self.params['h']/self.fid_LCDM_params['h'])**3
+            bij[8:10] *= (self.params['h']/self.fid_LCDM_params['h'])**5
+
             Pk_bij = np.zeros([self.nk,self.n_diagrams])
             cnt = 0
-            for n in np.array([0,1,2,13,14,15,16,17,18])+self.n_diagrams*int(l/2):
+            for n in np.array([0,1,2,13,14,15,16,17,18,19])+10*l:
                 Pk_bij[:,cnt] = table[:,1+n]
                 cnt += 1
-            for n in np.arange(3,13)+self.n_diagrams*int(l/2):
+            for n in np.arange(3,13)+10*l:
                 Pk_bij[:,cnt] = table[:,1+n]
                 cnt += 1
 
-            Pell[:,i] = np.dot(bij,Pk_bij.T)
+            Pell_list[:,i] = np.dot(bij,Pk_bij.T)
 
-        # this is simply to guarantee that upon the next call of Pell the splines will be updated
+        # this is simply to guarantee that upon the next call of Pell or Pell_LCDM the parameter values will be updated
         self.params['wc'] = -1
 
-        return Pell
+        return Pell_list
 
 
     def Pell_from_table(self, table, k, params, ell):
@@ -945,15 +1001,15 @@ class PTEmu_woAP:
         else:
             k = [np.array(x) for x in k]
 
-        Pell_dict = {}
+        Pell_model = []
         for i,l in enumerate(ell):
-            Pell_dict['ell{}'.format(l)] = self.Pell_spline[l](k[i])
+            Pell_model.append(self.Pell_spline[l](k[i]))
 
         # this is simply to guarantee that upon the next call of Pell or Pell_LCDM the parameter values will be updated
         self.params['wc'] = -1
         self.splines_up_to_date = [False]*3
 
-        return Pell_dict
+        return Pell_model if len(ell) > 1 else Pell_model[0]
 
 
     def Gaussian_covariance(self, l1, l2, k, dk, Pell, volume, Nmodes=None):
@@ -961,9 +1017,7 @@ class PTEmu_woAP:
             Nmodes = volume/3/(2*np.pi**2)*((k+dk/2)**3 - (k-dk/2)**3)
 
         if 'f' in self.params_list:
-            P0 = Pell['ell0']
-            P2 = Pell['ell2']
-            P4 = Pell['ell4']
+            P0, P2, P4 = np.copy(Pell)
 
             if l1==l2==0:
                 cov = P0**2 + 1./5.*P2**2 + 1./9.*P4**2
@@ -978,7 +1032,7 @@ class PTEmu_woAP:
             elif l1==l2==4:
                 cov = 9*P0**2 + 360/77*P0*P2 + 2916/1001*P0*P4 + 16101/5005*P2**2 + 3240/1001*P2*P4 + 42849/17017*P4**2
         else:
-            cov = Pell['ell0']**2
+            cov = Pell**2
 
         cov *= 2./Nmodes
         return cov
@@ -996,10 +1050,14 @@ class PTEmu_woAP:
         nbin = [x.shape[0] for x in k]
         cov = np.zeros([sum(nbin),sum(nbin)])
 
-        k_all = np.unique(np.hstack(k))
-        ell_for_cov = [0,2,4] if 'f' in self.params_list else 0
-        Pell = self.Pell(k_all, params, ell=ell_for_cov, de_model=de_model, alpha_tr_lo=alpha_tr_lo)
-        Pell['ell0'] += 1./self.nbar
+        for i in range(len(ell)):
+            k_all = k[i] if i==0 else np.hstack((k_all,k[i]))
+        k_all = np.unique(k_all)
+        if 'f' in self.params_list:
+            Pell = self.Pell(k_all, params, ell=[0,2,4], de_model=de_model, alpha_tr_lo=alpha_tr_lo)
+            Pell[0] += 1./self.nbar_emu/(self.fid_LCDM_params['h'])**3
+        else:
+            Pell = self.Pell(k_all, params, ell=0, de_model=de_model, alpha_tr_lo=alpha_tr_lo) + 1./self.nbar_emu/(self.fid_LCDM_params['h'])**3
 
         if de_model is not None and volume is None:
             Om0 = (self.params['wc']+self.params['wb'])/self.params['h']**2
@@ -1034,10 +1092,14 @@ class PTEmu_woAP:
         nbin = [x.shape[0] for x in k]
         cov = np.zeros([sum(nbin),sum(nbin)])
 
-        k_all = np.unique(np.hstack(k))
-        ell_for_cov = [0,2,4] if 'f' in self.params_list else 0
-        Pell = self.Pell_from_table(table, k_all, params, ell=ell_for_cov)
-        Pell['ell0'] += 1./self.nbar
+        for i in range(len(ell)):
+            k_all = k[i] if i==0 else np.hstack((k_all,k[i]))
+        k_all = np.unique(k_all)
+        if 'f' in self.params_list:
+            Pell = self.Pell_from_table(table, k_all, params, ell=[0,2,4])
+            Pell[0] += 1./self.nbar_emu/(self.fid_LCDM_params['h'])**3
+        else:
+            Pell = self.Pell_from_table(table, k_all, params, ell=0) + 1./self.nbar_emu/(self.fid_LCDM_params['h'])**3
 
         if volume is None:
             Om0 = (params['wc']+params['wb'])/params['h']**2
@@ -1062,11 +1124,24 @@ class PTEmu_woAP:
         if not self.kmax_is_set or (self.kmax != kmax and self.kmax != [kmax for i in range(self.n_ell)]):
             self.set_kmax(kmax)
 
+        Pell_model = np.zeros(sum(self.nbin))
         ell = [2*l for l in range(self.n_ell) if self.nbin[l] > 0]
-        Pell = self.Pell(self.k_bins, params, ell, de_model=de_model, alpha_tr_lo=alpha_tr_lo)
-        Pell_list = np.hstack([Pell['ell{}'.format(l)] for l in ell])
+        if de_model is None:
+            Pell = self.Pell_fid_ktable(params, ell)
+        else:
+            Pell = self.Pell_DEmodel_fid_ktable(params, ell, de_model, alpha_tr_lo=alpha_tr_lo)
 
-        diff = Pell_list - self.P_data_kmax
+        for i,l in enumerate(ell):
+            n = int(l/2)
+
+            if self.use_Mpc:
+                spline = interp1d(self.k_table, Pell[:,i], kind='cubic')
+                Pell_model[sum(self.nbin[:n]):sum(self.nbin[:n+1])] = spline(self.k_bins[n])
+            else:
+                spline = interp1d(self.k_table/self.params['h'], Pell[:,i]*self.params['h']**3, kind='cubic')
+                Pell_model[sum(self.nbin[:n]):sum(self.nbin[:n+1])] = spline(self.k_bins[n])
+
+        diff = Pell_model - self.P_data_kmax
 
         return diff @ self.InvCov_data_kmax @ diff.T
 
