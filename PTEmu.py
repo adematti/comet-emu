@@ -405,10 +405,9 @@ class PTEmu:
                  fid_LCDM_params={'wc':0.11544,'wb':0.0222191,'ns':0.9632,'h':0.695, 'As':2.2078559, 'z':1.0}):
 
         self.params_shape_list    = [key for key,val in params.items() if 'SHAPE' in val]
-        self.params_add_emu_list  = [p for p in params.keys() if p not in self.params_shape_list+['s12','alpha_tr','alpha_lo','f']]
         self.params_list          = [p for p in params.keys()]
-        self.params_list_emu      = ['avir_emu' if p == 'avir' else p for p in self.params_list]
         self.bias_params_list     = ['b1','b2','g2','g21','c0','c2','c4','cnlo','N0','N20','N22']
+        self.RSD_params_list      = []
         self.de_model_params_list = {'lambda':['h','As','Ok','z'],
                                      'w0':['h','As','Ok','w0','z'],
                                      'w0wa':['h','As','Ok','w0','wa','z']}
@@ -473,9 +472,14 @@ class PTEmu:
             if not set(self.params_list) == set(params_full_fits):
                 raise KeyError('Fits table list of all parameters does not match.')
 
-        self.k_table = hdul['K_TABLE'].data['bins']
-        self.nk = self.k_table.shape[0]
-        self.nkloop = sum(self.k_table > hdul['K_TABLE'].header['k1loop'])
+        self.k_table   = hdul['K_TABLE'].data['bins']
+        self.nk        = self.k_table.shape[0]
+        self.nkloop    = sum(self.k_table > hdul['K_TABLE'].header['k1loop'])
+        self.RSD_model = hdul['MODEL_FULL'].header['RSD_model']
+
+        if self.RSD_model == 'VIR':
+            self.RSD_params_list.append('avir')
+            self.params['avir']  = 0
 
         if validation:
             self.validation['FULL'].model = None
@@ -595,7 +599,8 @@ class PTEmu:
             if Nrealizations is not None:
                 self.Nrealizations = Nrealizations
             else:
-                raise ValueError('For non-analytical covariance matrix, Nrealizations needs to be specified.')
+                raise ValueError('For non-analytical covariance matrix, Nrealizations \
+                                  needs to be specified.')
 
         # udpate kmax-truncated data containers
         if self.kmax_is_set:
@@ -632,12 +637,10 @@ class PTEmu:
 
         nbin_total = self.k_data.shape[0]
 
-        # unit_factor = 1. if self.use_Mpc else self.hfid_data
-
         self.nbin = [0 for i in range(self.n_ell)]
         for l in range(self.n_ell):
             for i in range(nbin_total):
-                if self.k_data[i] < self.kmax[l]: #*unit_factor:
+                if self.k_data[i] < self.kmax[l]:
                     self.nbin[l] += 1
                 else:
                     break
@@ -646,12 +649,16 @@ class PTEmu:
         self.P_data_kmax = np.array([])
         for l in range(self.n_ell):
             self.k_bins.append(self.k_data[:self.nbin[l]])
-            self.P_data_kmax = np.concatenate((self.P_data_kmax,self.P_data[:self.nbin[l],l])) if self.P_data_kmax.size else self.P_data[:self.nbin[l],l]
+            self.P_data_kmax = np.concatenate((self.P_data_kmax,self.P_data[:self.nbin[l],l])) \
+                if self.P_data_kmax.size else self.P_data[:self.nbin[l],l]
 
         self.Cov_data_kmax = np.zeros([sum(self.nbin),sum(self.nbin)])
         for l1 in range(self.n_ell):
             for l2 in range(self.n_ell):
-                self.Cov_data_kmax[sum(self.nbin[:l1]):sum(self.nbin[:l1+1]),sum(self.nbin[:l2]):sum(self.nbin[:l2+1])] = self.Cov_data[l1*nbin_total:l1*nbin_total+self.nbin[l1],l2*nbin_total:l2*nbin_total+self.nbin[l2]]
+                self.Cov_data_kmax[sum(self.nbin[:l1]):sum(self.nbin[:l1+1]),
+                                   sum(self.nbin[:l2]):sum(self.nbin[:l2+1])] = \
+                    self.Cov_data[l1*nbin_total:l1*nbin_total+self.nbin[l1],
+                                  l2*nbin_total:l2*nbin_total+self.nbin[l2]]
         self.InvCov_data_kmax = self.AHfactor(sum(self.nbin))*np.linalg.inv(self.Cov_data_kmax)
 
         self.kmax_is_set = True
@@ -664,7 +671,8 @@ class PTEmu:
     def get_Pell_data(self, ell, kmax=None):
         if kmax is None and not self.kmax_is_set:
             self.set_kmax(np.amax(self.k_data))
-        elif kmax is not None and (not self.kmax_is_set or (self.kmax != kmax and self.kmax != [kmax for i in range(self.n_ell)])):
+        elif kmax is not None and (not self.kmax_is_set or \
+                (self.kmax != kmax and self.kmax != [kmax for i in range(self.n_ell)])):
             self.set_kmax(kmax)
         n = int(ell/2)
         return self.P_data_kmax[sum(self.nbin[:n]):sum(self.nbin[:n+1])]
@@ -673,7 +681,8 @@ class PTEmu:
     def get_std_data(self, ell, kmax=None):
         if kmax is None and not self.kmax_is_set:
             self.set_kmax(np.amax(self.k_data))
-        elif kmax is not None and (not self.kmax_is_set or (self.kmax != kmax and self.kmax != [kmax for i in range(self.n_ell)])):
+        elif kmax is not None and (not self.kmax_is_set or \
+                (self.kmax != kmax and self.kmax != [kmax for i in range(self.n_ell)])):
             self.set_kmax(kmax)
         n = int(ell/2)
         return np.sqrt(np.diag(self.Cov_data_kmax)[sum(self.nbin[:n]):sum(self.nbin[:n+1])])
@@ -694,7 +703,7 @@ class PTEmu:
                 self.params['As'] = 0.
                 self.params['z'] = 0.
             else:
-                expected_params = self.params_shape_list + self.params_add_emu_list + self.de_model_params_list[de_model]
+                expected_params = self.params_shape_list + self.de_model_params_list[de_model]
                 if 'Ok' not in params:
                     expected_params.remove('Ok')
                 emu_params_updated = any([params[p] != self.params[p] for p in expected_params])
@@ -706,14 +715,7 @@ class PTEmu:
         if emu_params_updated:
             self.Pk_ratios = {0:None, 2:None, 4:None}
 
-        # convert avir into Mpc/hfid_emu units
-        # if 'avir' in self.params_add_emu_list:
-        #     if self.use_Mpc:
-        #         self.params['avir_emu'] = self.params['avir']*self.fid_LCDM_params['h']
-        #     else:
-        #         self.params['avir_emu'] = self.params['avir']*self.fid_LCDM_params['h']/self.params['h']
-
-        for p in self.bias_params_list:
+        for p in self.bias_params_list + self.RSD_params_list:
             if p in params.keys():
                 self.params[p] = params[p]
             else:
@@ -727,10 +729,18 @@ class PTEmu:
         b2   = self.params['b2']
         g2   = self.params['g2']
         g21  = self.params['g21']
-        cell = self.params['c{}'.format(ell)] if self.use_Mpc else self.params['c{}'.format(ell)]/self.params['h']**2
-        cnlo = self.params['cnlo'] if self.use_Mpc else self.params['cnlo']/self.params['h']**4
-        return np.array([b1**2, b1, 1., cell/self.kHD_emu**2, b1**2*cnlo/self.kHD_emu**4, b1*cnlo/self.kHD_emu**4,
-                         cnlo/self.kHD_emu**4, b1**2, b1*b2, b1*g2, b1*g21, b2**2, b2*g2, g2**2, b2, g2, g21])
+        cell = self.params['c{}'.format(ell)] if self.use_Mpc \
+            else self.params['c{}'.format(ell)]/self.params['h']**2
+        cnlo = self.params['cnlo'] if self.use_Mpc \
+            else self.params['cnlo']/self.params['h']**4
+
+        kHD_emu2 = self.kHD_emu**2
+        kHD_emu4 = self.kHD_emu**4
+        b1sq     = b1**2
+
+        return np.array([b1sq, b1, 1., cell/kHD_emu2,
+                         b1sq*cnlo/kHD_emu4, b1*cnlo/kHD_emu4, cnlo/kHD_emu4,
+                         b1sq, b1*b2, b1*g2, b1*g21, b2**2, b2*g2, g2**2, b2, g2, g21])
 
 
     def get_bias_coeff_for_table(self):
@@ -738,12 +748,22 @@ class PTEmu:
         b2   = self.params['b2']
         g2   = self.params['g2']
         g21  = self.params['g21']
-        c0   = self.params['c0'] if self.use_Mpc else self.params['c0']/self.params['h']**2
-        c2   = self.params['c2'] if self.use_Mpc else self.params['c2']/self.params['h']**2
-        c4   = self.params['c4'] if self.use_Mpc else self.params['c4']/self.params['h']**2
-        cnlo = self.params['cnlo'] if self.use_Mpc else self.params['cnlo']/self.params['h']**4
-        return np.array([b1**2, b1, 1., c0/self.kHD_emu**2, c2/self.kHD_emu**2, c4/self.kHD_emu**2, b1**2*cnlo/self.kHD_emu**4, b1*cnlo/self.kHD_emu**4,
-                         cnlo/self.kHD_emu**4, b1**2, b1*b2, b1*g2, b1*g21, b2**2, b2*g2, g2**2, b2, g2, g21])
+        c0   = self.params['c0'] if self.use_Mpc \
+            else self.params['c0']/self.params['h']**2
+        c2   = self.params['c2'] if self.use_Mpc \
+            else self.params['c2']/self.params['h']**2
+        c4   = self.params['c4'] if self.use_Mpc \
+            else self.params['c4']/self.params['h']**2
+        cnlo = self.params['cnlo'] if self.use_Mpc \
+            else self.params['cnlo']/self.params['h']**4
+
+        kHD_emu2 = self.kHD_emu**2
+        kHD_emu4 = self.kHD_emu**4
+        b1sq     = b1**2
+
+        return np.array([b1sq, b1, 1., c0/kHD_emu2, c2/kHD_emu2, c4/kHD_emu2,
+                         b1sq*cnlo/kHD_emu4, b1*cnlo/kHD_emu4, cnlo/kHD_emu4,
+                         b1sq, b1*b2, b1*g2, b1*g21, b2**2, b2*g2, g2**2, b2, g2, g21])
 
 
     def eval_emulator(self, params, ell, de_model=None):
@@ -751,20 +771,30 @@ class PTEmu:
         params_shape = np.array([self.params[p] for p in self.params_shape_list])
 
         if de_model is None:
-            params_all = np.array([self.params[p] for p in self.params_list_emu])
+            params_all = np.array([self.params[p] for p in self.params_list])
 
             if self.Pk_lin is None or emu_params_updated:
-                sigma12 = self.training['SHAPE'].transform_inv(self.emu['s12'].predict(params_shape[None,:])[0][0], 's12')
-                self.Pk_lin = self.training['SHAPE'].transform_inv(self.emu['PL'].predict(params_shape[None,:])[0][0], 'PL')
+                sigma12 = self.training['SHAPE'].transform_inv(
+                    self.emu['s12'].predict(params_shape[None,:])[0][0], 's12')
+                self.Pk_lin = self.training['SHAPE'].transform_inv(
+                    self.emu['PL'].predict(params_shape[None,:])[0][0], 'PL')
                 self.Pk_lin *= (self.params['s12']/sigma12)**2
+
+                if self.RSD_model == 'VIR':
+                    self.params['sv'] = self.training['SHAPE'].transform_inv(
+                        self.emu['sv'].predict(params_shape[None,:])[0][0], 'sv')[0]
+                    self.params['sv'] *= self.params['s12']/sigma12
 
             for l in ell:
                 if self.Pk_ratios[l] is None or emu_params_updated:
-                    self.Pk_ratios[l] = self.training['FULL'].transform_inv(self.emu[l].predict(params_all[None,:])[0][0], l)
+                    self.Pk_ratios[l] = self.training['FULL'].transform_inv(
+                        self.emu[l].predict(params_all[None,:])[0][0], l)
         else:
             if self.Pk_lin is None or emu_params_updated:
-                sigma12 = self.training['SHAPE'].transform_inv(self.emu['s12'].predict(params_shape[None,:])[0][0], 's12')
-                self.Pk_lin = self.training['SHAPE'].transform_inv(self.emu['PL'].predict(params_shape[None,:])[0][0], 'PL')
+                sigma12 = self.training['SHAPE'].transform_inv(
+                    self.emu['s12'].predict(params_shape[None,:])[0][0], 's12')
+                self.Pk_lin = self.training['SHAPE'].transform_inv(
+                    self.emu['PL'].predict(params_shape[None,:])[0][0], 'PL')
 
                 # compute growth factors corresponding to fiducial and target parameters + growth rate
                 Om0_fid = (self.params['wc']+self.params['wb'])/self.fid_LCDM_params['h']**2
@@ -774,19 +804,29 @@ class PTEmu:
 
                 Om0 = (self.params['wc']+self.params['wb'])/self.params['h']**2
                 H0 = 100*self.params['h']
-                self.cosmo.update_cosmology(Om0=Om0, H0=H0, Ok0=self.params['Ok'], de_model=de_model, w0=self.params['w0'], wa=self.params['wa'])
+                self.cosmo.update_cosmology(
+                    Om0=Om0, H0=H0, Ok0=self.params['Ok'],
+                    de_model=de_model, w0=self.params['w0'], wa=self.params['wa'])
                 D, f = self.cosmo.growth_factor(self.params['z'], get_growth_rate=True)
 
                 # rescale linear power spectrum and sigma12
                 self.Pk_lin *= self.params['As']/self.fid_LCDM_params['As']*(D/Dfid)**2
-                self.params['s12'] = sigma12[0]*np.sqrt(params['As']/self.fid_LCDM_params['As'])*(D/Dfid)
+                self.params['s12'] = sigma12[0]*np.sqrt(params['As']/self.fid_LCDM_params['As'])\
+                                   * (D/Dfid)
                 self.params['f'] = f
 
-            params_all = np.array([self.params[p] for p in self.params_list_emu],dtype=object)
+                if self.RSD_model == 'VIR':
+                    self.params['sv'] = self.training['SHAPE'].transform_inv(
+                        self.emu['sv'].predict(params_shape[None,:])[0][0], 'sv')[0]
+                    self.params['sv'] *= self.params['As']/self.fid_LCDM_params['As'] \
+                                       * (D/Dfid)**2
+
+            params_all = np.array([self.params[p] for p in self.params_list],dtype=object)
 
             for l in ell:
                 if self.Pk_ratios[l] is None or emu_params_updated:
-                    self.Pk_ratios[l] = self.training['FULL'].transform_inv(self.emu[l].predict(params_all[None,:])[0][0], l)
+                    self.Pk_ratios[l] = self.training['FULL'].transform_inv(
+                        self.emu[l].predict(params_all[None,:])[0][0], l)
 
 
     def Pell_fid_ktable(self, params, ell, de_model=None):
@@ -798,8 +838,10 @@ class PTEmu:
             bij = self.get_bias_coeff(l)
 
             Pk_bij = np.zeros([self.nk,self.n_diagrams-2])
-            Pk_bij[:,:7]                        = np.multiply(self.Pk_ratios[l][:7*self.nk].reshape((7,self.nk)), self.Pk_lin).T
-            Pk_bij[(self.nk-self.nkloop):,7:17] = np.multiply(self.Pk_ratios[l][7*self.nk:].reshape((10,self.nkloop)), self.Pk_lin[(self.nk-self.nkloop):]).T
+            Pk_bij[:,:7]                        = np.multiply(
+                self.Pk_ratios[l][:7*self.nk].reshape((7,self.nk)), self.Pk_lin).T
+            Pk_bij[(self.nk-self.nkloop):,7:17] = np.multiply(
+                self.Pk_ratios[l][7*self.nk:].reshape((10,self.nkloop)), self.Pk_lin[(self.nk-self.nkloop):]).T
 
             Pell[:,i] = np.dot(bij,Pk_bij.T)
 
@@ -815,6 +857,12 @@ class PTEmu:
         return Pell
 
 
+    def W_kurt(self, k, mu):
+        t1 = - (self.params['f']*k*mu)**2
+        t2 = 1. - t1*self.params['avir']**2
+        return 1./np.sqrt(t2)*np.exp(t1*self.params['sv']**2/t2)
+
+
     def Pell(self, k, params, ell, de_model=None, alpha_tr_lo=None):
         def P2d(q, mu):
             t = 0.
@@ -822,12 +870,23 @@ class PTEmu:
                 t += eval_legendre(l, mu)*self.Pell_spline[l](q)
             return t
 
-        def integrand(mu):
-            mu2 = mu**2
-            APfac = np.sqrt(mu2/self.params['alpha_lo']**2 + (1. - mu2)/self.params['alpha_tr']**2)
-            kp = k*APfac
-            mup = mu/self.params['alpha_lo']/APfac
-            return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
+        if self.RSD_model == 'EFT':
+            def integrand(mu):
+                mu2 = mu**2
+                APfac = np.sqrt(mu2/self.params['alpha_lo']**2 + (1. - mu2)/self.params['alpha_tr']**2)
+                kp = k*APfac
+                mup = mu/self.params['alpha_lo']/APfac
+                return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
+        elif self.RSD_model == 'VIR':
+            def integrand(mu):
+                mu2 = mu**2
+                APfac = np.sqrt(mu2/self.params['alpha_lo']**2 + (1. - mu2)/self.params['alpha_tr']**2)
+                kp = k*APfac
+                mup = mu/self.params['alpha_lo']/APfac
+                P2d_damped = P2d(kp, mup) * self.W_kurt(kp, mup)
+                return np.outer(P2d_damped, eval_legendre(ell, mu))
+        else:
+            raise ValueError('Unsupported RSD model.')
 
         ell = [ell] if not isinstance(ell, list) else ell
 
@@ -845,15 +904,19 @@ class PTEmu:
             Pell = self.Pell_fid_ktable(params, ell=[0,2,4], de_model=de_model)
             for i,l in enumerate([0,2,4]):
                 if self.use_Mpc:
-                    self.Pell_spline[l] = interp1d(self.k_table, Pell[:,i], kind='cubic')
+                    self.Pell_spline[l] = interp1d(self.k_table, Pell[:,i],
+                                                   kind='cubic')
                 else:
-                    self.Pell_spline[l] = interp1d(self.k_table/self.params['h'], Pell[:,i]*self.params['h']**3, kind='cubic')
+                    self.Pell_spline[l] = interp1d(self.k_table/self.params['h'],
+                                                   Pell[:,i]*self.params['h']**3,
+                                                   kind='cubic')
                 self.splines_up_to_date[int(l/2)] = True
 
         # update AP parameters
         if de_model is not None and alpha_tr_lo is None:
             self.params['alpha_lo'] = self.H_fid/self.cosmo.Hz(self.params['z'])
-            self.params['alpha_tr'] = self.cosmo.comoving_transverse_distance(self.params['z'])/self.Dm_fid
+            self.params['alpha_tr'] = self.cosmo.comoving_transverse_distance(
+                self.params['z'])/self.Dm_fid
         elif de_model is not None:
             self.params['alpha_lo'] = alpha_tr_lo[1]
             self.params['alpha_tr'] = alpha_tr_lo[0]
@@ -862,11 +925,13 @@ class PTEmu:
             self.params['alpha_tr'] = params['alpha_tr']
 
         Pell_model = quad_vec(integrand, 0, 1)[0]
-        Pell_model *= (2*np.array(ell)+1)/(self.params['alpha_tr']**2*self.params['alpha_lo'])
+        Pell_model *= (2*np.array(ell)+1) \
+                    / (self.params['alpha_tr']**2*self.params['alpha_lo'])
 
         Pell_dict = {}
         for i,l in enumerate(ell):
-            Pell_dict['ell{}'.format(l)] = Pell_model[np.intersect1d(k, k_list[i], return_indices=True)[1],i]
+            Pell_dict['ell{}'.format(l)] = Pell_model[np.intersect1d(
+                k, k_list[i], return_indices=True)[1],i]
 
         return Pell_dict
 
@@ -882,9 +947,12 @@ class PTEmu:
         Pdw_spline = {}
         for i,l in enumerate([0,2,4]):
             if self.use_Mpc:
-                Pdw_spline[l] = interp1d(self.k_table, Pdw_ell[:,i], kind='cubic')
+                Pdw_spline[l] = interp1d(self.k_table, Pdw_ell[:,i],
+                                         kind='cubic')
             else:
-                Pdw_spline[l] = interp1d(self.k_table/self.params['h'], Pdw_ell[:,i]*self.params['h']**3, kind='cubic')
+                Pdw_spline[l] = interp1d(self.k_table/self.params['h'],
+                                         Pdw_ell[:,i]*self.params['h']**3,
+                                         kind='cubic')
 
         Pdw_2d = 0.
         for l in [0,2,4]:
@@ -899,7 +967,8 @@ class PTEmu:
         if self.use_Mpc:
             PL_spline = interp1d(self.k_table, self.Pk_lin, kind='cubic')
         else:
-            PL_spline = interp1d(self.k_table/self.params['h'], self.Pk_lin*self.params['h']**3, kind='cubic')
+            PL_spline = interp1d(self.k_table/self.params['h'],
+                                 self.Pk_lin*self.params['h']**3, kind='cubic')
 
         return PL_spline(k)
 
