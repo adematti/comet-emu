@@ -400,7 +400,7 @@ class Tables:
 
 
 
-class PTEmu_woAP:
+class PTEmu:
     def __init__(self, params, use_Mpc=True,
                  fid_LCDM_params={'wc':0.11544,'wb':0.0222191,'ns':0.9632,'h':0.695, 'As':2.2078559, 'z':1.0}):
 
@@ -746,74 +746,56 @@ class PTEmu_woAP:
                          cnlo/self.kHD_emu**4, b1**2, b1*b2, b1*g2, b1*g21, b2**2, b2*g2, g2**2, b2, g2, g21])
 
 
-    def Pell_fid_ktable(self, params, ell):
-        ell = [ell] if not isinstance(ell, list) else ell
-        emu_params_updated = self.update_params(params)
-        params_shape = np.array([self.params[p] for p in self.params_shape_list])
-        params_all   = np.array([self.params[p] for p in self.params_list_emu])
-
-        if self.Pk_lin is None or emu_params_updated:
-            sigma12 = self.training['SHAPE'].transform_inv(self.emu['s12'].predict(params_shape[None,:])[0][0], 's12')
-            self.Pk_lin = self.training['SHAPE'].transform_inv(self.emu['PL'].predict(params_shape[None,:])[0][0], 'PL')
-            self.Pk_lin *= (self.params['s12']/sigma12)**2
-
-        Pell = np.zeros([self.nk,len(ell)])
-        for i,l in enumerate(ell):
-            bij = self.get_bias_coeff(l)
-            if self.Pk_ratios[l] is None or emu_params_updated:
-                self.Pk_ratios[l] = self.training['FULL'].transform_inv(self.emu[l].predict(params_all[None,:])[0][0], l)
-
-            Pk_bij = np.zeros([self.nk,self.n_diagrams-2])
-            Pk_bij[:,:7]                        = np.multiply(self.Pk_ratios[l][:7*self.nk].reshape((7,self.nk)), self.Pk_lin).T
-            Pk_bij[(self.nk-self.nkloop):,7:17] = np.multiply(self.Pk_ratios[l][7*self.nk:].reshape((10,self.nkloop)), self.Pk_lin[(self.nk-self.nkloop):]).T
-
-            Pell[:,i] = np.dot(bij,Pk_bij.T)
-
-            # add shot noise
-            if l == 0:
-                N0   = self.params['N0'] if self.use_Mpc else self.params['N0']/self.params['h']**3
-                N20  = self.params['N20'] if self.use_Mpc else self.params['N20']/self.params['h']**5
-                Pell[:,i] += np.ones_like(self.k_table)*N0/self.nbar + self.k_table**2*N20/self.nbar/self.kHD**2
-            elif l == 2:
-                N22  = self.params['N22'] if self.use_Mpc else self.params['N22']/self.params['h']**5
-                Pell[:,i] += self.k_table**2*N22/self.nbar/self.kHD**2
-
-        return Pell
-
-
-    def Pell_DEmodel_fid_ktable(self, params, ell, de_model):
-        ell = [ell] if not isinstance(ell, list) else ell
+    def eval_emulator(self, params, ell, de_model=None):
         emu_params_updated = self.update_params(params, de_model=de_model)
         params_shape = np.array([self.params[p] for p in self.params_shape_list])
 
-        if self.Pk_lin is None or emu_params_updated:
-            sigma12 = self.training['SHAPE'].transform_inv(self.emu['s12'].predict(params_shape[None,:])[0][0], 's12')
-            self.Pk_lin = self.training['SHAPE'].transform_inv(self.emu['PL'].predict(params_shape[None,:])[0][0], 'PL')
+        if de_model is None:
+            params_all = np.array([self.params[p] for p in self.params_list_emu])
 
-            # compute growth factors corresponding to fiducial and target parameters + growth rate
-            Om0_fid = (self.params['wc']+self.params['wb'])/self.fid_LCDM_params['h']**2
-            H0_fid = 100*self.fid_LCDM_params['h']
-            self.cosmo.update_cosmology(Om0=Om0_fid, H0=H0_fid)
-            Dfid = self.cosmo.growth_factor(self.fid_LCDM_params['z'])
+            if self.Pk_lin is None or emu_params_updated:
+                sigma12 = self.training['SHAPE'].transform_inv(self.emu['s12'].predict(params_shape[None,:])[0][0], 's12')
+                self.Pk_lin = self.training['SHAPE'].transform_inv(self.emu['PL'].predict(params_shape[None,:])[0][0], 'PL')
+                self.Pk_lin *= (self.params['s12']/sigma12)**2
 
-            Om0 = (self.params['wc']+self.params['wb'])/self.params['h']**2
-            H0 = 100*self.params['h']
-            self.cosmo.update_cosmology(Om0=Om0, H0=H0, Ok0=self.params['Ok'], de_model=de_model, w0=self.params['w0'], wa=self.params['wa'])
-            D, f = self.cosmo.growth_factor(self.params['z'], get_growth_rate=True)
+            for l in ell:
+                if self.Pk_ratios[l] is None or emu_params_updated:
+                    self.Pk_ratios[l] = self.training['FULL'].transform_inv(self.emu[l].predict(params_all[None,:])[0][0], l)
+        else:
+            if self.Pk_lin is None or emu_params_updated:
+                sigma12 = self.training['SHAPE'].transform_inv(self.emu['s12'].predict(params_shape[None,:])[0][0], 's12')
+                self.Pk_lin = self.training['SHAPE'].transform_inv(self.emu['PL'].predict(params_shape[None,:])[0][0], 'PL')
 
-            # rescale linear power spectrum and sigma12
-            self.Pk_lin *= self.params['As']/self.fid_LCDM_params['As']*(D/Dfid)**2
-            self.params['s12'] = sigma12[0]*np.sqrt(params['As']/self.fid_LCDM_params['As'])*(D/Dfid)
-            self.params['f'] = f
+                # compute growth factors corresponding to fiducial and target parameters + growth rate
+                Om0_fid = (self.params['wc']+self.params['wb'])/self.fid_LCDM_params['h']**2
+                H0_fid = 100*self.fid_LCDM_params['h']
+                self.cosmo.update_cosmology(Om0=Om0_fid, H0=H0_fid)
+                Dfid = self.cosmo.growth_factor(self.fid_LCDM_params['z'])
 
-        params_all = np.array([self.params[p] for p in self.params_list_emu],dtype=object)
+                Om0 = (self.params['wc']+self.params['wb'])/self.params['h']**2
+                H0 = 100*self.params['h']
+                self.cosmo.update_cosmology(Om0=Om0, H0=H0, Ok0=self.params['Ok'], de_model=de_model, w0=self.params['w0'], wa=self.params['wa'])
+                D, f = self.cosmo.growth_factor(self.params['z'], get_growth_rate=True)
+
+                # rescale linear power spectrum and sigma12
+                self.Pk_lin *= self.params['As']/self.fid_LCDM_params['As']*(D/Dfid)**2
+                self.params['s12'] = sigma12[0]*np.sqrt(params['As']/self.fid_LCDM_params['As'])*(D/Dfid)
+                self.params['f'] = f
+
+            params_all = np.array([self.params[p] for p in self.params_list_emu],dtype=object)
+
+            for l in ell:
+                if self.Pk_ratios[l] is None or emu_params_updated:
+                    self.Pk_ratios[l] = self.training['FULL'].transform_inv(self.emu[l].predict(params_all[None,:])[0][0], l)
+
+
+    def Pell_fid_ktable(self, params, ell, de_model=None):
+        ell = [ell] if not isinstance(ell, list) else ell
+        self.eval_emulator(params, ell, de_model=de_model)
 
         Pell = np.zeros([self.nk,len(ell)])
         for i,l in enumerate(ell):
             bij = self.get_bias_coeff(l)
-
-            if self.Pk_ratios[l] is None or emu_params_updated:
-                self.Pk_ratios[l] = self.training['FULL'].transform_inv(self.emu[l].predict(params_all[None,:])[0][0], l)
 
             Pk_bij = np.zeros([self.nk,self.n_diagrams-2])
             Pk_bij[:,:7]                        = np.multiply(self.Pk_ratios[l][:7*self.nk].reshape((7,self.nk)), self.Pk_lin).T
@@ -860,10 +842,7 @@ class PTEmu_woAP:
 
         if any([params[p] != self.params[p] for p in params.keys()]):
             self.splines_up_to_date = [False]*3
-            if de_model is None:
-                Pell = self.Pell_fid_ktable(params, ell=[0,2,4])
-            else:
-                Pell = self.Pell_DEmodel_fid_ktable(params, ell=[0,2,4], de_model=de_model)
+            Pell = self.Pell_fid_ktable(params, ell=[0,2,4], de_model=de_model)
             for i,l in enumerate([0,2,4]):
                 if self.use_Mpc:
                     self.Pell_spline[l] = interp1d(self.k_table, Pell[:,i], kind='cubic')
@@ -892,7 +871,37 @@ class PTEmu_woAP:
         return Pell_dict
 
 
-    # def Pdw(self, k, mu, params, de_model=None):
+    def Pdw(self, k, mu, params, de_model=None):
+        self.eval_emulator(params, ell=[0,2,4], de_model=de_model)
+
+        Pdw_ell = np.zeros([self.nk,3])
+        for i,l in enumerate([0,2,4]):
+            Pdw_ell[:,i] = self.Pk_ratios[l][:self.nk]
+        Pdw_ell = (Pdw_ell.T*self.Pk_lin).T
+
+        Pdw_spline = {}
+        for i,l in enumerate([0,2,4]):
+            if self.use_Mpc:
+                Pdw_spline[l] = interp1d(self.k_table, Pdw_ell[:,i], kind='cubic')
+            else:
+                Pdw_spline[l] = interp1d(self.k_table/self.params['h'], Pdw_ell[:,i]*self.params['h']**3, kind='cubic')
+
+        Pdw_2d = 0.
+        for l in [0,2,4]:
+            Pdw_2d += np.outer(Pdw_spline[l](k), eval_legendre(l, mu))
+
+        return Pdw_2d
+
+
+    def PL(self, k, params, de_model=None):
+        self.eval_emulator(params, ell=[], de_model=de_model)
+
+        if self.use_Mpc:
+            PL_spline = interp1d(self.k_table, self.Pk_lin, kind='cubic')
+        else:
+            PL_spline = interp1d(self.k_table/self.params['h'], self.Pk_lin*self.params['h']**3, kind='cubic')
+
+        return PL_spline(k)
 
 
     def Pell_from_table_fid_ktable(self, table, params, ell):
