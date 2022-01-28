@@ -899,7 +899,10 @@ class PTEmu:
         else:
             k_list = [k]*len(ell)
 
-        if any([params[p] != self.params[p] for p in params.keys()]):
+        if any([params[p] != self.params[p] for p in params.keys()]) \
+                or any(p not in params.keys() for p in
+                       [x for x in self.bias_params_list + self.RSD_params_list
+                        if self.params[x] != 0]):
             self.splines_up_to_date = [False]*3
             Pell = self.Pell_fid_ktable(params, ell=[0,2,4], de_model=de_model)
             for i,l in enumerate([0,2,4]):
