@@ -964,6 +964,45 @@ class PTEmu:
         return Pdw_2d
 
 
+    def PX(self, k, mu, params, X, de_model=None):
+        ids = None
+        for n,diagram in enumerate(['P0L_b1b1', 'PNL_b1', 'PNL_id','Pctr_clo',
+                                    'Pctr_b1b1cnlo','Pctr_b1cnlo','Pctr_cnlo','P1L_b1b1',
+                                    'P1L_b1b2','P1L_b1g2','P1L_b1g21','P1L_b2b2',
+                                    'P1L_b2g2','P1L_g2g2','P1L_b2','P1L_g2','P1L_g21']):
+            if diagram == X:
+                if n < 7:
+                    ids = [n*self.nk, (n+1)*self.nk]
+                else:
+                    ids = [7*self.nk + (n-7)*self.nkloop, 7*self.nk + (n-6)*self.nkloop]
+
+        if ids is not None:
+            self.eval_emulator(params, ell=[0,2,4], de_model=de_model)
+
+            PX_ell = np.zeros([ids[1]-ids[0], 3])
+            for i,l in enumerate([0,2,4]):
+                PX_ell[:,i] = self.Pk_ratios[l][ids[0]:ids[1]]
+            PX_ell = (PX_ell.T*self.Pk_lin[self.nk - (ids[1]-ids[0]):]).T
+
+            PX_spline = {}
+            for i,l in enumerate([0,2,4]):
+                if self.use_Mpc:
+                    PX_spline[l] = interp1d(self.k_table, PX_ell[:,i],
+                                            kind='cubic')
+                else:
+                    PX_spline[l] = interp1d(self.k_table/self.params['h'],
+                                            PX_ell[:,i]*self.params['h']**3,
+                                            kind='cubic')
+
+            PX_2d = 0.
+            for l in [0,2,4]:
+                PX_2d += np.outer(PX_spline[l](k), eval_legendre(l, mu))
+        else:
+            raise ValueError('{}: invalid identifier.'.format(X))
+
+        return PX_2d
+
+
     def PL(self, k, params, de_model=None):
         self.eval_emulator(params, ell=[], de_model=de_model)
 
