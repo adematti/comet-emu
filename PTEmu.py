@@ -982,22 +982,24 @@ class PTEmu:
 
     def PX(self, k, mu, params, X, de_model=None):
         ids = None
-        for n,diagram in enumerate(['P0L_b1b1', 'PNL_b1', 'PNL_id','Pctr_clo',
-                                    'Pctr_b1b1cnlo','Pctr_b1cnlo','Pctr_cnlo','P1L_b1b1',
-                                    'P1L_b1b2','P1L_b1g2','P1L_b1g21','P1L_b2b2',
-                                    'P1L_b2g2','P1L_g2g2','P1L_b2','P1L_g2','P1L_g21']):
+        for n,diagram in enumerate(
+                ['P0L_b1b1', 'PNL_b1', 'PNL_id','Pctr_clo',
+                'Pctr_b1b1cnlo','Pctr_b1cnlo','Pctr_cnlo','P1L_b1b1',
+                'P1L_b1b2','P1L_b1g2','P1L_b1g21','P1L_b2b2',
+                'P1L_b2g2','P1L_g2g2','P1L_b2','P1L_g2','P1L_g21']):
             if diagram == X:
                 if n < 7:
                     ids = [n*self.nk, (n+1)*self.nk]
                 else:
-                    ids = [7*self.nk + (n-7)*self.nkloop, 7*self.nk + (n-6)*self.nkloop]
+                    ids = [7*self.nk + (n-7)*self.nkloop,
+                           7*self.nk + (n-6)*self.nkloop]
 
         if ids is not None:
             self.eval_emulator(params, ell=[0,2,4], de_model=de_model)
 
-            PX_ell = np.zeros([ids[1]-ids[0], 3])
+            PX_ell = np.zeros([self.nk, 3])
             for i,l in enumerate([0,2,4]):
-                PX_ell[:,i] = self.Pk_ratios[l][ids[0]:ids[1]]
+                PX_ell[self.nk - (ids[1]-ids[0]):,i] = self.Pk_ratios[l][ids[0]:ids[1]]
             PX_ell = (PX_ell.T*self.Pk_lin[self.nk - (ids[1]-ids[0]):]).T
 
             PX_spline = {}
@@ -1101,18 +1103,21 @@ class PTEmu:
             P2 = Pell['ell2']
             P4 = Pell['ell4']
 
-            if l1==l2==0:
+            if l1 == l2 == 0:
                 cov = P0**2 + 1./5.*P2**2 + 1./9.*P4**2
-            elif l1==0 and l2==2:
+            elif l1 == 0 and l2 == 2:
                 cov = 2*P0*P2 + 2/7.*P2**2 + 4/7.*P2*P4+ 100/693.*P4**2
-            elif l1==l2==2:
-                cov = 5*P0**2 + 20/7*P0*P2 + 20/7*P0*P4 + 15/7.*P2**2 + 120/77.*P2*P4 + 8945/9009.*P4**2
-            elif l1==0 and l2==4:
+            elif l1 == l2 == 2:
+                cov = 5*P0**2 + 20/7*P0*P2 + 20/7*P0*P4 + 15/7.*P2**2 \
+                    + 120/77.*P2*P4 + 8945/9009.*P4**2
+            elif l1 == 0 and l2 == 4:
                 cov = 2*P0*P4 + 18/35*P2**2 + 40/77*P2*P4 + 162/1001.*P4**2
-            elif l1==2 and l2==4:
-                cov = 36/7*P0*P2 + 200/77*P0*P4 + 108/77.*P2**2 + 3578/1001*P2*P4 + 900/1001*P4**2
-            elif l1==l2==4:
-                cov = 9*P0**2 + 360/77*P0*P2 + 2916/1001*P0*P4 + 16101/5005*P2**2 + 3240/1001*P2*P4 + 42849/17017*P4**2
+            elif l1 == 2 and l2 == 4:
+                cov = 36/7*P0*P2 + 200/77*P0*P4 + 108/77.*P2**2 \
+                    + 3578/1001*P2*P4 + 900/1001*P4**2
+            elif l1 == l2 == 4:
+                cov = 9*P0**2 + 360/77*P0*P2 + 2916/1001*P0*P4 \
+                    + 16101/5005*P2**2 + 3240/1001*P2*P4 + 42849/17017*P4**2
         else:
             cov = Pell['ell0']**2
 
@@ -1120,7 +1125,10 @@ class PTEmu:
         return cov
 
 
-    def Pell_covariance(self, k, params, ell, dk, de_model=None, alpha_tr_lo=None, volume=None, zmin=None, zmax=None, fsky=15000./(360**2/np.pi), volfac=1):
+    def Pell_covariance(self, k, params, ell, dk, de_model=None,
+                        alpha_tr_lo=None, W_damping=None,
+                        volume=None, zmin=None, zmax=None,
+                        fsky=15000./(360**2/np.pi), volfac=1):
         ell = [ell] if not isinstance(ell, list) else ell
         if not isinstance(k, list):
             k = [np.array(k)]*len(ell)
@@ -1134,13 +1142,16 @@ class PTEmu:
 
         k_all = np.unique(np.hstack(k))
         ell_for_cov = [0,2,4] if 'f' in self.params_list else 0
-        Pell = self.Pell(k_all, params, ell=ell_for_cov, de_model=de_model, alpha_tr_lo=alpha_tr_lo)
+        Pell = self.Pell(k_all, params, ell=ell_for_cov, de_model=de_model,
+                         alpha_tr_lo=alpha_tr_lo, W_damping=W_damping)
         Pell['ell0'] += 1./self.nbar
 
         if de_model is not None and volume is None:
             Om0 = (self.params['wc']+self.params['wb'])/self.params['h']**2
             H0 = 100*self.params['h']
-            self.cosmo.update_cosmology(Om0=Om0, H0=H0, Ok0=self.params['Ok'], de_model=de_model, w0=self.params['w0'], wa=self.params['wa'])
+            self.cosmo.update_cosmology(Om0=Om0, H0=H0, Ok0=self.params['Ok'],
+                                        de_model=de_model, w0=self.params['w0'],
+                                        wa=self.params['wa'])
             volume = volfac*self.cosmo.comoving_volume(zmin, zmax, fsky)
             if not self.use_Mpc:
                 volume *= self.params['h']**3
@@ -1151,9 +1162,16 @@ class PTEmu:
             for j,l2 in enumerate(ell):
                 if j >= i:
                     kij, id1, id2 = np.intersect1d(k[i],k[j],return_indices=True)
-                    cov[sum(nbin[:i]):sum(nbin[:i+1]),sum(nbin[:j]):sum(nbin[:j+1])][id1,id2] = self.Gaussian_covariance(l1, l2, k_all, dk, Pell, volume)[np.intersect1d(k_all, kij, return_indices=True)[1]]
+                    ids_ij = np.intersect1d(k_all, kij, return_indices=True)[1]
+                    cov_l1l2 = self.Gaussian_covariance(
+                        l1, l2, k_all, dk, Pell, volume)[ids_ij]
+                    cov[sum(nbin[:i]):sum(nbin[:i+1]),
+                        sum(nbin[:j]):sum(nbin[:j+1])][id1,id2] = cov_l1l2
                 else:
-                    cov[sum(nbin[:i]):sum(nbin[:i+1]),sum(nbin[:j]):sum(nbin[:j+1])] = cov[sum(nbin[:j]):sum(nbin[:j+1]),sum(nbin[:i]):sum(nbin[:i+1])].T
+                    cov[sum(nbin[:i]):sum(nbin[:i+1]),
+                        sum(nbin[:j]):sum(nbin[:j+1])] = \
+                        cov[sum(nbin[:j]):sum(nbin[:j+1]),
+                            sum(nbin[:i]):sum(nbin[:i+1])].T
 
         return cov
 
@@ -1194,12 +1212,14 @@ class PTEmu:
         return cov
 
 
-    def chi2(self, params, kmax, de_model=None, alpha_tr_lo=None):
-        if not self.kmax_is_set or (self.kmax != kmax and self.kmax != [kmax for i in range(self.n_ell)]):
+    def chi2(self, params, kmax, de_model=None, alpha_tr_lo=None, W_damping=None):
+        if not self.kmax_is_set or (self.kmax != kmax and \
+                self.kmax != [kmax for i in range(self.n_ell)]):
             self.set_kmax(kmax)
 
         ell = [2*l for l in range(self.n_ell) if self.nbin[l] > 0]
-        Pell = self.Pell(self.k_bins, params, ell, de_model=de_model, alpha_tr_lo=alpha_tr_lo)
+        Pell = self.Pell(self.k_bins, params, ell, de_model=de_model,
+                         alpha_tr_lo=alpha_tr_lo, W_damping=W_damping)
         Pell_list = np.hstack([Pell['ell{}'.format(l)] for l in ell])
 
         diff = Pell_list - self.P_data_kmax
@@ -1208,7 +1228,8 @@ class PTEmu:
 
 
     def chi2_from_table(self, table, params, kmax):
-        if not self.kmax_is_set or (self.kmax != kmax and self.kmax != [kmax for i in range(self.n_ell)]):
+        if not self.kmax_is_set or (self.kmax != kmax and \
+                self.kmax != [kmax for i in range(self.n_ell)]):
             self.set_kmax(kmax)
 
         Pell_model = np.zeros(sum(self.nbin))
