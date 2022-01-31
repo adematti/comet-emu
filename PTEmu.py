@@ -327,7 +327,7 @@ class Tables:
 
 
     def transform(self, table, data_type):
-        if data_type not in ['PL','s12']:
+        if data_type not in ['PL','s12','sv']:
             self.flip[data_type], self.offset[data_type] = self.get_flip_and_offset(table.T)
         else:
             self.flip[data_type]    = np.ones(table.shape[1])
@@ -496,6 +496,8 @@ class PTEmu:
         if data_type is None:
             self.emu['PL'] = self.training['SHAPE'].GPy_model('PL')
             self.emu['s12'] = self.training['SHAPE'].GPy_model('s12')
+            if self.RSD_model == 'VIR':
+                self.emu['sv'] = self.training['SHAPE'].GPy_model('sv')
             for ell in [0,2,4]:
                 self.emu[ell] = self.training['FULL'].GPy_model(ell)
 
@@ -505,7 +507,7 @@ class PTEmu:
         else:
             data_type = [data_type] if not isinstance(data_type, list) else data_type
             for dt in data_type:
-                if dt in ['PL','s12']:
+                if dt in ['PL','s12','sv']:
                     self.emu[dt] = self.training['SHAPE'].GPy_model(dt)
                 else:
                     self.emu[dt] = self.training['FULL'].GPy_model(dt)
@@ -591,8 +593,6 @@ class PTEmu:
             self.n_ell = self.P_data.shape[1]
         if Cov_data is not None:
             self.Cov_data = np.copy(Cov_data)
-
-        self.splines_up_to_date = [False]*3
 
         self.theory_cov = theory_cov
         if not self.theory_cov:
@@ -873,14 +873,16 @@ class PTEmu:
         if self.RSD_model == 'EFT':
             def integrand(mu):
                 mu2 = mu**2
-                APfac = np.sqrt(mu2/self.params['alpha_lo']**2 + (1. - mu2)/self.params['alpha_tr']**2)
+                APfac = np.sqrt(mu2/self.params['alpha_lo']**2
+                                + (1. - mu2)/self.params['alpha_tr']**2)
                 kp = k*APfac
                 mup = mu/self.params['alpha_lo']/APfac
                 return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
         elif self.RSD_model == 'VIR':
             def integrand(mu):
                 mu2 = mu**2
-                APfac = np.sqrt(mu2/self.params['alpha_lo']**2 + (1. - mu2)/self.params['alpha_tr']**2)
+                APfac = np.sqrt(mu2/self.params['alpha_lo']**2
+                                + (1. - mu2)/self.params['alpha_tr']**2)
                 kp = k*APfac
                 mup = mu/self.params['alpha_lo']/APfac
                 P2d_damped = P2d(kp, mup) * self.W_kurt(kp, mup)
