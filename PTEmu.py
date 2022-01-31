@@ -502,11 +502,12 @@ class PTEmu:
 
     def train_emulator(self, max_f_eval=1000, num_restarts=5, data_type=None):
         if data_type is None:
+            ell_train = [0,2,4] if 'f' in self.params_list else [0]
             self.emu['PL'] = self.training['SHAPE'].GPy_model('PL')
             self.emu['s12'] = self.training['SHAPE'].GPy_model('s12')
             if self.RSD_model == 'VIR':
                 self.emu['sv'] = self.training['SHAPE'].GPy_model('sv')
-            for ell in [0,2,4]:
+            for ell in ell_train:
                 self.emu[ell] = self.training['FULL'].GPy_model(ell)
 
             for dt in self.emu.keys():
@@ -525,10 +526,11 @@ class PTEmu:
 
     def save_emulator(self, fname_base, data_type=None):
         if data_type is None:
+            ell_train = [0,2,4] if 'f' in self.params_list else [0]
             for dt in ['PL','s12']:
                 with open('{}_{}.pickle'.format(fname_base, dt), "wb") as f:
                     pickle.dump(self.emu[dt], f)
-            for ell in [0,2,4]:
+            for ell in ell_train:
                 with open('{}_ratios_ell{}.pickle'.format(fname_base, ell), "wb") as f:
                     pickle.dump(self.emu[ell], f)
         else:
@@ -544,9 +546,10 @@ class PTEmu:
 
     def load_emulator(self, fname_base, data_type=None):
         if data_type is None:
+            ell_train = [0,2,4] if 'f' in self.params_list else [0]
             for dt in ['PL','s12']:
                 self.emu[dt] = pickle.load(open('{}_{}.pickle'.format(fname_base, dt), "rb"))
-            for ell in [0,2,4]:
+            for ell in ell_train:
                 self.emu[ell] = pickle.load(open('{}_ratios_ell{}.pickle'.format(fname_base, ell), "rb"))
         else:
             data_type = [data_type] if not isinstance(data_type, list) else data_type
@@ -876,9 +879,11 @@ class PTEmu:
 
 
     def Pell(self, k, params, ell, de_model=None, alpha_tr_lo=None, W_damping=None):
+        ell_for_recon = [0,2,4] if 'f' in self.params_list else [0]
+
         def P2d(q, mu):
             t = 0.
-            for l in [0,2,4]:
+            for l in ell_for_recon:
                 t += eval_legendre(l, mu)*self.Pell_spline[l](q)
             return t
 
@@ -915,13 +920,16 @@ class PTEmu:
         else:
             k_list = [k]*len(ell)
 
-        if any([params[p] != self.params[p] for p in params.keys()]) \
-                or any(p not in params.keys() for p in
-                       [x for x in self.bias_params_list + self.RSD_params_list
-                        if self.params[x] != 0]):
+        params_updated = [params[p] != self.params[p] for p in params.keys()]
+        params_nonzero = [x for x in self.bias_params_list \
+                          + self.RSD_params_list if self.params[x] != 0]
+
+        if any(params_updated) or \
+                any(p not in params.keys() for p in params_nonzero):
             self.splines_up_to_date = [False]*3
-            Pell = self.Pell_fid_ktable(params, ell=[0,2,4], de_model=de_model)
-            for i,l in enumerate([0,2,4]):
+            Pell = self.Pell_fid_ktable(params, ell=ell_for_recon,
+                                        de_model=de_model)
+            for i,l in enumerate(ell_for_recon):
                 if self.use_Mpc:
                     self.Pell_spline[l] = interp1d(self.k_table, Pell[:,i],
                                                    kind='cubic')
@@ -949,8 +957,8 @@ class PTEmu:
 
         Pell_dict = {}
         for i,l in enumerate(ell):
-            Pell_dict['ell{}'.format(l)] = Pell_model[np.intersect1d(
-                k, k_list[i], return_indices=True)[1],i]
+            ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
+            Pell_dict['ell{}'.format(l)] = Pell_model[ids,i]
 
         return Pell_dict
 
