@@ -845,19 +845,25 @@ class PTEmu:
 
             Pk_bij = np.zeros([self.nk,self.n_diagrams-2])
             Pk_bij[:,:7]                        = np.multiply(
-                self.Pk_ratios[l][:7*self.nk].reshape((7,self.nk)), self.Pk_lin).T
+                self.Pk_ratios[l][:7*self.nk].reshape(
+                (7,self.nk)), self.Pk_lin).T
             Pk_bij[(self.nk-self.nkloop):,7:17] = np.multiply(
-                self.Pk_ratios[l][7*self.nk:].reshape((10,self.nkloop)), self.Pk_lin[(self.nk-self.nkloop):]).T
+                self.Pk_ratios[l][7*self.nk:].reshape(
+                    (10,self.nkloop)), self.Pk_lin[(self.nk-self.nkloop):]).T
 
             Pell[:,i] = np.dot(bij,Pk_bij.T)
 
             # add shot noise
             if l == 0:
-                N0   = self.params['N0'] if self.use_Mpc else self.params['N0']/self.params['h']**3
-                N20  = self.params['N20'] if self.use_Mpc else self.params['N20']/self.params['h']**5
-                Pell[:,i] += np.ones_like(self.k_table)*N0/self.nbar + self.k_table**2*N20/self.nbar/self.kHD**2
+                N0   = self.params['N0'] if self.use_Mpc
+                    else self.params['N0']/self.params['h']**3
+                N20  = self.params['N20'] if self.use_Mpc
+                    else self.params['N20']/self.params['h']**5
+                Pell[:,i] += np.ones_like(self.k_table)*N0/self.nbar \
+                           + self.k_table**2*N20/self.nbar/self.kHD**2
             elif l == 2:
-                N22  = self.params['N22'] if self.use_Mpc else self.params['N22']/self.params['h']**5
+                N22  = self.params['N22'] if self.use_Mpc
+                    else self.params['N22']/self.params['h']**5
                 Pell[:,i] += self.k_table**2*N22/self.nbar/self.kHD**2
 
         return Pell
@@ -869,7 +875,7 @@ class PTEmu:
         return 1./np.sqrt(t2)*np.exp(t1*self.params['sv']**2/t2)
 
 
-    def Pell(self, k, params, ell, de_model=None, alpha_tr_lo=None):
+    def Pell(self, k, params, ell, de_model=None, alpha_tr_lo=None, W_damping=None):
         def P2d(q, mu):
             t = 0.
             for l in [0,2,4]:
@@ -885,13 +891,15 @@ class PTEmu:
                 mup = mu/self.params['alpha_lo']/APfac
                 return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
         elif self.RSD_model == 'VIR':
+            if W_damping is None:
+                W_damping = self.W_kurt
             def integrand(mu):
                 mu2 = mu**2
                 APfac = np.sqrt(mu2/self.params['alpha_lo']**2
                                 + (1. - mu2)/self.params['alpha_tr']**2)
                 kp = k*APfac
                 mup = mu/self.params['alpha_lo']/APfac
-                P2d_damped = P2d(kp, mup) * self.W_kurt(kp, mup)
+                P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
                 return np.outer(P2d_damped, eval_legendre(ell, mu))
         else:
             raise ValueError('Unsupported RSD model.')
