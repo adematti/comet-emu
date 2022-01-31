@@ -396,23 +396,28 @@ class Tables:
         kernel = GPy.kern.RBF(input_dim=self.n_params,
                               variance=np.var(self.model_transformed[data_type]),
                               lengthscale=np.ones(self.n_params), ARD=True)
-        return GPy.models.GPRegression(self.samples, self.model_transformed[data_type], kernel)
+        return GPy.models.GPRegression(
+            self.samples, self.model_transformed[data_type], kernel)
 
 
 
 class PTEmu:
-    def __init__(self, params, use_Mpc=True,
-                 fid_LCDM_params={'wc':0.11544,'wb':0.0222191,'ns':0.9632,'h':0.695, 'As':2.2078559, 'z':1.0}):
+    def __init__(self, params, use_Mpc=True, fname_base=None,
+                 fid_LCDM_params={'wc':0.11544,'wb':0.0222191,'ns':0.9632,
+                                  'h':0.695,'As':2.2078559,'z':1.0}):
 
-        self.params_shape_list    = [key for key,val in params.items() if 'SHAPE' in val]
+        self.params_shape_list    = [key for key,val in params.items() \
+                                     if 'SHAPE' in val]
         self.params_list          = [p for p in params.keys()]
-        self.bias_params_list     = ['b1','b2','g2','g21','c0','c2','c4','cnlo','N0','N20','N22']
+        self.bias_params_list     = ['b1','b2','g2','g21','c0','c2','c4','cnlo',
+                                     'N0','N20','N22']
         self.RSD_params_list      = []
         self.de_model_params_list = {'lambda':['h','As','Ok','z'],
                                      'w0':['h','As','Ok','w0','z'],
                                      'w0wa':['h','As','Ok','w0','wa','z']}
 
-        self.params             = {p:0. for p in self.params_list + self.bias_params_list + self.de_model_params_list['w0wa']}
+        self.params             = {p:0. for p in self.params_list + \
+            self.bias_params_list + self.de_model_params_list['w0wa']}
         self.params['w0']       = -1
         self.params['alpha_tr'] = 1
         self.params['alpha_lo'] = 1
@@ -420,7 +425,6 @@ class PTEmu:
 
         self.use_Mpc  = use_Mpc
         self.nbar     = 1. # in units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
-        self.nbar_emu = self.nbar*(1./self.fid_LCDM_params['h'])**3 # convert to units of (Mpc/hfid_emu)^-3 or (Mpc h/hfid_emu)^-3, necessary because the table is in units of 1/hfid_emu^3
         self.kHD      = 0.278 if self.use_Mpc else 0.4
         self.kHD_emu  = self.kHD*1./self.fid_LCDM_params['h'] # convert to units of hfid_emu 1/Mpc or hfid_emu/h 1/Mpc
 
@@ -444,6 +448,10 @@ class PTEmu:
         self.emu_params_updated = False
         self.kmax_is_set        = False
         self.AP_was_fixed       = False
+
+        if fname_base is not None:
+            self.load_emulator_data(fname='{}.fits'.format(fname_base))
+            self.load_emulator(fname_base=fname_base)
 
 
     def generate_samples(self, type, ranges, n_samples, n_trials=0, validation=False):
@@ -553,7 +561,6 @@ class PTEmu:
         if use_Mpc != self.use_Mpc:
             self.use_Mpc = use_Mpc
             self.nbar = 1. # in units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
-            self.nbar_emu = self.nbar*(1./self.fid_LCDM_params['h'])**3 # convert to units of (Mpc/hfid_emu)^-3 or (Mpc h/hfid_emu)^-3, necessary because the table is in units of 1/hfid_emu^3
             self.kHD = 0.278 if self.use_Mpc else 0.4
             self.kHD_emu = self.kHD*1./self.fid_LCDM_params['h'] # convert to units of hfid_emu 1/Mpc or hfid_emu/h 1/Mpc
             try:
@@ -577,7 +584,6 @@ class PTEmu:
     def define_normalisation(self, nbar=None, kHD=None):
         if nbar is not None:
             self.nbar     = np.copy(nbar)
-            self.nbar_emu = self.nbar*(1./self.fid_LCDM_params['h'])**3 # convert to units of (Mpc/hfid_emu)^-3 or (Mpc h/hfid_emu)^-3, necessary because the table is in units of 1/hfid_emu^3
         if kHD is not None:
             self.kHD      = np.copy(kHD)
             self.kHD_emu  = self.kHD*1./self.fid_LCDM_params['h'] # convert to units of hfid_emu 1/Mpc or hfid_emu/h 1/Mpc
