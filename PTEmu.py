@@ -425,8 +425,6 @@ class PTEmu:
 
         self.use_Mpc  = use_Mpc
         self.nbar     = 1. # in units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
-        self.kHD      = 0.278 if self.use_Mpc else 0.4
-        self.kHD_emu  = self.kHD*1./self.fid_LCDM_params['h'] # convert to units of hfid_emu 1/Mpc or hfid_emu/h 1/Mpc
 
         self.n_diagrams = 19
 
@@ -444,6 +442,8 @@ class PTEmu:
         self.Pk_lin    = None
         self.Pk_ratios = {0:None, 2:None, 4:None}
         self.Pell_spline = {}
+
+        self.splines_up_to_date = False
 
         self.emu_params_updated = False
         self.kmax_is_set        = False
@@ -564,8 +564,6 @@ class PTEmu:
         if use_Mpc != self.use_Mpc:
             self.use_Mpc = use_Mpc
             self.nbar = 1. # in units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
-            self.kHD = 0.278 if self.use_Mpc else 0.4
-            self.kHD_emu = self.kHD*1./self.fid_LCDM_params['h'] # convert to units of hfid_emu 1/Mpc or hfid_emu/h 1/Mpc
             try:
                 self.k_data
             except:
@@ -580,18 +578,14 @@ class PTEmu:
                 self.Cov_data = None
             if self.kmax_is_set:
                 self.kmax_is_set = False
-            self.splines_up_to_date = [False]*3
-            print('Normalisation scales resetted. Data set (if defined) cleared.')
+            self.splines_up_to_date = False
+            nbar_unit = '(1/Mpc)^3' if self.use_Mpc else '(h/Mpc)^3'
+            print('Number density resetted to nbar = 1 {}. Data set (if defined) cleared.'.format(nbar_unit))
 
 
-    def define_normalisation(self, nbar=None, kHD=None):
-        if nbar is not None:
-            self.nbar     = np.copy(nbar)
-        if kHD is not None:
-            self.kHD      = np.copy(kHD)
-            self.kHD_emu  = self.kHD*1./self.fid_LCDM_params['h'] # convert to units of hfid_emu 1/Mpc or hfid_emu/h 1/Mpc
-
-        self.splines_up_to_date = [False]*3
+    def define_nbar(self, nbar):
+        self.nbar     = np.copy(nbar)
+        self.splines_up_to_date = False
 
 
     def define_data_set(self, k_data=None, P_data=None, Cov_data=None, theory_cov=True, Nrealizations=None):
@@ -739,17 +733,13 @@ class PTEmu:
         g2   = self.params['g2']
         g21  = self.params['g21']
         cell = self.params['c{}'.format(ell)] if self.use_Mpc \
-            else self.params['c{}'.format(ell)]/self.params['h']**2
+             else self.params['c{}'.format(ell)]/self.params['h']**2
         cnlo = self.params['cnlo'] if self.use_Mpc \
-            else self.params['cnlo']/self.params['h']**4
-
-        kHD_emu2 = self.kHD_emu**2
-        kHD_emu4 = self.kHD_emu**4
+             else self.params['cnlo']/self.params['h']**4
         b1sq     = b1**2
 
-        return np.array([b1sq, b1, 1., cell/kHD_emu2,
-                         b1sq*cnlo/kHD_emu4, b1*cnlo/kHD_emu4, cnlo/kHD_emu4,
-                         b1sq, b1*b2, b1*g2, b1*g21, b2**2, b2*g2, g2**2, b2, g2, g21])
+        return np.array([b1sq, b1, 1., cell, b1sq*cnlo, b1*cnlo, cnlo, b1sq,
+                         b1*b2, b1*g2, b1*g21, b2**2, b2*g2, g2**2, b2, g2, g21])
 
 
     def get_bias_coeff_for_table(self):
@@ -765,14 +755,11 @@ class PTEmu:
             else self.params['c4']/self.params['h']**2
         cnlo = self.params['cnlo'] if self.use_Mpc \
             else self.params['cnlo']/self.params['h']**4
-
-        kHD_emu2 = self.kHD_emu**2
-        kHD_emu4 = self.kHD_emu**4
         b1sq     = b1**2
 
-        return np.array([b1sq, b1, 1., c0/kHD_emu2, c2/kHD_emu2, c4/kHD_emu2,
-                         b1sq*cnlo/kHD_emu4, b1*cnlo/kHD_emu4, cnlo/kHD_emu4,
-                         b1sq, b1*b2, b1*g2, b1*g21, b2**2, b2*g2, g2**2, b2, g2, g21])
+        return np.array([b1sq, b1, 1., c0, c2, c4, b1sq*cnlo, b1*cnlo, cnlo,
+                         b1sq, b1*b2, b1*g2, b1*g21, b2**2, b2*g2, g2**2, b2,
+                         g2, g21])
 
 
     def eval_emulator(self, params, ell, de_model=None):
@@ -858,16 +845,16 @@ class PTEmu:
 
             # add shot noise
             if l == 0:
-                N0   = self.params['N0'] if self.use_Mpc
+                N0   = self.params['N0'] if self.use_Mpc \
                     else self.params['N0']/self.params['h']**3
-                N20  = self.params['N20'] if self.use_Mpc
+                N20  = self.params['N20'] if self.use_Mpc \
                     else self.params['N20']/self.params['h']**5
                 Pell[:,i] += np.ones_like(self.k_table)*N0/self.nbar \
-                           + self.k_table**2*N20/self.nbar/self.kHD**2
+                           + self.k_table**2*N20/self.nbar
             elif l == 2:
-                N22  = self.params['N22'] if self.use_Mpc
+                N22  = self.params['N22'] if self.use_Mpc \
                     else self.params['N22']/self.params['h']**5
-                Pell[:,i] += self.k_table**2*N22/self.nbar/self.kHD**2
+                Pell[:,i] += self.k_table**2*N22/self.nbar
 
         return Pell
 
@@ -925,8 +912,8 @@ class PTEmu:
                           + self.RSD_params_list if self.params[x] != 0]
 
         if any(params_updated) or \
-                any(p not in params.keys() for p in params_nonzero):
-            self.splines_up_to_date = [False]*3
+                any(p not in params.keys() for p in params_nonzero) or not \
+                self.splines_up_to_date:
             Pell = self.Pell_fid_ktable(params, ell=ell_for_recon,
                                         de_model=de_model)
             for i,l in enumerate(ell_for_recon):
@@ -937,7 +924,7 @@ class PTEmu:
                     self.Pell_spline[l] = interp1d(self.k_table/self.params['h'],
                                                    Pell[:,i]*self.params['h']**3,
                                                    kind='cubic')
-                self.splines_up_to_date[int(l/2)] = True
+            self.splines_up_to_date = True
 
         # update AP parameters
         if de_model is not None and alpha_tr_lo is None:
@@ -1097,7 +1084,7 @@ class PTEmu:
 
         # this is simply to guarantee that upon the next call of Pell or Pell_LCDM the parameter values will be updated
         self.params['wc'] = -1
-        self.splines_up_to_date = [False]*3
+        self.splines_up_to_date = False
 
         return Pell_dict
 
