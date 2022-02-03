@@ -732,6 +732,24 @@ class PTEmu:
         return emu_params_updated
 
 
+    def update_AP_params(self, params, de_model=None, alpha_tr_lo=None):
+        if de_model is not None and alpha_tr_lo is None:
+            Om0 = (self.params['wc']+self.params['wb'])/self.params['h']**2
+            H0 = 100*self.params['h']
+            self.cosmo.update_cosmology(
+                Om0=Om0, H0=H0, Ok0=self.params['Ok'],
+                de_model=de_model, w0=self.params['w0'], wa=self.params['wa'])
+            self.params['alpha_lo'] = self.H_fid/self.cosmo.Hz(self.params['z'])
+            self.params['alpha_tr'] = self.cosmo.comoving_transverse_distance(
+                self.params['z'])/self.Dm_fid
+        elif de_model is not None:
+            self.params['alpha_lo'] = alpha_tr_lo[1]
+            self.params['alpha_tr'] = alpha_tr_lo[0]
+        elif de_model is None and 'alpha_lo' in params and 'alpha_tr' in params:
+            self.params['alpha_lo'] = params['alpha_lo']
+            self.params['alpha_tr'] = params['alpha_tr']
+
+
     def get_bias_coeff(self, ell):
         b1   = self.params['b1']
         b2   = self.params['b2']
@@ -934,22 +952,7 @@ class PTEmu:
                                                    kind='cubic')
             self.splines_up_to_date = True
 
-        # update AP parameters
-        if de_model is not None and alpha_tr_lo is None:
-            Om0 = (self.params['wc']+self.params['wb'])/self.params['h']**2
-            H0 = 100*self.params['h']
-            self.cosmo.update_cosmology(
-                Om0=Om0, H0=H0, Ok0=self.params['Ok'],
-                de_model=de_model, w0=self.params['w0'], wa=self.params['wa'])
-            self.params['alpha_lo'] = self.H_fid/self.cosmo.Hz(self.params['z'])
-            self.params['alpha_tr'] = self.cosmo.comoving_transverse_distance(
-                self.params['z'])/self.Dm_fid
-        elif de_model is not None:
-            self.params['alpha_lo'] = alpha_tr_lo[1]
-            self.params['alpha_tr'] = alpha_tr_lo[0]
-        elif de_model is None and 'alpha_lo' in params and 'alpha_tr' in params:
-            self.params['alpha_lo'] = params['alpha_lo']
-            self.params['alpha_tr'] = params['alpha_tr']
+        self.update_AP_params(params, de_model=de_model, alpha_tr_lo=alpha_tr_lo)
         alpha3 = self.params['alpha_tr']**2 * self.params['alpha_lo']
 
         Pell_model = quad_vec(integrand, 0, 1)[0]
