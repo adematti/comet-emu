@@ -1048,9 +1048,6 @@ class PTEmu:
                 self.params[p] = 0.
 
         bij = self.get_bias_coeff_for_table()
-        bij[3:6] *= (self.params['h']/self.emu_LCDM_params['h'])**2
-        bij[6:9] *= (self.params['h']/self.emu_LCDM_params['h'])**4
-
         Pell = np.zeros([self.nk,len(ell)])
 
         for i,l in enumerate(ell):
