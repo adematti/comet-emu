@@ -936,6 +936,11 @@ class PTEmu:
 
         # update AP parameters
         if de_model is not None and alpha_tr_lo is None:
+            Om0 = (self.params['wc']+self.params['wb'])/self.params['h']**2
+            H0 = 100*self.params['h']
+            self.cosmo.update_cosmology(
+                Om0=Om0, H0=H0, Ok0=self.params['Ok'],
+                de_model=de_model, w0=self.params['w0'], wa=self.params['wa'])
             self.params['alpha_lo'] = self.H_fid/self.cosmo.Hz(self.params['z'])
             self.params['alpha_tr'] = self.cosmo.comoving_transverse_distance(
                 self.params['z'])/self.Dm_fid
