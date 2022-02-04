@@ -1066,10 +1066,6 @@ class PTEmu:
 
             Pell[:,i] = np.dot(bij,Pk_bij.T)
 
-        # this is simply to guarantee that upon the next call of Pell the
-        # splines will be updated
-        self.params['wc'] = -1
-
         return Pell
 
 
@@ -1124,13 +1120,13 @@ class PTEmu:
             if self.use_Mpc:
                 self.Pell_spline[l] = interp1d(
                     self.k_table*self.params['h']/self.emu_LCDM_params['h'],
-                    Pell_list[:,i], kind='cubic')
+                    Pell[:,i], kind='cubic')
                 Pell_noise_spline[l] = interp1d(self.k_table, Pell_noise[:,i],
-                                                kiind='cubic')
+                                                kind='cubic')
             else:
                 self.Pell_spline[l] = interp1d(
                     self.k_table/self.emu_LCDM_params['h'],
-                    Pell_list[:,i]*self.params['h']**3, kind='cubic')
+                    Pell[:,i]*self.params['h']**3, kind='cubic')
                 Pell_noise_spline[l] = interp1d(
                     self.k_table/self.params['h'],
                     Pell_noise[:,i]*self.params['h']**3,
@@ -1146,7 +1142,7 @@ class PTEmu:
         Pell_dict = {}
         for i,l in enumerate(ell):
             ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
-            Pell_dict['ell{}'.format(l)] = self.Pell_spline[l](k[i]) \
+            Pell_dict['ell{}'.format(l)] = self.Pell_spline[l](k_list[i]) \
                                            + Pell_noise_model[ids,i]
 
         # this is simply to guarantee that upon the next call of Pell or
