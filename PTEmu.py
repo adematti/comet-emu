@@ -891,7 +891,8 @@ class PTEmu:
         return 1./np.sqrt(t2)*np.exp(-t1*self.params['sv']**2/t2)
 
 
-    def Pell(self, k, params, ell, de_model=None, alpha_tr_lo=None, W_damping=None):
+    def Pell(self, k, params, ell, de_model=None, alpha_tr_lo=None,
+             W_damping=None):
         ell_for_recon = [0,2,4] if 'f' in self.params_list else [0]
 
         def P2d(q, mu):
@@ -926,7 +927,8 @@ class PTEmu:
 
         if isinstance(k, list):
             if len(k) != len(ell):
-                raise ValueError("If 'k' is given as a list, it must match the length of 'ell'.")
+                raise ValueError("If 'k' is given as a list, it must match the "
+                                 "length of 'ell'.")
             else:
                 k_list = k
                 k = np.unique(np.hstack(k_list))
@@ -1046,14 +1048,8 @@ class PTEmu:
         return PL_spline(k)
 
 
-    def Pell_from_table_fid_ktable(self, table, params, ell):
+    def Pell_from_table_fid_ktable(self, table, ell):
         ell = [ell] if not isinstance(ell, list) else ell
-        self.params['h'] = params['h']
-        for p in self.bias_params_list:
-            if p in params.keys():
-                self.params[p] = params[p]
-            else:
-                self.params[p] = 0.
 
         bij = self.get_bias_coeff_for_table()
         Pell = np.zeros([self.nk,len(ell)])
@@ -1070,34 +1066,91 @@ class PTEmu:
 
             Pell[:,i] = np.dot(bij,Pk_bij.T)
 
-        # this is simply to guarantee that upon the next call of Pell the splines will be updated
+        # this is simply to guarantee that upon the next call of Pell the
+        # splines will be updated
         self.params['wc'] = -1
 
         return Pell
 
 
-    def Pell_from_table(self, table, k, params, ell):
+    def Pell_from_table(self, table, k, params, ell, de_model='lambda',
+                        alpha_tr_lo=None):
         ell = [ell] if not isinstance(ell, list) else ell
+        ell_for_recon = [0,2,4] if 'f' in self.params_list else [0]
 
-        Pell_list = self.Pell_from_table_fid_ktable(table, params, ell)
-        for i,l in enumerate(ell):
-            if self.use_Mpc:
-                self.Pell_spline[l] = interp1d(self.k_table*self.params['h']/self.emu_LCDM_params['h'], Pell_list[:,i], kind='cubic')
+        Pell_noise_spline = {}
+
+        def P_noise_2d(q, mu):
+            t = 0.
+            for l in ell_for_recon:
+                t += eval_legendre(l, mu)*Pell_noise_spline[l](q)
+            return t
+
+        def integrand(mu):
+            mu2 = mu**2
+            APfac = np.sqrt(mu2/self.params['alpha_lo']**2
+                            + (1. - mu2)/self.params['alpha_tr']**2)
+            kp = k*APfac
+            mup = mu/self.params['alpha_lo']/APfac
+            return np.outer(P_noise_2d(kp, mup), eval_legendre(ell, mu))
+
+        if isinstance(k, list):
+            if len(k) != len(ell):
+                raise ValueError("If 'k' is given as a list, it must match the "
+                                 "length of 'ell'.")
             else:
-                self.Pell_spline[l] = interp1d(self.k_table/self.emu_LCDM_params['h'], Pell_list[:,i]*self.params['h']**3, kind='cubic')
-
-        if not isinstance(k, list):
-            k = [np.array(k)]*len(ell)
-        elif isinstance(k, list) and len(k) != len(ell):
-            raise ValueError("If 'k' is given as a list, it must match the length of 'ell'.")
+                k_list = k
+                k = np.unique(np.hstack(k_list))
         else:
-            k = [np.array(x) for x in k]
+            k_list = [k]*len(ell)
+
+        self.update_params(params, de_model=de_model)
+        Pell = self.Pell_from_table_fid_ktable(table, ell)
+        Pell_noise = np.zeros([self.nk,len(ell_for_recon)])
+        for i, l in enumerate(ell_for_recon):
+            if l == 0:
+                N0   = self.params['N0'] if self.use_Mpc \
+                    else self.params['N0']/self.params['h']**3
+                N20  = self.params['N20'] if self.use_Mpc \
+                    else self.params['N20']/self.params['h']**5
+                Pell_noise[:,i] = np.ones_like(self.k_table)*N0/self.nbar \
+                                  + self.k_table**2*N20/self.nbar
+            elif l == 2:
+                N22  = self.params['N22'] if self.use_Mpc \
+                    else self.params['N22']/self.params['h']**5
+                Pell_noise[:,i] = self.k_table**2*N22/self.nbar
+
+        for i, l in enumerate(ell):
+            if self.use_Mpc:
+                self.Pell_spline[l] = interp1d(
+                    self.k_table*self.params['h']/self.emu_LCDM_params['h'],
+                    Pell_list[:,i], kind='cubic')
+                Pell_noise_spline[l] = interp1d(self.k_table, Pell_noise[:,i],
+                                                kiind='cubic')
+            else:
+                self.Pell_spline[l] = interp1d(
+                    self.k_table/self.emu_LCDM_params['h'],
+                    Pell_list[:,i]*self.params['h']**3, kind='cubic')
+                Pell_noise_spline[l] = interp1d(
+                    self.k_table/self.params['h'],
+                    Pell_noise[:,i]*self.params['h']**3,
+                    kind='cubic')
+
+        self.update_AP_params(params, de_model=de_model,
+                              alpha_tr_lo=alpha_tr_lo)
+        alpha3 = self.params['alpha_tr']**2 * self.params['alpha_lo']
+
+        Pell_noise_model = quad_vec(integrand, 0, 1)[0]
+        Pell_noise_model *= (2*np.array(ell)+1) / alpha3
 
         Pell_dict = {}
         for i,l in enumerate(ell):
-            Pell_dict['ell{}'.format(l)] = self.Pell_spline[l](k[i])
+            ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
+            Pell_dict['ell{}'.format(l)] = self.Pell_spline[l](k[i]) \
+                                           + Pell_noise_model[ids,i]
 
-        # this is simply to guarantee that upon the next call of Pell or Pell_LCDM the parameter values will be updated
+        # this is simply to guarantee that upon the next call of Pell or
+        # Pell_LCDM the parameter values will be updated
         self.params['wc'] = -1
         self.splines_up_to_date = False
 
@@ -1143,7 +1196,8 @@ class PTEmu:
         if not isinstance(k, list):
             k = [np.array(k)]*len(ell)
         elif isinstance(k, list) and len(k) != len(ell):
-            raise ValueError("If 'k' is given as a list, it must match the length of 'ell'.")
+            raise ValueError("If 'k' is given as a list, it must match the "
+                             "length of 'ell'.")
         else:
             k = [np.array(x) for x in k]
 
@@ -1166,7 +1220,8 @@ class PTEmu:
             if not self.use_Mpc:
                 volume *= self.params['h']**3
         elif de_model is None and volume is None:
-            raise ValueError("If no dark energy model is specified, a value for the volume must be provided.")
+            raise ValueError("If no dark energy model is specified, a value "
+                             "for the volume must be provided.")
 
         for i,l1 in enumerate(ell):
             for j,l2 in enumerate(ell):
@@ -1186,12 +1241,15 @@ class PTEmu:
         return cov
 
 
-    def Pell_covariance_from_table(self, table, k, params, ell, dk, volume=None, zmin=None, zmax=None, fsky=15000./(360**2/np.pi), volfac=1):
+    def Pell_covariance_from_table(self, table, k, params, ell, dk, volume=None,
+                                   zmin=None, zmax=None,
+                                   fsky=15000./(360**2/np.pi), volfac=1):
         ell = [ell] if not isinstance(ell, list) else ell
         if not isinstance(k, list):
             k = [np.array(k)]*len(ell)
         elif isinstance(k, list) and len(k) != len(ell):
-            raise ValueError("If 'k' is given as a list, it must match the length of 'ell'.")
+            raise ValueError("If 'k' is given as a list, it must match the "
+                             "length of 'ell'.")
         else:
             k = [np.array(x) for x in k]
 
