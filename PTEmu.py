@@ -1297,7 +1297,7 @@ class PTEmu:
         return diff @ self.InvCov_data_kmax @ diff.T
 
 
-    def chi2_from_table(self, table, params, kmax, de_model=None,
+    def chi2_from_table(self, table, params, kmax, de_model='lambda',
                         alpha_tr_lo=None):
         if not self.kmax_is_set or (self.kmax != kmax and \
                 self.kmax != [kmax for i in range(self.n_ell)]):
