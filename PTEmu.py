@@ -968,6 +968,11 @@ class PTEmu:
         return Pell_dict
 
 
+    def Pell_convolved(self, k, params, ell, de_model=None, alpha_tr_lo=None,
+             W_damping=None):
+        Pell = self.Pell(self.data['pspec']['k_window'])
+
+
     def Pdw(self, k, mu, params, de_model=None):
         ell_for_recon = [0,2,4] if 'f' in self.params_list else [0]
         self.eval_emulator(params, ell=ell_for_recon, de_model=de_model)
@@ -1276,7 +1281,8 @@ class PTEmu:
         return cov
 
 
-    def chi2(self, params, kmax, de_model=None, alpha_tr_lo=None, W_damping=None):
+    def chi2(self, params, kmax, de_model=None, alpha_tr_lo=None,
+             W_damping=None):
         if not self.kmax_is_set or (self.kmax != kmax and \
                 self.kmax != [kmax for i in range(self.n_ell)]):
             self.set_kmax(kmax)
@@ -1284,33 +1290,25 @@ class PTEmu:
         ell = [2*l for l in range(self.n_ell) if self.nbin[l] > 0]
         Pell = self.Pell(self.k_bins, params, ell, de_model=de_model,
                          alpha_tr_lo=alpha_tr_lo, W_damping=W_damping)
-        Pell_list = np.hstack([Pell['ell{}'.format(l)] for l in ell])
+        Pell_list = np.hstack([Pell[ell] for ell in Pell.keys()])
 
         diff = Pell_list - self.P_data_kmax
 
         return diff @ self.InvCov_data_kmax @ diff.T
 
 
-    def chi2_from_table(self, table, params, kmax):
+    def chi2_from_table(self, table, params, kmax, de_model=None,
+                        alpha_tr_lo=None):
         if not self.kmax_is_set or (self.kmax != kmax and \
                 self.kmax != [kmax for i in range(self.n_ell)]):
             self.set_kmax(kmax)
 
-        Pell_model = np.zeros(sum(self.nbin))
         ell = [2*l for l in range(self.n_ell) if self.nbin[l] > 0]
-        Pell = self.Pell_from_table_fid_ktable(table, params, ell)
+        Pell = self.Pell_from_table(table, self.k_bins, params, ell,
+                                    de_model=de_model, alpha_tr_lo=alpha_tr_lo)
+        Pell_list = np.hstack([Pell[ell] for ell in Pell.keys()])
 
-        for i,l in enumerate(ell):
-            n = int(l/2)
-
-            if self.use_Mpc:
-                spline = interp1d(self.k_table*self.params['h']/self.emu_LCDM_params['h'], Pell[:,i], kind='cubic')
-                Pell_model[sum(self.nbin[:n]):sum(self.nbin[:n+1])] = spline(self.k_bins[n])
-            else:
-                spline = interp1d(self.k_table/self.emu_LCDM_params['h'], Pell[:,i]*self.params['h']**3, kind='cubic')
-                Pell_model[sum(self.nbin[:n]):sum(self.nbin[:n+1])] = spline(self.k_bins[n])
-
-        diff = Pell_model - self.P_data_kmax
+        diff = Pell_list - self.P_data_kmax
 
         return diff @ self.InvCov_data_kmax @ diff.T
 
