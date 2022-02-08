@@ -418,6 +418,17 @@ class PTEmu:
                                      'w0':['h','As','Ok','w0','z'],
                                      'w0wa':['h','As','Ok','w0','wa','z']}
 
+        self.diagrams_emulated = ['P0L_b1b1', 'PNL_b1', 'PNL_id','Pctr_clo',
+                                  'Pctr_b1b1cnlo','Pctr_b1cnlo','Pctr_cnlo',
+                                  'P1L_b1b1','P1L_b1b2','P1L_b1g2','P1L_b1g21',
+                                  'P1L_b2b2','P1L_b2g2','P1L_g2g2','P1L_b2',
+                                  'P1L_g2','P1L_g21']
+        self.diagrams_all = ['P0L_b1b1', 'PNL_b1', 'PNL_id','Pctr_c0','Pctr_c2',
+                             'Pctr_c4','Pctr_b1b1cnlo','Pctr_b1cnlo','Pctr_cnlo',
+                             'P1L_b1b1','P1L_b1b2','P1L_b1g2','P1L_b1g21',
+                             'P1L_b2b2','P1L_b2g2','P1L_g2g2','P1L_b2','P1L_g2',
+                             'P1L_g21','Pnoise_N0','Pnoise_N20','Pnoise_N22']
+
         self.params             = {p:0. for p in self.params_list + \
             self.bias_params_list + self.de_model_params_list['w0wa']}
         self.params['w0']       = -1
@@ -444,10 +455,17 @@ class PTEmu:
         self.Pk_lin    = None
         self.Pk_ratios = {0:None, 2:None, 4:None}
         self.Pell_spline = {}
+        self.PX_ell_spline = {}
+        self.Pell_min = {}
+        self.Pell_max = {}
+        self.neff_min = {}
+        self.neff_max = {}
 
         self.splines_up_to_date = False
         self.emu_params_updated = False
         self.kmax_is_set        = False
+
+        self.chi2_decomposition = None
 
         if fname_base is not None:
             self.load_emulator_data(fname='{}.fits'.format(fname_base))
@@ -657,8 +675,9 @@ class PTEmu:
         self.P_data_kmax = np.array([])
         for l in range(self.n_ell):
             self.k_bins.append(self.k_data[:self.nbin[l]])
-            self.P_data_kmax = np.concatenate((self.P_data_kmax,self.P_data[:self.nbin[l],l])) \
-                if self.P_data_kmax.size else self.P_data[:self.nbin[l],l]
+            self.P_data_kmax = np.concatenate(
+                (self.P_data_kmax, self.P_data[:self.nbin[l], l])) \
+                if self.P_data_kmax.size else self.P_data[:self.nbin[l], l]
 
         self.Cov_data_kmax = np.zeros([sum(self.nbin),sum(self.nbin)])
         for l1 in range(self.n_ell):
@@ -667,7 +686,10 @@ class PTEmu:
                                    sum(self.nbin[:l2]):sum(self.nbin[:l2+1])] = \
                     self.Cov_data[l1*nbin_total:l1*nbin_total+self.nbin[l1],
                                   l2*nbin_total:l2*nbin_total+self.nbin[l2]]
-        self.InvCov_data_kmax = self.AHfactor(sum(self.nbin))*np.linalg.inv(self.Cov_data_kmax)
+        self.InvCov_data_kmax = np.linalg.inv(self.Cov_data_kmax)
+        self.InvCov_data_kmax *= self.AHfactor(sum(self.nbin))
+
+        self.SN = self.P_data_kmax @ self.InvCov_data_kmax @ self.P_data_kmax
 
         self.kmax_is_set = True
 
@@ -759,10 +781,36 @@ class PTEmu:
              else self.params['c{}'.format(ell)]/self.params['h']**2
         cnlo = self.params['cnlo'] if self.use_Mpc \
              else self.params['cnlo']/self.params['h']**4
-        b1sq     = b1**2
+        b1sq = b1**2
 
         return np.array([b1sq, b1, 1., cell, b1sq*cnlo, b1*cnlo, cnlo, b1sq,
                          b1*b2, b1*g2, b1*g21, b2**2, b2*g2, g2**2, b2, g2, g21])
+
+
+    def get_bias_coeff_for_chi2_decomposition(self):
+        b1 = self.params['b1']
+        b2 = self.params['b2']
+        g2 = self.params['g2']
+        g21 = self.params['g21']
+        c0 = self.params['c0'] if self.use_Mpc \
+            else self.params['c0']/self.params['h']**2
+        c2 = self.params['c2'] if self.use_Mpc \
+            else self.params['c2']/self.params['h']**2
+        c4 = self.params['c4'] if self.use_Mpc \
+            else self.params['c4']/self.params['h']**2
+        cnlo = self.params['cnlo'] if self.use_Mpc \
+            else self.params['cnlo']/self.params['h']**4
+        N0 = self.params['N0'] if self.use_Mpc \
+            else self.params['N0']/self.params['h']**3
+        N20 = self.params['N20'] if self.use_Mpc \
+            else self.params['N20']/self.params['h']**5
+        N22 = self.params['N22'] if self.use_Mpc \
+            else self.params['N22']/self.params['h']**5
+        b1sq = b1**2
+
+        return np.array([b1sq, b1, 1., c0, c2, c4, b1sq*cnlo, b1*cnlo, cnlo,
+                         b1sq, b1*b2, b1*g2, b1*g21, b2**2, b2*g2, g2**2, b2,
+                         g2, g21, N0/self.nbar, N20/self.nbar, N22/self.nbar])
 
 
     def get_bias_coeff_for_table(self):
@@ -778,7 +826,7 @@ class PTEmu:
             else self.params['c4']/self.params['h']**2
         cnlo = self.params['cnlo'] if self.use_Mpc \
             else self.params['cnlo']/self.params['h']**4
-        b1sq     = b1**2
+        b1sq = b1**2
 
         return np.array([b1sq, b1, 1., c0, c2, c4, b1sq*cnlo, b1*cnlo, cnlo,
                          b1sq, b1*b2, b1*g2, b1*g21, b2**2, b2*g2, g2**2, b2,
@@ -860,8 +908,7 @@ class PTEmu:
             bij = self.get_bias_coeff(l)
 
             Pk_bij = np.zeros([self.nk,self.n_diagrams-2])
-            Pk_bij[:,:7]                        = np.multiply(
-                self.Pk_ratios[l][:7*self.nk].reshape(
+            Pk_bij[:,:7] = np.multiply(self.Pk_ratios[l][:7*self.nk].reshape(
                 (7,self.nk)), self.Pk_lin).T
             Pk_bij[(self.nk-self.nkloop):,7:17] = np.multiply(
                 self.Pk_ratios[l][7*self.nk:].reshape(
@@ -891,6 +938,44 @@ class PTEmu:
         return 1./np.sqrt(t2)*np.exp(-t1*self.params['sv']**2/t2)
 
 
+    def build_Pell_spline(self, Pell, ell):
+        if self.use_Mpc:
+            self.Pell_spline[ell] = interp1d(self.k_table, Pell, kind='cubic')
+            self.Pell_min[ell] = Pell[0]
+            self.Pell_max[ell] = Pell[-1]
+            self.k_table_min = self.k_table[0]
+            self.k_table_max = self.k_table[-1]
+            dlP_min = np.log10(Pell[2]) - np.log10(Pell[0])
+            dlP_max = np.log10(Pell[-1]) - np.log10(Pell[-3])
+            dlk_min = np.log10(self.k_table[2]) - np.log10(self.k_table[0])
+            dlk_max = np.log10(self.k_table[-1]) - np.log10(self.k_table[-3])
+            self.neff_min[ell] = dlP_min/dlk_min
+            self.neff_max[ell] = dlP_max/dlk_max
+        else:
+            Pell *= self.params['h']**3
+            self.Pell_spline[ell] = interp1d(self.k_table/self.params['h'],
+                                             Pell, kind='cubic')
+            self.Pell_min[ell] = Pell[0]
+            self.Pell_max[ell] = Pell[-1]
+            self.k_table_min = self.k_table[0]/self.params['h']
+            self.k_table_max = self.k_table[-1]/self.params['h']
+            dlP_min = np.log10(Pell[2]) - np.log10(Pell[0])
+            dlP_max = np.log10(Pell[-1]) - np.log10(Pell[-3])
+            dlk_min = np.log10(self.k_table[2]) - np.log10(self.k_table[0])
+            dlk_max = np.log10(self.k_table[-1]) - np.log10(self.k_table[-3])
+            self.neff_min[ell] = dlP_min/dlk_min
+            self.neff_max[ell] = dlP_max/dlk_max
+
+
+    def eval_Pell_spline(self, k, ell):
+        spline = np.where(k < self.k_table_min,
+                     self.Pell_min[ell] * (k/self.k_table_min)**self.neff_min[ell],
+                     np.where(k > self.k_table_max,
+                         self.Pell_max[ell] * (k/self.k_table_max)**self.neff_max[ell],
+                         self.Pell_spline[ell](k)))
+        return spline
+
+
     def Pell(self, k, params, ell, de_model=None, alpha_tr_lo=None,
              W_damping=None):
         ell_for_recon = [0,2,4] if 'f' in self.params_list else [0]
@@ -898,7 +983,7 @@ class PTEmu:
         def P2d(q, mu):
             t = 0.
             for l in ell_for_recon:
-                t += eval_legendre(l, mu)*self.Pell_spline[l](q)
+                t += eval_legendre(l, mu) * self.eval_Pell_spline(q, l)
             return t
 
         if self.RSD_model == 'EFT':
@@ -945,14 +1030,9 @@ class PTEmu:
             Pell = self.Pell_fid_ktable(params, ell=ell_for_recon,
                                         de_model=de_model)
             for i,l in enumerate(ell_for_recon):
-                if self.use_Mpc:
-                    self.Pell_spline[l] = interp1d(self.k_table, Pell[:,i],
-                                                   kind='cubic')
-                else:
-                    self.Pell_spline[l] = interp1d(self.k_table/self.params['h'],
-                                                   Pell[:,i]*self.params['h']**3,
-                                                   kind='cubic')
+                self.build_Pell_spline(Pell[:,i], l)
             self.splines_up_to_date = True
+            self.chi2_decomposition = None
 
         self.update_AP_params(params, de_model=de_model, alpha_tr_lo=alpha_tr_lo)
         alpha3 = self.params['alpha_tr']**2 * self.params['alpha_lo']
@@ -1001,11 +1081,7 @@ class PTEmu:
 
     def PX(self, k, mu, params, X, de_model=None):
         ids = None
-        for n,diagram in enumerate(
-                ['P0L_b1b1', 'PNL_b1', 'PNL_id','Pctr_clo',
-                'Pctr_b1b1cnlo','Pctr_b1cnlo','Pctr_cnlo','P1L_b1b1',
-                'P1L_b1b2','P1L_b1g2','P1L_b1g21','P1L_b2b2',
-                'P1L_b2g2','P1L_g2g2','P1L_b2','P1L_g2','P1L_g21']):
+        for n,diagram in enumerate(self.diagrams_emulated):
             if diagram == X:
                 if n < 7:
                     ids = [n*self.nk, (n+1)*self.nk]
@@ -1020,7 +1096,7 @@ class PTEmu:
             PX_ell = np.zeros([self.nk, 3])
             for i, ell in enumerate(ell_for_recon):
                 PX_ell[self.nk - (ids[1]-ids[0]):,i] = self.Pk_ratios[ell][ids[0]:ids[1]]
-            PX_ell = (PX_ell.T*self.Pk_lin[self.nk - (ids[1]-ids[0]):]).T
+            PX_ell = (PX_ell.T*self.Pk_lin).T
 
             PX_spline = {}
             for i, ell in enumerate(ell_for_recon):
@@ -1039,6 +1115,103 @@ class PTEmu:
             raise ValueError('{}: invalid identifier.'.format(X))
 
         return PX_2d
+
+
+    def PX_ell(self, k, params, ell, X, de_model=None, alpha_tr_lo=None,
+               W_damping=None):
+        ell_for_recon = [0,2,4] if 'f' in self.params_list else [0]
+
+        def P2d(q, mu):
+            t = 0.
+            for l in ell_for_recon:
+                t += eval_legendre(l, mu) * self.PX_ell_spline[l](q)
+            return t
+
+        if self.RSD_model == 'EFT':
+            def integrand(mu):
+                mu2 = mu**2
+                APfac = np.sqrt(mu2/self.params['alpha_lo']**2
+                                + (1. - mu2)/self.params['alpha_tr']**2)
+                kp = k*APfac
+                mup = mu/self.params['alpha_lo']/APfac
+                return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
+        elif self.RSD_model == 'VIR':
+            if W_damping is None:
+                W_damping = self.W_kurt
+            def integrand(mu):
+                mu2 = mu**2
+                APfac = np.sqrt(mu2/self.params['alpha_lo']**2
+                                + (1. - mu2)/self.params['alpha_tr']**2)
+                kp = k*APfac
+                mup = mu/self.params['alpha_lo']/APfac
+                P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
+                return np.outer(P2d_damped, eval_legendre(ell, mu))
+        else:
+            raise ValueError('Unsupported RSD model.')
+
+        ell = [ell] if not isinstance(ell, list) else ell
+
+        if isinstance(k, list):
+            if len(k) != len(ell):
+                raise ValueError("If 'k' is given as a list, it must match the "
+                                 "length of 'ell'.")
+            else:
+                k_list = k
+                k = np.unique(np.hstack(k_list))
+        else:
+            k_list = [k]*len(ell)
+
+        PX_ell = np.zeros([self.nk, len(ell_for_recon)])
+        if X in ['Pctr_c0','Pctr_c2','Pctr_c4']:
+            ell_clo = int(X[-1])
+            X = 'Pctr_clo'
+        if X in self.diagrams_emulated:
+            for n,diagram in enumerate(self.diagrams_emulated):
+                if diagram == X:
+                    if n < 7:
+                        ids = [n*self.nk, (n+1)*self.nk]
+                    else:
+                        ids = [7*self.nk + (n-7)*self.nkloop,
+                        7*self.nk + (n-6)*self.nkloop]
+
+            self.eval_emulator(params, ell=ell_for_recon, de_model=de_model)
+            if X == 'Pctr_clo':
+                PX_ell[self.nk - (ids[1]-ids[0]):, int(ell_clo/2)] = \
+                    self.Pk_ratios[ell_clo][ids[0]:ids[1]]
+            else:
+                for i, l in enumerate(ell_for_recon):
+                    PX_ell[self.nk - (ids[1]-ids[0]):, i] = \
+                        self.Pk_ratios[l][ids[0]:ids[1]]
+            PX_ell = (PX_ell.T*self.Pk_lin).T
+        else:
+            if X == 'Pnoise_N0':
+                PX_ell[:,0] = np.ones_like(self.k_table)
+            elif X == 'Pnoise_N20':
+                PX_ell[:,0] = self.k_table**2
+            elif X == 'Pnoise_N22' and len(ell_for_recon) > 1:
+                PX_ell[:,1] = self.k_table**2
+
+        for i, l in enumerate(ell_for_recon):
+            if self.use_Mpc:
+                self.PX_ell_spline[l] = interp1d(self.k_table, PX_ell[:,i],
+                                                 kind='cubic')
+            else:
+                self.PX_ell_spline[l] = interp1d(self.k_table/self.params['h'],
+                                                 PX_ell[:,i]*self.params['h']**3,
+                                                 kind='cubic')
+
+        self.update_AP_params(params, de_model=de_model, alpha_tr_lo=alpha_tr_lo)
+        alpha3 = self.params['alpha_tr']**2 * self.params['alpha_lo']
+
+        PX_ell_model = quad_vec(integrand, 0, 1)[0]
+        PX_ell_model *= (2*np.array(ell)+1) / alpha3
+
+        PX_ell_dict = {}
+        for i,l in enumerate(ell):
+            ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
+            PX_ell_dict['ell{}'.format(l)] = PX_ell_model[ids,i]
+
+        return PX_ell_dict
 
 
     def PL(self, k, params, de_model=None):
@@ -1274,43 +1447,102 @@ class PTEmu:
             for j,l2 in enumerate(ell):
                 if j >= i:
                     kij, id1, id2 = np.intersect1d(k[i],k[j],return_indices=True)
-                    cov[sum(nbin[:i]):sum(nbin[:i+1]),sum(nbin[:j]):sum(nbin[:j+1])][id1,id2] = self.Gaussian_covariance(l1, l2, k_all, dk, Pell, volume)[np.intersect1d(k_all, kij, return_indices=True)[1]]
+                    ids_ij = np.intersect1d(k_all, kij, return_indices=True)[1]
+                    cov_l1l2 = self.Gaussian_covariance(
+                        l1, l2, k_all, dk, Pell, volume)[ids_ij]
+                    cov[sum(nbin[:i]):sum(nbin[:i+1]),
+                        sum(nbin[:j]):sum(nbin[:j+1])][id1,id2] = cov_l1l2
                 else:
-                    cov[sum(nbin[:i]):sum(nbin[:i+1]),sum(nbin[:j]):sum(nbin[:j+1])] = cov[sum(nbin[:j]):sum(nbin[:j+1]),sum(nbin[:i]):sum(nbin[:i+1])].T
+                    cov[sum(nbin[:i]):sum(nbin[:i+1]),
+                        sum(nbin[:j]):sum(nbin[:j+1])] = \
+                        cov[sum(nbin[:j]):sum(nbin[:j+1]),
+                            sum(nbin[:i]):sum(nbin[:i+1])].T
 
         return cov
 
 
     def chi2(self, params, kmax, de_model=None, alpha_tr_lo=None,
-             W_damping=None):
+             W_damping=None, chi2_decomposition=False):
         if not self.kmax_is_set or (self.kmax != kmax and \
                 self.kmax != [kmax for i in range(self.n_ell)]):
             self.set_kmax(kmax)
 
         ell = [2*l for l in range(self.n_ell) if self.nbin[l] > 0]
-        Pell = self.Pell(self.k_bins, params, ell, de_model=de_model,
-                         alpha_tr_lo=alpha_tr_lo, W_damping=W_damping)
-        Pell_list = np.hstack([Pell[ell] for ell in Pell.keys()])
+        if not chi2_decomposition:
+            Pell = self.Pell(self.k_bins, params, ell, de_model=de_model,
+                             alpha_tr_lo=alpha_tr_lo, W_damping=W_damping)
+            Pell_list = np.hstack([Pell[l] for l in Pell.keys()])
 
-        diff = Pell_list - self.P_data_kmax
+            diff = Pell_list - self.P_data_kmax
+            chi2 = diff @ self.InvCov_data_kmax @ diff.T
+        else:
+            # check if cosmological + RSD parameters have changed, if so,
+            # re-evaluate chi2 decomposition
+            if de_model is None and self.use_Mpc:
+                check_params = self.params_list + self.RSD_params_list
+            elif de_model is None and not self.use_Mpc:
+                check_params = self.params_list + ['h'] + self.RSD_params_list
+            else:
+                check_params = self.params_shape_list \
+                               + self.de_model_params_list[de_model] \
+                               + self.RSD_params_list
+                if 'Ok' not in params:
+                    check_params.remove('Ok')
 
-        return diff @ self.InvCov_data_kmax @ diff.T
+            if (any(params[p] != self.params[p] for p in check_params)
+                    or self.chi2_decomposition is None):
+                PX_ell_list = np.zeros([sum(self.nbin),len(self.diagrams_all)])
+                for i, X in enumerate(self.diagrams_all):
+                    PX_ell = self.PX_ell(self.k_bins, params, ell, X,
+                                         de_model=de_model,
+                                         alpha_tr_lo=alpha_tr_lo,
+                                         W_damping=W_damping)
+                    PX_ell_list[:,i] = np.hstack([PX_ell[l] for l
+                                                  in PX_ell.keys()])
+
+                self.chi2_decomposition = {}
+                self.chi2_decomposition['DD'] = self.SN
+                self.chi2_decomposition['XD'] = PX_ell_list.T \
+                                                @ self.InvCov_data_kmax \
+                                                @ self.P_data_kmax
+                self.chi2_decomposition['XX'] = PX_ell_list.T \
+                                                @ self.InvCov_data_kmax \
+                                                @ PX_ell_list
+
+            for p in self.bias_params_list:
+                if p in params.keys():
+                    self.params[p] = params[p]
+                else:
+                    self.params[p] = 0.
+            self.splines_up_to_date = False
+
+            bX = self.get_bias_coeff_for_chi2_decomposition()
+            chi2 = bX @ self.chi2_decomposition['XX'] @ bX \
+                   - 2 * bX@self.chi2_decomposition['XD'] \
+                   + self.chi2_decomposition['DD']
+
+        return chi2
 
 
     def chi2_from_table(self, table, params, kmax, de_model='lambda',
-                        alpha_tr_lo=None):
+                        alpha_tr_lo=None, chi2_decomposition=False):
         if not self.kmax_is_set or (self.kmax != kmax and \
                 self.kmax != [kmax for i in range(self.n_ell)]):
             self.set_kmax(kmax)
 
         ell = [2*l for l in range(self.n_ell) if self.nbin[l] > 0]
-        Pell = self.Pell_from_table(table, self.k_bins, params, ell,
-                                    de_model=de_model, alpha_tr_lo=alpha_tr_lo)
-        Pell_list = np.hstack([Pell[ell] for ell in Pell.keys()])
+        if not chi2_decomposition:
+            Pell = self.Pell_from_table(table, self.k_bins, params, ell,
+                                        de_model=de_model,
+                                        alpha_tr_lo=alpha_tr_lo)
+            Pell_list = np.hstack([Pell[l] for l in Pell.keys()])
 
-        diff = Pell_list - self.P_data_kmax
+            diff = Pell_list - self.P_data_kmax
+            chi2 = diff @ self.InvCov_data_kmax @ diff.T
+        #else:
 
-        return diff @ self.InvCov_data_kmax @ diff.T
+
+        return chi2
 
 
     # def convert_ranges_LCDM(self, ranges, z):
