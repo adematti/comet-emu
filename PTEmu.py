@@ -1247,7 +1247,24 @@ class PTEmu:
         return Pell
 
 
-    def Pell_from_table_without_stochasticity(self, table, k, params, ell):
+    def PX_ell_from_table(self, table, k, params, ell, X, de_model='lambda',
+                          alpha_tr_lo=None):
+        ell_for_recon = [0,2,4] if 'f' in self.params_list else [0]
+
+        def P2d(q, mu):
+            t = 0.
+            for l in ell_for_recon:
+                t += eval_legendre(l, mu) * self.PX_ell_spline[l](q)
+            return t
+
+        def integrand(mu):
+            mu2 = mu**2
+            APfac = np.sqrt(mu2/self.params['alpha_lo']**2
+                            + (1. - mu2)/self.params['alpha_tr']**2)
+            kp = k*APfac
+            mup = mu/self.params['alpha_lo']/APfac
+            return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
+
         ell = [ell] if not isinstance(ell, list) else ell
 
         if isinstance(k, list):
@@ -1260,34 +1277,56 @@ class PTEmu:
         else:
             k_list = [k]*len(ell)
 
-        self.params['h'] = params['h']
-        for p in self.bias_params_list:
-            if p in params.keys():
-                self.params[p] = params[p]
-            else:
-                self.params[p] = 0.
+        if X in self.diagrams_all[:-3]:
+            id_map = [0,1,2,13,14,15,16,17,18] + [i for i in range(3,13)]
+            for n,diagram in enumerate(self.diagrams_all[:-3]):
+                if diagram == X:
+                    idX = id_map[n]+1
+                    break
 
-        Pell = self.Pell_from_table_fid_ktable(table, ell)
+            PX_ell_dict = {}
+            for i,l in enumerate(ell):
+                if self.use_Mpc:
+                    self.PX_ell_spline[l] = interp1d(
+                        self.k_table*self.params['h']/self.emu_LCDM_params['h'],
+                        table[:,idX+self.n_diagrams*int(l/2)], kind='cubic')
+                else:
+                    self.PX_ell_spline[l] = interp1d(
+                        self.k_table/self.emu_LCDM_params['h'],
+                        table[:,idX+self.n_diagrams*int(l/2)]*self.params['h']**3,
+                        kind='cubic')
+                PX_ell_dict['ell{}'.format(l)] = self.PX_ell_spline[l](k_list[i])
+        else:
+            PX_ell = np.zeros([self.nk, len(ell_for_recon)])
+            if X == 'Pnoise_N0':
+                PX_ell[:,0] = np.ones_like(self.k_table)
+            elif X == 'Pnoise_N20':
+                PX_ell[:,0] = self.k_table**2
+            elif X == 'Pnoise_N22' and len(ell_for_recon) > 1:
+                PX_ell[:,1] = self.k_table**2
 
-        for i, l in enumerate(ell):
-            if self.use_Mpc:
-                self.Pell_spline[l] = interp1d(
-                    self.k_table*self.params['h']/self.emu_LCDM_params['h'],
-                    Pell[:,i], kind='cubic')
-            else:
-                self.Pell_spline[l] = interp1d(
-                    self.k_table/self.emu_LCDM_params['h'],
-                    Pell[:,i]*self.params['h']**3, kind='cubic')
+            for i, l in enumerate(ell_for_recon):
+                if self.use_Mpc:
+                    self.PX_ell_spline[l] = interp1d(self.k_table, PX_ell[:,i],
+                                                     kind='cubic')
+                else:
+                    self.PX_ell_spline[l] = interp1d(
+                        self.k_table/self.params['h'],
+                        PX_ell[:,i]*self.params['h']**3, kind='cubic')
 
-        Pell_dict = {}
-        for i,l in enumerate(ell):
-            Pell_dict['ell{}'.format(l)] = self.Pell_spline[l](k_list[i])
+            self.update_AP_params(params, de_model=de_model,
+                                  alpha_tr_lo=alpha_tr_lo)
+            alpha3 = self.params['alpha_tr']**2 * self.params['alpha_lo']
 
-        # this is simply to guarantee that upon the next call of Pell or
-        # Pell_LCDM the parameter values will be updated
-        self.splines_up_to_date = False
+            PX_ell_model = quad_vec(integrand, 0, 1)[0]
+            PX_ell_model *= (2*np.array(ell)+1) / alpha3
 
-        return Pell_dict
+            PX_ell_dict = {}
+            for i,l in enumerate(ell):
+                ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
+                PX_ell_dict['ell{}'.format(l)] = PX_ell_model[ids,i]
+
+        return PX_ell_dict
 
 
     def Pell_from_table(self, table, k, params, ell, de_model='lambda',
@@ -1368,7 +1407,6 @@ class PTEmu:
 
         # this is simply to guarantee that upon the next call of Pell or
         # Pell_LCDM the parameter values will be updated
-        self.params['wc'] = -1
         self.splines_up_to_date = False
 
         return Pell_dict
@@ -1568,8 +1606,7 @@ class PTEmu:
 
 
     def chi2_from_table(self, table, params, kmax, de_model='lambda',
-                        alpha_tr_lo=None, W_damping=None,
-                        chi2_decomposition=False):
+                        alpha_tr_lo=None, chi2_decomposition=False):
         if not self.kmax_is_set or (self.kmax != kmax and \
                 self.kmax != [kmax for i in range(self.n_ell)]):
             self.set_kmax(kmax)
@@ -1592,41 +1629,34 @@ class PTEmu:
 
             if (any(params[p] != self.params[p] for p in check_params)
                     or self.chi2_decomposition is None):
-                self.update_params(params, de_model=de_model)
-                Pell_stoch_list = np.zeros([sum(self.nbin),3])
-                for i, X in enumerate(['Pnoise_N0','Pnoise_N20','Pnoise_N22']):
-                    Pell_stoch = self.PX_ell(self.k_bins, params, ell, X,
-                                             de_model=de_model,
-                                             alpha_tr_lo=alpha_tr_lo,
-                                             W_damping=W_damping)
-                    Pell_stoch_list[:,i] = np.hstack([Pell_stoch[l] for l
-                                                      in Pell_stoch.keys()])
+                PX_ell_list = np.zeros([sum(self.nbin),len(self.diagrams_all)])
+                for i, X in enumerate(self.diagrams_all):
+                    PX_ell = self.PX_ell_from_table(table, self.k_bins, params,
+                                                    ell, X, de_model=de_model,
+                                                    alpha_tr_lo=alpha_tr_lo)
+                    PX_ell_list[:,i] = np.hstack([PX_ell[l] for l
+                                                  in PX_ell.keys()])
 
                 self.chi2_decomposition = {}
-                self.chi2_decomposition['X'] = Pell_stoch_list.T \
-                                                @ self.InvCov_data_kmax
-                self.chi2_decomposition['XX'] = Pell_stoch_list.T \
+                self.chi2_decomposition['DD'] = self.SN
+                self.chi2_decomposition['XD'] = PX_ell_list.T \
                                                 @ self.InvCov_data_kmax \
-                                                @ Pell_stoch_list
+                                                @ self.P_data_kmax
+                self.chi2_decomposition['XX'] = PX_ell_list.T \
+                                                @ self.InvCov_data_kmax \
+                                                @ PX_ell_list
 
-            Pell_wo_stoch = self.Pell_from_table_without_stochasticity(
-                table, self.k_bins, params, ell)
-            Pell_wo_stoch_list = np.hstack([Pell_wo_stoch[l] for l
-                                            in Pell_wo_stoch.keys()])
-            diff_wo_stoch = Pell_wo_stoch_list - self.P_data_kmax
+            for p in self.bias_params_list:
+                if p in params.keys():
+                    self.params[p] = params[p]
+                else:
+                    self.params[p] = 0.
+            self.splines_up_to_date = False
 
-            N0 = self.params['N0'] if self.use_Mpc \
-                else self.params['N0']/self.params['h']**3
-            N20 = self.params['N20'] if self.use_Mpc \
-                else self.params['N20']/self.params['h']**5
-            N22 = self.params['N22'] if self.use_Mpc \
-                else self.params['N22']/self.params['h']**5
-            b_stoch = np.array([N0, N20, N22])
-
-            chi2 = diff_wo_stoch @ self.InvCov_data_kmax @ diff_wo_stoch \
-                   + b_stoch @ self.chi2_decomposition['XX'] @ b_stoch \
-                   + 2*b_stoch @ (self.chi2_decomposition['X']
-                                  @ (Pell_wo_stoch_list - self.P_data_kmax))
+            bX = self.get_bias_coeff_for_chi2_decomposition()
+            chi2 = bX @ self.chi2_decomposition['XX'] @ bX \
+                   - 2*bX @ self.chi2_decomposition['XD'] \
+                   + self.chi2_decomposition['DD']
 
         return chi2
 
