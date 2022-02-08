@@ -1247,6 +1247,49 @@ class PTEmu:
         return Pell
 
 
+    def Pell_from_table_without_stochasticity(self, table, k, params, ell):
+        ell = [ell] if not isinstance(ell, list) else ell
+
+        if isinstance(k, list):
+            if len(k) != len(ell):
+                raise ValueError("If 'k' is given as a list, it must match the "
+                                 "length of 'ell'.")
+            else:
+                k_list = k
+                k = np.unique(np.hstack(k_list))
+        else:
+            k_list = [k]*len(ell)
+
+        self.params['h'] = params['h']
+        for p in self.bias_params_list:
+            if p in params.keys():
+                self.params[p] = params[p]
+            else:
+                self.params[p] = 0.
+
+        Pell = self.Pell_from_table_fid_ktable(table, ell)
+
+        for i, l in enumerate(ell):
+            if self.use_Mpc:
+                self.Pell_spline[l] = interp1d(
+                    self.k_table*self.params['h']/self.emu_LCDM_params['h'],
+                    Pell[:,i], kind='cubic')
+            else:
+                self.Pell_spline[l] = interp1d(
+                    self.k_table/self.emu_LCDM_params['h'],
+                    Pell[:,i]*self.params['h']**3, kind='cubic')
+
+        Pell_dict = {}
+        for i,l in enumerate(ell):
+            Pell_dict['ell{}'.format(l)] = self.Pell_spline[l](k_list[i])
+
+        # this is simply to guarantee that upon the next call of Pell or
+        # Pell_LCDM the parameter values will be updated
+        self.splines_up_to_date = False
+
+        return Pell_dict
+
+
     def Pell_from_table(self, table, k, params, ell, de_model='lambda',
                         alpha_tr_lo=None):
         ell = [ell] if not isinstance(ell, list) else ell
@@ -1518,14 +1561,15 @@ class PTEmu:
 
             bX = self.get_bias_coeff_for_chi2_decomposition()
             chi2 = bX @ self.chi2_decomposition['XX'] @ bX \
-                   - 2 * bX@self.chi2_decomposition['XD'] \
+                   - 2*bX @ self.chi2_decomposition['XD'] \
                    + self.chi2_decomposition['DD']
 
         return chi2
 
 
     def chi2_from_table(self, table, params, kmax, de_model='lambda',
-                        alpha_tr_lo=None, chi2_decomposition=False):
+                        alpha_tr_lo=None, W_damping=None,
+                        chi2_decomposition=False):
         if not self.kmax_is_set or (self.kmax != kmax and \
                 self.kmax != [kmax for i in range(self.n_ell)]):
             self.set_kmax(kmax)
@@ -1539,8 +1583,50 @@ class PTEmu:
 
             diff = Pell_list - self.P_data_kmax
             chi2 = diff @ self.InvCov_data_kmax @ diff.T
-        #else:
+        else:
+            check_params = self.params_shape_list \
+                           + self.de_model_params_list[de_model] \
+                           + self.RSD_params_list
+            if 'Ok' not in params:
+                check_params.remove('Ok')
 
+            if (any(params[p] != self.params[p] for p in check_params)
+                    or self.chi2_decomposition is None):
+                self.update_params(params, de_model=de_model)
+                Pell_stoch_list = np.zeros([sum(self.nbin),3])
+                for i, X in enumerate(['Pnoise_N0','Pnoise_N20','Pnoise_N22']):
+                    Pell_stoch = self.PX_ell(self.k_bins, params, ell, X,
+                                             de_model=de_model,
+                                             alpha_tr_lo=alpha_tr_lo,
+                                             W_damping=W_damping)
+                    Pell_stoch_list[:,i] = np.hstack([Pell_stoch[l] for l
+                                                      in Pell_stoch.keys()])
+
+                self.chi2_decomposition = {}
+                self.chi2_decomposition['X'] = Pell_stoch_list.T \
+                                                @ self.InvCov_data_kmax
+                self.chi2_decomposition['XX'] = Pell_stoch_list.T \
+                                                @ self.InvCov_data_kmax \
+                                                @ Pell_stoch_list
+
+            Pell_wo_stoch = self.Pell_from_table_without_stochasticity(
+                table, self.k_bins, params, ell)
+            Pell_wo_stoch_list = np.hstack([Pell_wo_stoch[l] for l
+                                            in Pell_wo_stoch.keys()])
+            diff_wo_stoch = Pell_wo_stoch_list - self.P_data_kmax
+
+            N0 = self.params['N0'] if self.use_Mpc \
+                else self.params['N0']/self.params['h']**3
+            N20 = self.params['N20'] if self.use_Mpc \
+                else self.params['N20']/self.params['h']**5
+            N22 = self.params['N22'] if self.use_Mpc \
+                else self.params['N22']/self.params['h']**5
+            b_stoch = np.array([N0, N20, N22])
+
+            chi2 = diff_wo_stoch @ self.InvCov_data_kmax @ diff_wo_stoch \
+                   + b_stoch @ self.chi2_decomposition['XX'] @ b_stoch \
+                   + 2*b_stoch @ (self.chi2_decomposition['X']
+                                  @ (Pell_wo_stoch_list - self.P_data_kmax))
 
         return chi2
 
