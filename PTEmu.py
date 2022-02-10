@@ -9,7 +9,7 @@ import pickle
 from pyDOE import *
 
 
-class Cosmo:
+class Cosmology:
     def __init__(self, Om0, H0, Ok0=0, Or0=0, de_model='lambda', w0=-1, wa=0):
         self.Om0 = Om0
         self.Ok0 = Ok0
@@ -199,6 +199,141 @@ class Cosmo:
 
         return fsky*4*np.pi*quad(differential_comoving_volume, zmin, zmax)[0]
 
+
+
+class MeasuredData:
+    def __init__(self, **kwargs):
+        if 'bins' in kwargs:
+            self.bins = kwargs.get('bins')
+        if 'signal' in kwargs:
+            self.signal = kwargs.get('signal')
+            self.n_ell = self.signal.shape[1]
+        if 'cov' in kwargs:
+            self.cov = kwargs.get('cov')
+        if 'bins_mixing_matrix' in kwargs:
+            self.bins_mixing_matrix = kwargs.get('bins_mixing_matrix')
+        if 'W_mixing_matrix' in kwargs:
+            self.W_mixing_matrix = kwargs.get('W_mixing_matrix')
+        if 'theory_cov' in kwargs:
+            self.theory_cov = kwargs.get('theory_cov')
+        else:
+            self.theory_cov = True
+
+        if not self.theory_cov:
+            if 'n_realizations' in kwargs:
+                self.n_realizations = kwargs.get('n_realizations')
+            else:
+                raise ValueError("For non-analytical covariance matrix, "
+                                 "Nrealizations needs to be specified.")
+
+        self.kmax_is_set = False
+
+
+    def update(self, **kwargs):
+        if 'bins' in kwargs:
+            self.bins = kwargs.get('bins')
+        if 'signal' in kwargs:
+            self.signal = kwargs.get('signal')
+            self.n_ell = self.signal.shape[1]
+        if 'cov' in kwargs:
+            self.cov = kwargs.get('cov')
+        if 'bins_mixing_matrix' in kwargs:
+            self.bins_mixing_matrix = kwargs.get('bins_mixing_matrix')
+        if 'W_mixing_matrix' in kwargs:
+            self.W_mixing_matrix = kwargs.get('W_mixing_matrix')
+        if 'theory_cov' in kwargs:
+            self.theory_cov = kwargs.get('theory_cov')
+        else:
+            self.theory_cov = True
+
+        if not self.theory_cov:
+            if 'n_realizations' in kwargs:
+                self.n_realizations = kwargs.get('n_realizations')
+            else:
+                raise ValueError("For non-analytical covariance matrix, "
+                                 "'n_realizations' needs to be specified.")
+
+        # update kmax-truncated data containers
+        if self.kmax_is_set:
+            self.set_kmax(self.kmax)
+
+
+    def clear_data(self):
+        self.bins = None
+        self.signal = None
+        self.cov = None
+        self.bins_mixing_matrix = None
+        self.W_mixing_matrix = None
+        self.kmax_is_set = False
+
+
+    def set_kmax(self, kmax):
+        if not isinstance(kmax, list):
+            self.kmax = [kmax for i in range(self.n_ell)]
+        else:
+            self.kmax = kmax
+
+        nbin_total = self.bins.shape[0]
+
+        self.nbins = [0 for i in range(self.n_ell)]
+        for ell in range(self.n_ell):
+            for i in range(nbin_total):
+                if self.bins[i] < self.kmax[ell]:
+                    self.nbins[ell] += 1
+                else:
+                    break
+
+        self.bins_kmax = []
+        self.signal_kmax = np.array([])
+        for ell in range(self.n_ell):
+            self.bins_kmax.append(self.bins[:self.nbins[ell]])
+            self.signal_kmax = np.concatenate(
+                (self.signal_kmax, self.signal[:self.nbins[ell], ell])) \
+                if self.signal_kmax.size else self.signal[:self.nbins[ell], ell]
+
+        self.cov_kmax = np.zeros([sum(self.nbins),sum(self.nbins)])
+        for ell1 in range(self.n_ell):
+            for ell2 in range(self.n_ell):
+                self.cov_kmax[sum(self.nbins[:ell1]):sum(self.nbins[:ell1+1]),
+                              sum(self.nbins[:ell2]):sum(self.nbins[:ell2+1])] = \
+                    self.cov[ell1*nbin_total:ell1*nbin_total+self.nbins[ell1],
+                             ell2*nbin_total:ell2*nbin_total+self.nbins[ell2]]
+        self.inverse_cov_kmax = np.linalg.inv(self.cov_kmax)
+        self.inverse_cov_kmax *= self.AHfactor(sum(self.nbins))
+
+        self.SN_kmax = self.signal_kmax @ self.inverse_cov_kmax @ self.signal_kmax
+
+        self.kmax_is_set = True
+
+
+    def AHfactor(self, nbins):
+        return 1. if self.theory_cov else (self.n_realizations - nbins -2) \
+            * 1./(self.n_realizations - 1)
+
+
+    def get_signal(self, ell, kmax=None):
+        if kmax is None and not self.kmax_is_set:
+            self.set_kmax(np.amax(self.bins))
+        elif (kmax is not None and (not self.kmax_is_set
+              or (self.kmax != kmax
+                  and self.kmax != [kmax for i in range(self.n_ell)]))
+              ):
+            self.set_kmax(kmax)
+        n = int(ell/2)
+        return self.signal_kmax[sum(self.nbins[:n]):sum(self.nbins[:n+1])]
+
+
+    def get_std(self, ell, kmax=None):
+        if kmax is None and not self.kmax_is_set:
+            self.set_kmax(np.amax(self.bins))
+        elif (kmax is not None and (not self.kmax_is_set
+              or (self.kmax != kmax
+                  and self.kmax != [kmax for i in range(self.n_ell)]))
+              ):
+            self.set_kmax(kmax)
+        n = int(ell/2)
+        var = np.diag(self.cov_kmax)[sum(self.nbins[:n]):sum(self.nbins[:n+1])]
+        return np.sqrt(var)
 
 
 class Tables:
@@ -450,7 +585,7 @@ class PTEmu:
         self.validation['FULL']   = Tables(self.params_list, validation=True)
 
         self.emu   = {}
-        self.cosmo = Cosmo(0.3, 67) # Initialise with arbitrary values
+        self.cosmo = Cosmology(0.3, 67) # Initialise with arbitrary values
 
         self.Pk_lin    = None
         self.Pk_ratios = {0:None, 2:None, 4:None}
@@ -461,9 +596,10 @@ class PTEmu:
         self.neff_min = {}
         self.neff_max = {}
 
+        self.data = {}
+
         self.splines_up_to_date = False
         self.emu_params_updated = False
-        self.kmax_is_set        = False
 
         self.chi2_decomposition = None
 
@@ -532,7 +668,8 @@ class PTEmu:
                 self.emu[dt].optimize(max_f_eval=max_f_eval)
                 self.emu[dt].optimize_restarts(num_restarts=num_restarts)
         else:
-            data_type = [data_type] if not isinstance(data_type, list) else data_type
+            data_type = [data_type] if not isinstance(data_type, list) \
+                else data_type
             for dt in data_type:
                 if dt in ['PL','s12','sv']:
                     self.emu[dt] = self.training['SHAPE'].GPy_model(dt)
@@ -552,16 +689,19 @@ class PTEmu:
                 with open('{}_sv.pickle'.format(fname_base), "wb") as f:
                     pickle.dump(self.emu['sv'], f)
             for ell in ell_train:
-                with open('{}_ratios_ell{}.pickle'.format(fname_base, ell), "wb") as f:
+                with open('{}_ratios_ell{}.pickle'.format(fname_base, ell),
+                          "wb") as f:
                     pickle.dump(self.emu[ell], f)
         else:
-            data_type = [data_type] if not isinstance(data_type, list) else data_type
+            data_type = [data_type] if not isinstance(data_type, list) \
+                else data_type
             for dt in data_type:
                 if dt in ['PL','s12','sv']:
                     with open('{}_{}.pickle'.format(fname_base, dt), "wb") as f:
                         pickle.dump(self.emu[dt], f)
                 else:
-                    with open('{}_ratios_ell{}.pickle'.format(fname_base, dt), "wb") as f:
+                    with open('{}_ratios_ell{}.pickle'.format(fname_base, dt),
+                              "wb") as f:
                         pickle.dump(self.emu[dt], f)
 
 
@@ -569,71 +709,54 @@ class PTEmu:
         if data_type is None:
             ell_train = [0,2,4] if 'f' in self.params_list else [0]
             for dt in ['PL','s12']:
-                self.emu[dt] = pickle.load(open('{}_{}.pickle'.format(fname_base, dt), "rb"))
+                self.emu[dt] = pickle.load(
+                    open('{}_{}.pickle'.format(fname_base, dt), "rb"))
             if self.RSD_model == 'VIR':
-                self.emu['sv'] = pickle.load(open('{}_{}.pickle'.format(fname_base, dt), "rb"))
+                self.emu['sv'] = pickle.load(
+                    open('{}_{}.pickle'.format(fname_base, dt), "rb"))
             for ell in ell_train:
-                self.emu[ell] = pickle.load(open('{}_ratios_ell{}.pickle'.format(fname_base, ell), "rb"))
+                self.emu[ell] = pickle.load(
+                    open('{}_ratios_ell{}.pickle'.format(fname_base, ell),
+                         "rb"))
         else:
-            data_type = [data_type] if not isinstance(data_type, list) else data_type
+            data_type = [data_type] if not isinstance(data_type, list) \
+                else data_type
             for dt in data_type:
                 if dt in ['PL','s12','sv']:
-                    self.emu[dt] = pickle.load(open('{}_{}.pickle'.format(fname_base, dt), "rb"))
+                    self.emu[dt] = pickle.load(
+                        open('{}_{}.pickle'.format(fname_base, dt), "rb"))
                 else:
-                    self.emu[dt] = pickle.load(open('{}_ratios_ell{}.pickle'.format(fname_base, dt), "rb"))
+                    self.emu[dt] = pickle.load(
+                        open('{}_ratios_ell{}.pickle'.format(fname_base, dt),
+                             "rb"))
 
 
     def define_units(self, use_Mpc):
         if use_Mpc != self.use_Mpc:
             self.use_Mpc = use_Mpc
             self.nbar = 1. # in units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
-            try:
-                self.k_data
-            except:
-                self.k_data = None
-            try:
-                self.P_data
-            except:
-                self.P_data = None
-            try:
-                self.Cov_data
-            except:
-                self.Cov_data = None
-            if self.kmax_is_set:
-                self.kmax_is_set = False
+            for obs_id in self.data.keys():
+                self.data[obs_id].clear_data()
             self.splines_up_to_date = False
             nbar_unit = '(1/Mpc)^3' if self.use_Mpc else '(h/Mpc)^3'
-            print('Number density resetted to nbar = 1 {}. Data set (if defined) cleared.'.format(nbar_unit))
+            print("Number density resetted to nbar = 1 {}. Data set (if "
+                  "defined) cleared.".format(nbar_unit))
 
 
     def define_nbar(self, nbar):
-        self.nbar     = np.copy(nbar)
+        self.nbar = np.copy(nbar)
         self.splines_up_to_date = False
 
 
-    def define_data_set(self, k_data=None, P_data=None, Cov_data=None, theory_cov=True, Nrealizations=None):
-        if k_data is not None:
-            self.k_data = np.copy(k_data)
-        if P_data is not None:
-            self.P_data = np.copy(P_data) if P_data.ndim > 1 else np.copy(P_data)[:,None]
-            self.n_ell = self.P_data.shape[1]
-        if Cov_data is not None:
-            self.Cov_data = np.copy(Cov_data)
-
-        self.theory_cov = theory_cov
-        if not self.theory_cov:
-            if Nrealizations is not None:
-                self.Nrealizations = Nrealizations
-            else:
-                raise ValueError('For non-analytical covariance matrix, Nrealizations \
-                                  needs to be specified.')
-
-        # udpate kmax-truncated data containers
-        if self.kmax_is_set:
-            self.set_kmax(self.kmax)
+    def define_data_set(self, obs_id, **kwargs):
+        if not obs_id in self.data.keys():
+            self.data[obs_id] = MeasuredData(**kwargs)
+        else:
+            self.data[obs_id].update(**kwargs)
 
 
-    def define_fiducial_cosmology(self, HDm_fid=None, params_fid=None, de_model='lambda'):
+    def define_fiducial_cosmology(self, HDm_fid=None, params_fid=None,
+                                  de_model='lambda'):
         if HDm_fid is not None:
             self.H_fid = HDm_fid[0]
             self.Dm_fid = HDm_fid[1]
@@ -650,93 +773,35 @@ class PTEmu:
             elif de_model == 'wa':
                 w0 = params_fid['w0']
                 wa = params_fid['wa']
-            self.cosmo.update_cosmology(Om0, H0, Ok0=Ok0, de_model=de_model, w0=w0, wa=wa)
+            self.cosmo.update_cosmology(Om0, H0, Ok0=Ok0, de_model=de_model,
+                                        w0=w0, wa=wa)
             self.H_fid = self.cosmo.Hz(params_fid['z'])
             self.Dm_fid = self.cosmo.comoving_transverse_distance(params_fid['z'])
-
-
-    def set_kmax(self, kmax):
-        if not isinstance(kmax, list):
-            self.kmax = [kmax for i in range(self.n_ell)]
-        else:
-            self.kmax = kmax
-
-        nbin_total = self.k_data.shape[0]
-
-        self.nbin = [0 for i in range(self.n_ell)]
-        for l in range(self.n_ell):
-            for i in range(nbin_total):
-                if self.k_data[i] < self.kmax[l]:
-                    self.nbin[l] += 1
-                else:
-                    break
-
-        self.k_bins = []
-        self.P_data_kmax = np.array([])
-        for l in range(self.n_ell):
-            self.k_bins.append(self.k_data[:self.nbin[l]])
-            self.P_data_kmax = np.concatenate(
-                (self.P_data_kmax, self.P_data[:self.nbin[l], l])) \
-                if self.P_data_kmax.size else self.P_data[:self.nbin[l], l]
-
-        self.Cov_data_kmax = np.zeros([sum(self.nbin),sum(self.nbin)])
-        for l1 in range(self.n_ell):
-            for l2 in range(self.n_ell):
-                self.Cov_data_kmax[sum(self.nbin[:l1]):sum(self.nbin[:l1+1]),
-                                   sum(self.nbin[:l2]):sum(self.nbin[:l2+1])] = \
-                    self.Cov_data[l1*nbin_total:l1*nbin_total+self.nbin[l1],
-                                  l2*nbin_total:l2*nbin_total+self.nbin[l2]]
-        self.InvCov_data_kmax = np.linalg.inv(self.Cov_data_kmax)
-        self.InvCov_data_kmax *= self.AHfactor(sum(self.nbin))
-
-        self.SN = self.P_data_kmax @ self.InvCov_data_kmax @ self.P_data_kmax
-
-        self.kmax_is_set = True
-
-
-    def AHfactor(self, nbin):
-        return 1. if self.theory_cov else (self.Nrealizations - nbin -2)*1./(self.Nrealizations - 1)
-
-
-    def get_Pell_data(self, ell, kmax=None):
-        if kmax is None and not self.kmax_is_set:
-            self.set_kmax(np.amax(self.k_data))
-        elif kmax is not None and (not self.kmax_is_set or \
-                (self.kmax != kmax and self.kmax != [kmax for i in range(self.n_ell)])):
-            self.set_kmax(kmax)
-        n = int(ell/2)
-        return self.P_data_kmax[sum(self.nbin[:n]):sum(self.nbin[:n+1])]
-
-
-    def get_std_data(self, ell, kmax=None):
-        if kmax is None and not self.kmax_is_set:
-            self.set_kmax(np.amax(self.k_data))
-        elif kmax is not None and (not self.kmax_is_set or \
-                (self.kmax != kmax and self.kmax != [kmax for i in range(self.n_ell)])):
-            self.set_kmax(kmax)
-        n = int(ell/2)
-        return np.sqrt(np.diag(self.Cov_data_kmax)[sum(self.nbin[:n]):sum(self.nbin[:n+1])])
 
 
     def update_params(self, params, de_model=None):
         try:
             if de_model is None and self.use_Mpc:
-                emu_params_updated = any([params[p] != self.params[p] for p in self.params_list])
+                emu_params_updated = any([params[p] != self.params[p] for p
+                                          in self.params_list])
                 for p in self.params_list:
                     self.params[p] = params[p]
                 self.params['As'] = 0.
                 self.params['z'] = 0.
             elif de_model is None and not self.use_Mpc:
-                emu_params_updated = any([params[p] != self.params[p] for p in self.params_list+['h']])
+                emu_params_updated = any([params[p] != self.params[p] for p
+                                          in self.params_list+['h']])
                 for p in self.params_list+['h']:
                     self.params[p] = params[p]
                 self.params['As'] = 0.
                 self.params['z'] = 0.
             else:
-                expected_params = self.params_shape_list + self.de_model_params_list[de_model]
+                expected_params = self.params_shape_list \
+                                  + self.de_model_params_list[de_model]
                 if 'Ok' not in params:
                     expected_params.remove('Ok')
-                emu_params_updated = any([params[p] != self.params[p] for p in expected_params])
+                emu_params_updated = any([params[p] != self.params[p] for p
+                                          in expected_params])
                 for p in expected_params:
                     self.params[p] = params[p]
         except KeyError:
@@ -849,7 +914,8 @@ class PTEmu:
 
                 if self.RSD_model == 'VIR':
                     self.params['sv'] = self.training['SHAPE'].transform_inv(
-                        self.emu['sv'].predict(params_shape[None,:])[0][0], 'sv')[0]
+                        self.emu['sv'].predict(params_shape[None,:])[0][0],
+                        'sv')[0]
                     self.params['sv'] *= self.params['s12']/sigma12
                     if not self.use_Mpc:
                         self.params['sv'] *= self.params['h']
@@ -865,8 +931,10 @@ class PTEmu:
                 self.Pk_lin = self.training['SHAPE'].transform_inv(
                     self.emu['PL'].predict(params_shape[None,:])[0][0], 'PL')
 
-                # compute growth factors corresponding to fiducial and target parameters + growth rate
-                Om0_fid = (self.params['wc']+self.params['wb'])/self.emu_LCDM_params['h']**2
+                # compute growth factors corresponding to fiducial and target
+                # parameters + growth rate
+                Om0_fid = (self.params['wc']+self.params['wb']) \
+                          / self.emu_LCDM_params['h']**2
                 H0_fid = 100*self.emu_LCDM_params['h']
                 self.cosmo.update_cosmology(Om0=Om0_fid, H0=H0_fid)
                 Dfid = self.cosmo.growth_factor(self.emu_LCDM_params['z'])
@@ -875,61 +943,33 @@ class PTEmu:
                 H0 = 100*self.params['h']
                 self.cosmo.update_cosmology(
                     Om0=Om0, H0=H0, Ok0=self.params['Ok'],
-                    de_model=de_model, w0=self.params['w0'], wa=self.params['wa'])
-                D, f = self.cosmo.growth_factor(self.params['z'], get_growth_rate=True)
+                    de_model=de_model, w0=self.params['w0'],
+                    wa=self.params['wa'])
+                D, f = self.cosmo.growth_factor(self.params['z'],
+                                                get_growth_rate=True)
 
                 # rescale linear power spectrum and sigma12
-                amplitude_scaling = np.sqrt(self.params['As']/self.emu_LCDM_params['As'])*D/Dfid
+                amplitude_scaling = np.sqrt(
+                    self.params['As']/self.emu_LCDM_params['As'])*D/Dfid
                 self.Pk_lin *= amplitude_scaling**2
                 self.params['s12'] = sigma12[0]*amplitude_scaling
                 self.params['f'] = f
 
                 if self.RSD_model == 'VIR':
                     self.params['sv'] = self.training['SHAPE'].transform_inv(
-                        self.emu['sv'].predict(params_shape[None,:])[0][0], 'sv')[0]
+                        self.emu['sv'].predict(params_shape[None,:])[0][0],
+                        'sv')[0]
                     self.params['sv'] *= amplitude_scaling
                     if not self.use_Mpc:
                         self.params['sv'] *= self.params['h']
 
-            params_all = np.array([self.params[p] for p in self.params_list],dtype=object)
+            params_all = np.array([self.params[p] for p in self.params_list],
+                                  dtype=object)
 
             for l in ell:
                 if self.Pk_ratios[l] is None or emu_params_updated:
                     self.Pk_ratios[l] = self.training['FULL'].transform_inv(
                         self.emu[l].predict(params_all[None,:])[0][0], l)
-
-
-    def Pell_fid_ktable(self, params, ell, de_model=None):
-        ell = [ell] if not isinstance(ell, list) else ell
-        self.eval_emulator(params, ell, de_model=de_model)
-
-        Pell = np.zeros([self.nk,len(ell)])
-        for i,l in enumerate(ell):
-            bij = self.get_bias_coeff(l)
-
-            Pk_bij = np.zeros([self.nk,self.n_diagrams-2])
-            Pk_bij[:,:7] = np.multiply(self.Pk_ratios[l][:7*self.nk].reshape(
-                (7,self.nk)), self.Pk_lin).T
-            Pk_bij[(self.nk-self.nkloop):,7:17] = np.multiply(
-                self.Pk_ratios[l][7*self.nk:].reshape(
-                    (10,self.nkloop)), self.Pk_lin[(self.nk-self.nkloop):]).T
-
-            Pell[:,i] = np.dot(bij,Pk_bij.T)
-
-            # add shot noise
-            if l == 0:
-                N0   = self.params['N0'] if self.use_Mpc \
-                    else self.params['N0']/self.params['h']**3
-                N20  = self.params['N20'] if self.use_Mpc \
-                    else self.params['N20']/self.params['h']**5
-                Pell[:,i] += np.ones_like(self.k_table)*N0/self.nbar \
-                           + self.k_table**2*N20/self.nbar
-            elif l == 2:
-                N22  = self.params['N22'] if self.use_Mpc \
-                    else self.params['N22']/self.params['h']**5
-                Pell[:,i] += self.k_table**2*N22/self.nbar
-
-        return Pell
 
 
     def W_kurt(self, k, mu):
@@ -974,6 +1014,77 @@ class PTEmu:
                          self.Pell_max[ell] * (k/self.k_table_max)**self.neff_max[ell],
                          self.Pell_spline[ell](k)))
         return spline
+
+
+    def PL(self, k, params, de_model=None):
+        self.eval_emulator(params, ell=[], de_model=de_model)
+
+        if self.use_Mpc:
+            PL_spline = interp1d(self.k_table, self.Pk_lin, kind='cubic')
+        else:
+            PL_spline = interp1d(self.k_table/self.params['h'],
+                                 self.Pk_lin*self.params['h']**3, kind='cubic')
+
+        return PL_spline(k)
+
+
+    def Pdw(self, k, mu, params, de_model=None):
+        ell_for_recon = [0,2,4] if 'f' in self.params_list else [0]
+        self.eval_emulator(params, ell=ell_for_recon, de_model=de_model)
+
+        Pdw_ell = np.zeros([self.nk,3])
+        for i,ell in enumerate([0,2,4]):
+            Pdw_ell[:,i] = self.Pk_ratios[ell][:self.nk]
+        Pdw_ell = (Pdw_ell.T*self.Pk_lin).T
+
+        Pdw_spline = {}
+        for i,ell in enumerate(ell_for_recon):
+            if self.use_Mpc:
+                Pdw_spline[ell] = interp1d(self.k_table, Pdw_ell[:,i],
+                                           kind='cubic')
+            else:
+                Pdw_spline[ell] = interp1d(self.k_table/self.params['h'],
+                                           Pdw_ell[:,i]*self.params['h']**3,
+                                           kind='cubic')
+
+        Pdw_2d = 0.
+        for ell in ell_for_recon:
+            Pdw_2d += np.outer(Pdw_spline[ell](k), eval_legendre(ell, mu))
+
+        return Pdw_2d
+
+
+    def Pell_fid_ktable(self, params, ell, de_model=None):
+        ell = [ell] if not isinstance(ell, list) else ell
+        self.eval_emulator(params, ell, de_model=de_model)
+
+        Pell = np.zeros([self.nk,len(ell)])
+        for i,l in enumerate(ell):
+            bij = self.get_bias_coeff(l)
+
+            Pk_bij = np.zeros([self.nk,self.n_diagrams-2])
+            Pk_bij[:,:7] = np.multiply(self.Pk_ratios[l][:7*self.nk].reshape(
+                (7,self.nk)), self.Pk_lin).T
+            Pk_bij[(self.nk-self.nkloop):,7:17] = np.multiply(
+                self.Pk_ratios[l][7*self.nk:].reshape(
+                    (10,self.nkloop)), self.Pk_lin[(self.nk-self.nkloop):]).T
+
+            Pell[:,i] = np.dot(bij,Pk_bij.T)
+
+            # add shot noise
+            if l == 0:
+                N0   = self.params['N0'] if self.use_Mpc \
+                    else self.params['N0']/self.params['h']**3
+                N20  = self.params['N20'] if self.use_Mpc \
+                    else self.params['N20']/self.params['h']**5
+                Pell[:,i] += np.ones_like(self.k_table)*N0/self.nbar \
+                           + self.k_table**2*N20/self.nbar
+            elif l == 2:
+                N22  = self.params['N22'] if self.use_Mpc \
+                    else self.params['N22']/self.params['h']**5
+                Pell[:,i] += self.k_table**2*N22/self.nbar
+
+        return Pell
 
 
     def Pell(self, k, params, ell, de_model=None, alpha_tr_lo=None,
@@ -1050,33 +1161,10 @@ class PTEmu:
 
     def Pell_convolved(self, k, params, ell, de_model=None, alpha_tr_lo=None,
              W_damping=None):
-        Pell = self.Pell(self.data['pspec']['k_window'])
+        Pell = self.Pell(self.data['pspec']['k_window'], params, ell, de_model,
+                         alpha_tr_lo)
 
-
-    def Pdw(self, k, mu, params, de_model=None):
-        ell_for_recon = [0,2,4] if 'f' in self.params_list else [0]
-        self.eval_emulator(params, ell=ell_for_recon, de_model=de_model)
-
-        Pdw_ell = np.zeros([self.nk,3])
-        for i,ell in enumerate([0,2,4]):
-            Pdw_ell[:,i] = self.Pk_ratios[ell][:self.nk]
-        Pdw_ell = (Pdw_ell.T*self.Pk_lin).T
-
-        Pdw_spline = {}
-        for i,ell in enumerate(ell_for_recon):
-            if self.use_Mpc:
-                Pdw_spline[ell] = interp1d(self.k_table, Pdw_ell[:,i],
-                                           kind='cubic')
-            else:
-                Pdw_spline[ell] = interp1d(self.k_table/self.params['h'],
-                                           Pdw_ell[:,i]*self.params['h']**3,
-                                           kind='cubic')
-
-        Pdw_2d = 0.
-        for ell in ell_for_recon:
-            Pdw_2d += np.outer(Pdw_spline[ell](k), eval_legendre(ell, mu))
-
-        return Pdw_2d
+        Pell_convolved = np.dot(self.data['pspec'])
 
 
     def PX(self, k, mu, params, X, de_model=None):
@@ -1214,18 +1302,6 @@ class PTEmu:
         return PX_ell_dict
 
 
-    def PL(self, k, params, de_model=None):
-        self.eval_emulator(params, ell=[], de_model=de_model)
-
-        if self.use_Mpc:
-            PL_spline = interp1d(self.k_table, self.Pk_lin, kind='cubic')
-        else:
-            PL_spline = interp1d(self.k_table/self.params['h'],
-                                 self.Pk_lin*self.params['h']**3, kind='cubic')
-
-        return PL_spline(k)
-
-
     def Pell_from_table_fid_ktable(self, table, ell):
         ell = [ell] if not isinstance(ell, list) else ell
 
@@ -1245,88 +1321,6 @@ class PTEmu:
             Pell[:,i] = np.dot(bij,Pk_bij.T)
 
         return Pell
-
-
-    def PX_ell_from_table(self, table, k, params, ell, X, de_model='lambda',
-                          alpha_tr_lo=None):
-        ell_for_recon = [0,2,4] if 'f' in self.params_list else [0]
-
-        def P2d(q, mu):
-            t = 0.
-            for l in ell_for_recon:
-                t += eval_legendre(l, mu) * self.PX_ell_spline[l](q)
-            return t
-
-        def integrand(mu):
-            mu2 = mu**2
-            APfac = np.sqrt(mu2/self.params['alpha_lo']**2
-                            + (1. - mu2)/self.params['alpha_tr']**2)
-            kp = k*APfac
-            mup = mu/self.params['alpha_lo']/APfac
-            return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
-
-        ell = [ell] if not isinstance(ell, list) else ell
-
-        if isinstance(k, list):
-            if len(k) != len(ell):
-                raise ValueError("If 'k' is given as a list, it must match the "
-                                 "length of 'ell'.")
-            else:
-                k_list = k
-                k = np.unique(np.hstack(k_list))
-        else:
-            k_list = [k]*len(ell)
-
-        if X in self.diagrams_all[:-3]:
-            id_map = [0,1,2,13,14,15,16,17,18] + [i for i in range(3,13)]
-            for n,diagram in enumerate(self.diagrams_all[:-3]):
-                if diagram == X:
-                    idX = id_map[n]+1
-                    break
-
-            PX_ell_dict = {}
-            for i,l in enumerate(ell):
-                if self.use_Mpc:
-                    self.PX_ell_spline[l] = interp1d(
-                        self.k_table*self.params['h']/self.emu_LCDM_params['h'],
-                        table[:,idX+self.n_diagrams*int(l/2)], kind='cubic')
-                else:
-                    self.PX_ell_spline[l] = interp1d(
-                        self.k_table/self.emu_LCDM_params['h'],
-                        table[:,idX+self.n_diagrams*int(l/2)]*self.params['h']**3,
-                        kind='cubic')
-                PX_ell_dict['ell{}'.format(l)] = self.PX_ell_spline[l](k_list[i])
-        else:
-            PX_ell = np.zeros([self.nk, len(ell_for_recon)])
-            if X == 'Pnoise_N0':
-                PX_ell[:,0] = np.ones_like(self.k_table)
-            elif X == 'Pnoise_N20':
-                PX_ell[:,0] = self.k_table**2
-            elif X == 'Pnoise_N22' and len(ell_for_recon) > 1:
-                PX_ell[:,1] = self.k_table**2
-
-            for i, l in enumerate(ell_for_recon):
-                if self.use_Mpc:
-                    self.PX_ell_spline[l] = interp1d(self.k_table, PX_ell[:,i],
-                                                     kind='cubic')
-                else:
-                    self.PX_ell_spline[l] = interp1d(
-                        self.k_table/self.params['h'],
-                        PX_ell[:,i]*self.params['h']**3, kind='cubic')
-
-            self.update_AP_params(params, de_model=de_model,
-                                  alpha_tr_lo=alpha_tr_lo)
-            alpha3 = self.params['alpha_tr']**2 * self.params['alpha_lo']
-
-            PX_ell_model = quad_vec(integrand, 0, 1)[0]
-            PX_ell_model *= (2*np.array(ell)+1) / alpha3
-
-            PX_ell_dict = {}
-            for i,l in enumerate(ell):
-                ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
-                PX_ell_dict['ell{}'.format(l)] = PX_ell_model[ids,i]
-
-        return PX_ell_dict
 
 
     def Pell_from_table(self, table, k, params, ell, de_model='lambda',
@@ -1408,8 +1402,94 @@ class PTEmu:
         # this is simply to guarantee that upon the next call of Pell or
         # Pell_LCDM the parameter values will be updated
         self.splines_up_to_date = False
+        self.Pk_lin = None
+        self.Pk_ratios = {0:None, 2:None, 4:None}
+        self.chi2_decomposition = None
 
         return Pell_dict
+
+
+    def PX_ell_from_table(self, table, k, params, ell, X, de_model='lambda',
+                          alpha_tr_lo=None):
+        ell_for_recon = [0,2,4] if 'f' in self.params_list else [0]
+
+        def P2d(q, mu):
+            t = 0.
+            for l in ell_for_recon:
+                t += eval_legendre(l, mu) * self.PX_ell_spline[l](q)
+            return t
+
+        def integrand(mu):
+            mu2 = mu**2
+            APfac = np.sqrt(mu2/self.params['alpha_lo']**2
+                            + (1. - mu2)/self.params['alpha_tr']**2)
+            kp = k*APfac
+            mup = mu/self.params['alpha_lo']/APfac
+            return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
+
+        ell = [ell] if not isinstance(ell, list) else ell
+
+        if isinstance(k, list):
+            if len(k) != len(ell):
+                raise ValueError("If 'k' is given as a list, it must match the "
+                                 "length of 'ell'.")
+            else:
+                k_list = k
+                k = np.unique(np.hstack(k_list))
+        else:
+            k_list = [k]*len(ell)
+
+        self.update_params(params, de_model=de_model)
+        if X in self.diagrams_all[:-3]:
+            id_map = [0,1,2,13,14,15,16,17,18] + [i for i in range(3,13)]
+            for n,diagram in enumerate(self.diagrams_all[:-3]):
+                if diagram == X:
+                    idX = id_map[n]+1
+                    break
+
+            PX_ell_dict = {}
+            for i,l in enumerate(ell):
+                if self.use_Mpc:
+                    self.PX_ell_spline[l] = interp1d(
+                        self.k_table*self.params['h']/self.emu_LCDM_params['h'],
+                        table[:,idX+self.n_diagrams*int(l/2)], kind='cubic')
+                else:
+                    self.PX_ell_spline[l] = interp1d(
+                        self.k_table/self.emu_LCDM_params['h'],
+                        table[:,idX+self.n_diagrams*int(l/2)]*self.params['h']**3,
+                        kind='cubic')
+                PX_ell_dict['ell{}'.format(l)] = self.PX_ell_spline[l](k_list[i])
+        else:
+            PX_ell = np.zeros([self.nk, len(ell_for_recon)])
+            if X == 'Pnoise_N0':
+                PX_ell[:,0] = np.ones_like(self.k_table)
+            elif X == 'Pnoise_N20':
+                PX_ell[:,0] = self.k_table**2
+            elif X == 'Pnoise_N22' and len(ell_for_recon) > 1:
+                PX_ell[:,1] = self.k_table**2
+
+            for i, l in enumerate(ell_for_recon):
+                if self.use_Mpc:
+                    self.PX_ell_spline[l] = interp1d(self.k_table, PX_ell[:,i],
+                                                     kind='cubic')
+                else:
+                    self.PX_ell_spline[l] = interp1d(
+                        self.k_table/self.params['h'],
+                        PX_ell[:,i]*self.params['h']**3, kind='cubic')
+
+            self.update_AP_params(params, de_model=de_model,
+                                  alpha_tr_lo=alpha_tr_lo)
+            alpha3 = self.params['alpha_tr']**2 * self.params['alpha_lo']
+
+            PX_ell_model = quad_vec(integrand, 0, 1)[0]
+            PX_ell_model *= (2*np.array(ell)+1) / alpha3
+
+            PX_ell_dict = {}
+            for i,l in enumerate(ell):
+                ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
+                PX_ell_dict['ell{}'.format(l)] = PX_ell_model[ids,i]
+
+        return PX_ell_dict
 
 
     def Gaussian_covariance(self, l1, l2, k, dk, Pell, volume, Nmodes=None):
@@ -1456,8 +1536,8 @@ class PTEmu:
         else:
             k = [np.array(x) for x in k]
 
-        nbin = [x.shape[0] for x in k]
-        cov = np.zeros([sum(nbin),sum(nbin)])
+        nbins = [x.shape[0] for x in k]
+        cov = np.zeros([sum(nbins),sum(nbins)])
 
         k_all = np.unique(np.hstack(k))
         ell_for_cov = [0,2,4] if 'f' in self.params_list else 0
@@ -1485,13 +1565,13 @@ class PTEmu:
                     ids_ij = np.intersect1d(k_all, kij, return_indices=True)[1]
                     cov_l1l2 = self.Gaussian_covariance(
                         l1, l2, k_all, dk, Pell, volume)[ids_ij]
-                    cov[sum(nbin[:i]):sum(nbin[:i+1]),
-                        sum(nbin[:j]):sum(nbin[:j+1])][id1,id2] = cov_l1l2
+                    cov[sum(nbins[:i]):sum(nbins[:i+1]),
+                        sum(nbins[:j]):sum(nbins[:j+1])][id1,id2] = cov_l1l2
                 else:
-                    cov[sum(nbin[:i]):sum(nbin[:i+1]),
-                        sum(nbin[:j]):sum(nbin[:j+1])] = \
-                        cov[sum(nbin[:j]):sum(nbin[:j+1]),
-                            sum(nbin[:i]):sum(nbin[:i+1])].T
+                    cov[sum(nbins[:i]):sum(nbins[:i+1]),
+                        sum(nbins[:j]):sum(nbins[:j+1])] = \
+                        cov[sum(nbins[:j]):sum(nbins[:j+1]),
+                            sum(nbins[:i]):sum(nbins[:i+1])].T
 
         return cov
 
@@ -1508,8 +1588,8 @@ class PTEmu:
         else:
             k = [np.array(x) for x in k]
 
-        nbin = [x.shape[0] for x in k]
-        cov = np.zeros([sum(nbin),sum(nbin)])
+        nbins = [x.shape[0] for x in k]
+        cov = np.zeros([sum(nbins),sum(nbins)])
 
         k_all = np.unique(np.hstack(k))
         ell_for_cov = [0,2,4] if 'f' in self.params_list else 0
@@ -1531,31 +1611,36 @@ class PTEmu:
                     ids_ij = np.intersect1d(k_all, kij, return_indices=True)[1]
                     cov_l1l2 = self.Gaussian_covariance(
                         l1, l2, k_all, dk, Pell, volume)[ids_ij]
-                    cov[sum(nbin[:i]):sum(nbin[:i+1]),
-                        sum(nbin[:j]):sum(nbin[:j+1])][id1,id2] = cov_l1l2
+                    cov[sum(nbins[:i]):sum(nbins[:i+1]),
+                        sum(nbins[:j]):sum(nbins[:j+1])][id1,id2] = cov_l1l2
                 else:
-                    cov[sum(nbin[:i]):sum(nbin[:i+1]),
-                        sum(nbin[:j]):sum(nbin[:j+1])] = \
-                        cov[sum(nbin[:j]):sum(nbin[:j+1]),
-                            sum(nbin[:i]):sum(nbin[:i+1])].T
+                    cov[sum(nbins[:i]):sum(nbins[:i+1]),
+                        sum(nbins[:j]):sum(nbins[:j+1])] = \
+                        cov[sum(nbins[:j]):sum(nbins[:j+1]),
+                            sum(nbins[:i]):sum(nbins[:i+1])].T
 
         return cov
 
 
-    def chi2(self, params, kmax, de_model=None, alpha_tr_lo=None,
+    def chi2(self, obs_id, params, kmax, de_model=None, alpha_tr_lo=None,
              W_damping=None, chi2_decomposition=False):
-        if not self.kmax_is_set or (self.kmax != kmax and \
-                self.kmax != [kmax for i in range(self.n_ell)]):
-            self.set_kmax(kmax)
+        if (not self.data[obs_id].kmax_is_set or (self.data[obs_id].kmax != kmax
+                and self.data[obs_id].kmax != [kmax for i in
+                                               range(self.data[obs_id].n_ell)])
+            ):
+            self.data[obs_id].set_kmax(kmax)
 
-        ell = [2*l for l in range(self.n_ell) if self.nbin[l] > 0]
+        ell = [2*l for l in range(self.data[obs_id].n_ell)
+               if self.data[obs_id].nbins[l] > 0]
+
         if not chi2_decomposition:
-            Pell = self.Pell(self.k_bins, params, ell, de_model=de_model,
-                             alpha_tr_lo=alpha_tr_lo, W_damping=W_damping)
+            Pell = self.Pell(self.data[obs_id].bins_kmax, params, ell,
+                             de_model=de_model, alpha_tr_lo=alpha_tr_lo,
+                             W_damping=W_damping)
             Pell_list = np.hstack([Pell[l] for l in Pell.keys()])
 
-            diff = Pell_list - self.P_data_kmax
-            chi2 = diff @ self.InvCov_data_kmax @ diff.T
+            diff = Pell_list - self.data[obs_id].signal_kmax
+            chi2 = diff @ self.data[obs_id].inverse_cov_kmax @ diff.T
         else:
             # check if cosmological + RSD parameters have changed, if so,
             # re-evaluate chi2 decomposition
@@ -1572,23 +1657,24 @@ class PTEmu:
 
             if (any(params[p] != self.params[p] for p in check_params)
                     or self.chi2_decomposition is None):
-                PX_ell_list = np.zeros([sum(self.nbin),len(self.diagrams_all)])
+                PX_ell_list = np.zeros([sum(self.data[obs_id].nbins),
+                                        len(self.diagrams_all)])
                 for i, X in enumerate(self.diagrams_all):
-                    PX_ell = self.PX_ell(self.k_bins, params, ell, X,
-                                         de_model=de_model,
+                    PX_ell = self.PX_ell(self.data[obs_id].bins_kmax, params,
+                                         ell, X, de_model=de_model,
                                          alpha_tr_lo=alpha_tr_lo,
                                          W_damping=W_damping)
                     PX_ell_list[:,i] = np.hstack([PX_ell[l] for l
                                                   in PX_ell.keys()])
 
                 self.chi2_decomposition = {}
-                self.chi2_decomposition['DD'] = self.SN
+                self.chi2_decomposition['DD'] = self.data[obs_id].SN_kmax
                 self.chi2_decomposition['XD'] = PX_ell_list.T \
-                                                @ self.InvCov_data_kmax \
-                                                @ self.P_data_kmax
+                    @ self.data[obs_id].inverse_cov_kmax \
+                    @ self.data[obs_id].signal_kmax
                 self.chi2_decomposition['XX'] = PX_ell_list.T \
-                                                @ self.InvCov_data_kmax \
-                                                @ PX_ell_list
+                    @ self.data[obs_id].inverse_cov_kmax \
+                    @ PX_ell_list
 
             for p in self.bias_params_list:
                 if p in params.keys():
@@ -1605,21 +1691,24 @@ class PTEmu:
         return chi2
 
 
-    def chi2_from_table(self, table, params, kmax, de_model='lambda',
+    def chi2_from_table(self, obs_id, table, params, kmax, de_model='lambda',
                         alpha_tr_lo=None, chi2_decomposition=False):
-        if not self.kmax_is_set or (self.kmax != kmax and \
-                self.kmax != [kmax for i in range(self.n_ell)]):
-            self.set_kmax(kmax)
+        if (not self.data[obs_id].kmax_is_set or (self.data[obs_id].kmax != kmax
+                and self.data[obs_id].kmax != [kmax for i in
+                                               range(self.data[obs_id].n_ell)])
+            ):
+            self.data[obs_id].set_kmax(kmax)
 
-        ell = [2*l for l in range(self.n_ell) if self.nbin[l] > 0]
+        ell = [2*l for l in range(self.data[obs_id].n_ell)
+               if self.data[obs_id].nbins[l] > 0]
         if not chi2_decomposition:
-            Pell = self.Pell_from_table(table, self.k_bins, params, ell,
-                                        de_model=de_model,
+            Pell = self.Pell_from_table(table, self.data[obs_id].bins_kmax,
+                                        params, ell, de_model=de_model,
                                         alpha_tr_lo=alpha_tr_lo)
             Pell_list = np.hstack([Pell[l] for l in Pell.keys()])
 
-            diff = Pell_list - self.P_data_kmax
-            chi2 = diff @ self.InvCov_data_kmax @ diff.T
+            diff = Pell_list - self.data[obs_id].signal_kmax
+            chi2 = diff @ self.data[obs_id].inverse_cov_kmax @ diff.T
         else:
             check_params = self.params_shape_list \
                            + self.de_model_params_list[de_model] \
@@ -1629,22 +1718,25 @@ class PTEmu:
 
             if (any(params[p] != self.params[p] for p in check_params)
                     or self.chi2_decomposition is None):
-                PX_ell_list = np.zeros([sum(self.nbin),len(self.diagrams_all)])
+                PX_ell_list = np.zeros([sum(self.data[obs_id].nbins),
+                                        len(self.diagrams_all)])
                 for i, X in enumerate(self.diagrams_all):
-                    PX_ell = self.PX_ell_from_table(table, self.k_bins, params,
-                                                    ell, X, de_model=de_model,
+                    PX_ell = self.PX_ell_from_table(table,
+                                                    self.data[obs_id].bins_kmax,
+                                                    params, ell, X,
+                                                    de_model=de_model,
                                                     alpha_tr_lo=alpha_tr_lo)
                     PX_ell_list[:,i] = np.hstack([PX_ell[l] for l
                                                   in PX_ell.keys()])
 
                 self.chi2_decomposition = {}
-                self.chi2_decomposition['DD'] = self.SN
+                self.chi2_decomposition['DD'] = self.data[obs_id].SN_kmax
                 self.chi2_decomposition['XD'] = PX_ell_list.T \
-                                                @ self.InvCov_data_kmax \
-                                                @ self.P_data_kmax
+                    @ self.data[obs_id].inverse_cov_kmax \
+                    @ self.data[obs_id].signal_kmax
                 self.chi2_decomposition['XX'] = PX_ell_list.T \
-                                                @ self.InvCov_data_kmax \
-                                                @ PX_ell_list
+                    @ self.data[obs_id].inverse_cov_kmax \
+                    @ PX_ell_list
 
             for p in self.bias_params_list:
                 if p in params.keys():
