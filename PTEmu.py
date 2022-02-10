@@ -602,6 +602,7 @@ class PTEmu:
         self.emu_params_updated = False
 
         self.chi2_decomposition = None
+        self.chi2_decomposition_from_table = None
 
         if fname_base is not None:
             self.load_emulator_data(fname='{}.fits'.format(fname_base))
@@ -809,6 +810,8 @@ class PTEmu:
 
         if emu_params_updated:
             self.Pk_ratios = {0:None, 2:None, 4:None}
+            self.chi2_decomposition = None
+            self.chi2_decomposition_from_table = None
 
         for p in self.bias_params_list + self.RSD_params_list:
             if p in params.keys():
@@ -1404,7 +1407,6 @@ class PTEmu:
         self.splines_up_to_date = False
         self.Pk_lin = None
         self.Pk_ratios = {0:None, 2:None, 4:None}
-        self.chi2_decomposition = None
 
         return Pell_dict
 
@@ -1488,6 +1490,12 @@ class PTEmu:
             for i,l in enumerate(ell):
                 ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
                 PX_ell_dict['ell{}'.format(l)] = PX_ell_model[ids,i]
+
+        # this is simply to guarantee that upon the next call of Pell or
+        # Pell_LCDM the parameter values will be updated
+        self.splines_up_to_date = False
+        self.Pk_lin = None
+        self.Pk_ratios = {0:None, 2:None, 4:None}
 
         return PX_ell_dict
 
@@ -1717,7 +1725,7 @@ class PTEmu:
                 check_params.remove('Ok')
 
             if (any(params[p] != self.params[p] for p in check_params)
-                    or self.chi2_decomposition is None):
+                    or self.chi2_decomposition_from_table is None):
                 PX_ell_list = np.zeros([sum(self.data[obs_id].nbins),
                                         len(self.diagrams_all)])
                 for i, X in enumerate(self.diagrams_all):
@@ -1729,12 +1737,12 @@ class PTEmu:
                     PX_ell_list[:,i] = np.hstack([PX_ell[l] for l
                                                   in PX_ell.keys()])
 
-                self.chi2_decomposition = {}
-                self.chi2_decomposition['DD'] = self.data[obs_id].SN_kmax
-                self.chi2_decomposition['XD'] = PX_ell_list.T \
+                self.chi2_decomposition_from_table = {}
+                self.chi2_decomposition_from_table['DD'] = self.data[obs_id].SN_kmax
+                self.chi2_decomposition_from_table['XD'] = PX_ell_list.T \
                     @ self.data[obs_id].inverse_cov_kmax \
                     @ self.data[obs_id].signal_kmax
-                self.chi2_decomposition['XX'] = PX_ell_list.T \
+                self.chi2_decomposition_from_table['XX'] = PX_ell_list.T \
                     @ self.data[obs_id].inverse_cov_kmax \
                     @ PX_ell_list
 
@@ -1746,9 +1754,9 @@ class PTEmu:
             self.splines_up_to_date = False
 
             bX = self.get_bias_coeff_for_chi2_decomposition()
-            chi2 = bX @ self.chi2_decomposition['XX'] @ bX \
-                   - 2*bX @ self.chi2_decomposition['XD'] \
-                   + self.chi2_decomposition['DD']
+            chi2 = bX @ self.chi2_decomposition_from_table['XX'] @ bX \
+                   - 2*bX @ self.chi2_decomposition_from_table['XD'] \
+                   + self.chi2_decomposition_from_table['DD']
 
         return chi2
 
