@@ -224,7 +224,7 @@ class MeasuredData:
                 self.n_realizations = kwargs.get('n_realizations')
             else:
                 raise ValueError("For non-analytical covariance matrix, "
-                                 "Nrealizations needs to be specified.")
+                                 "'n_realizations needs' to be specified.")
 
         self.kmax_is_set = False
 
@@ -1010,6 +1010,37 @@ class PTEmu:
             self.neff_max[ell] = dlP_max/dlk_max
 
 
+    def build_Pell_spline_from_table(self, Pell, ell):
+        if self.use_Mpc:
+            hfac = self.params['h']/self.emu_LCDM_params['h']
+            self.Pell_spline[ell] = interp1d(self.k_table*hfac, Pell,
+                                             kind='cubic')
+            self.Pell_min[ell] = Pell[0]
+            self.Pell_max[ell] = Pell[-1]
+            self.k_table_min = self.k_table[0]*hfac
+            self.k_table_max = self.k_table[-1]*hfac
+            dlP_min = np.log10(Pell[2]) - np.log10(Pell[0])
+            dlP_max = np.log10(Pell[-1]) - np.log10(Pell[-3])
+            dlk_min = np.log10(self.k_table[2]) - np.log10(self.k_table[0])
+            dlk_max = np.log10(self.k_table[-1]) - np.log10(self.k_table[-3])
+            self.neff_min[ell] = dlP_min/dlk_min
+            self.neff_max[ell] = dlP_max/dlk_max
+        else:
+            Pell *= self.params['h']**3
+            self.Pell_spline[ell] = interp1d(
+                self.k_table/self.emu_LCDM_params['h'], Pell, kind='cubic')
+            self.Pell_min[ell] = Pell[0]
+            self.Pell_max[ell] = Pell[-1]
+            self.k_table_min = self.k_table[0]/self.emu_LCDM_params['h']
+            self.k_table_max = self.k_table[-1]/self.emu_LCDM_params['h']
+            dlP_min = np.log10(Pell[2]) - np.log10(Pell[0])
+            dlP_max = np.log10(Pell[-1]) - np.log10(Pell[-3])
+            dlk_min = np.log10(self.k_table[2]) - np.log10(self.k_table[0])
+            dlk_max = np.log10(self.k_table[-1]) - np.log10(self.k_table[-3])
+            self.neff_min[ell] = dlP_min/dlk_min
+            self.neff_max[ell] = dlP_max/dlk_max
+
+
     def eval_Pell_spline(self, k, ell):
         spline = np.where(k < self.k_table_min,
                      self.Pell_min[ell] * (k/self.k_table_min)**self.neff_min[ell],
@@ -1162,12 +1193,39 @@ class PTEmu:
         return Pell_dict
 
 
-    def Pell_convolved(self, k, params, ell, de_model=None, alpha_tr_lo=None,
-             W_damping=None):
-        Pell = self.Pell(self.data['pspec']['k_window'], params, ell, de_model,
-                         alpha_tr_lo)
+    def Pell_convolved(self, k, params, ell, obs_id, de_model=None,
+                       alpha_tr_lo=None, W_damping=None):
+        ell_for_mixing_matrix = [0,2,4] if 'f' in self.params_list else [0]
+        Pell = self.Pell(self.data[obs_id].bins_mixing_matrix[:,1], params,
+                         ell_for_mixing_matrix, de_model, alpha_tr_lo)
+        Pell_list = np.hstack([Pell['ell{}'.format(l)] for l
+                               in ell_for_mixing_matrix])
+        Pell_convolved = np.dot(self.data[obs_id].W_mixing_matrix, Pell_list)
 
-        Pell_convolved = np.dot(self.data['pspec'])
+        ell = [ell] if not isinstance(ell, list) else ell
+
+        if isinstance(k, list):
+            if len(k) != len(ell):
+                raise ValueError("If 'k' is given as a list, it must match the "
+                                 "length of 'ell'.")
+            else:
+                k_list = k
+                k = np.unique(np.hstack(k_list))
+        else:
+            k_list = [k]*len(ell)
+
+        Pell_dict = {}
+        if k != self.data[obs_id].bins_mixing_matrix[:,0]:
+            for i,l in enumerate(ell):
+                spline = interp1d(self.data[obs_id].bins_mixing_matrix[:,0],
+                                  Pell_convolved[:,i], kind='cubic')
+                Pell_dict['ell{}'.format(l)] = spline(k_list[i])
+        else:
+            for i,l in enumerate(ell):
+                ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
+                Pell_dict['ell{}'.format(l)] = Pell_convolved[ids,i]
+
+        return Pell_dict
 
 
     def PX(self, k, mu, params, X, de_model=None):
@@ -1327,7 +1385,7 @@ class PTEmu:
 
 
     def Pell_from_table(self, table, k, params, ell, de_model='lambda',
-                        alpha_tr_lo=None):
+                        alpha_tr_lo=None, W_damping=None):
         ell = [ell] if not isinstance(ell, list) else ell
         ell_for_recon = [0,2,4] if 'f' in self.params_list else [0]
 
@@ -1339,13 +1397,27 @@ class PTEmu:
                 t += eval_legendre(l, mu)*Pell_noise_spline[l](q)
             return t
 
-        def integrand(mu):
-            mu2 = mu**2
-            APfac = np.sqrt(mu2/self.params['alpha_lo']**2
-                            + (1. - mu2)/self.params['alpha_tr']**2)
-            kp = k*APfac
-            mup = mu/self.params['alpha_lo']/APfac
-            return np.outer(P_noise_2d(kp, mup), eval_legendre(ell, mu))
+        if self.RSD_model == 'EFT':
+            def integrand(mu):
+                mu2 = mu**2
+                APfac = np.sqrt(mu2/self.params['alpha_lo']**2
+                                + (1. - mu2)/self.params['alpha_tr']**2)
+                kp = k*APfac
+                mup = mu/self.params['alpha_lo']/APfac
+                return np.outer(P_noise_2d(kp, mup), eval_legendre(ell, mu))
+        elif self.RSD_model == 'VIR':
+            if W_damping is None:
+                W_damping = self.W_kurt
+            def integrand(mu):
+                mu2 = mu**2
+                APfac = np.sqrt(mu2/self.params['alpha_lo']**2
+                                + (1. - mu2)/self.params['alpha_tr']**2)
+                kp = k*APfac
+                mup = mu/self.params['alpha_lo']/APfac
+                P_noise_2d_damped = P_noise_2d(kp, mup) * W_damping(kp, mup)
+                return np.outer(P_noise_2d_damped, eval_legendre(ell, mu))
+        else:
+            raise ValueError('Unsupported RSD model.')
 
         if isinstance(k, list):
             if len(k) != len(ell):
@@ -1401,6 +1473,89 @@ class PTEmu:
             ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
             Pell_dict['ell{}'.format(l)] = self.Pell_spline[l](k_list[i]) \
                                            + Pell_noise_model[ids,i]
+
+        # this is simply to guarantee that upon the next call of Pell or
+        # Pell_LCDM the parameter values will be updated
+        self.splines_up_to_date = False
+        self.Pk_lin = None
+        self.Pk_ratios = {0:None, 2:None, 4:None}
+
+        return Pell_dict
+
+
+    def Pell_from_novir_noAP_table(self, table, k, params, ell,
+                                   de_model='lambda', alpha_tr_lo=None,
+                                   W_damping=None):
+        ell_for_recon = [0,2,4] if 'f' in self.params_list else [0]
+
+        def P2d(q, mu):
+            t = 0.
+            for l in ell_for_recon:
+                t += eval_legendre(l, mu) * self.eval_Pell_spline(q, l)
+            return t
+
+        if self.RSD_model == 'EFT':
+            def integrand(mu):
+                mu2 = mu**2
+                APfac = np.sqrt(mu2/self.params['alpha_lo']**2
+                                + (1. - mu2)/self.params['alpha_tr']**2)
+                kp = k*APfac
+                mup = mu/self.params['alpha_lo']/APfac
+                return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
+        elif self.RSD_model == 'VIR':
+            if W_damping is None:
+                W_damping = self.W_kurt
+            def integrand(mu):
+                mu2 = mu**2
+                APfac = np.sqrt(mu2/self.params['alpha_lo']**2
+                                + (1. - mu2)/self.params['alpha_tr']**2)
+                kp = k*APfac
+                mup = mu/self.params['alpha_lo']/APfac
+                P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
+                return np.outer(P2d_damped, eval_legendre(ell, mu))
+        else:
+            raise ValueError('Unsupported RSD model.')
+
+        ell = [ell] if not isinstance(ell, list) else ell
+
+        if isinstance(k, list):
+            if len(k) != len(ell):
+                raise ValueError("If 'k' is given as a list, it must match the "
+                                 "length of 'ell'.")
+            else:
+                k_list = k
+                k = np.unique(np.hstack(k_list))
+        else:
+            k_list = [k]*len(ell)
+
+        self.update_params(params, de_model=de_model)
+        Pell = self.Pell_from_table_fid_ktable(table, ell_for_recon)
+        for i, l in enumerate(ell_for_recon):
+            if l == 0:
+                N0   = self.params['N0'] if self.use_Mpc \
+                    else self.params['N0']/self.params['h']**3
+                N20  = self.params['N20'] if self.use_Mpc \
+                    else self.params['N20']/self.params['h']**5
+                Pell[:,i] += np.ones_like(self.k_table)*N0/self.nbar \
+                                          + self.k_table**2*N20/self.nbar
+            elif l == 2:
+                N22  = self.params['N22'] if self.use_Mpc \
+                    else self.params['N22']/self.params['h']**5
+                Pell[:,i] += self.k_table**2*N22/self.nbar
+
+            self.build_Pell_spline_from_table(Pell[:,i], l)
+
+        self.update_AP_params(params, de_model=de_model,
+                              alpha_tr_lo=alpha_tr_lo)
+        alpha3 = self.params['alpha_tr']**2 * self.params['alpha_lo']
+
+        Pell_model = quad_vec(integrand, 0, 1)[0]
+        Pell_model *= (2*np.array(ell)+1) / alpha3
+
+        Pell_dict = {}
+        for i,l in enumerate(ell):
+            ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
+            Pell_dict['ell{}'.format(l)] = Pell_model[ids,i]
 
         # this is simply to guarantee that upon the next call of Pell or
         # Pell_LCDM the parameter values will be updated
