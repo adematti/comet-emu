@@ -571,8 +571,9 @@ class PTEmu:
         self.params['alpha_lo'] = 1
         self.emu_LCDM_params    = emu_LCDM_params
 
-        self.use_Mpc  = use_Mpc
-        self.nbar     = 1. # in units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
+        self.use_Mpc = use_Mpc
+        self.real_space = False if 'f' in self.params_list else True
+        self.nbar = 1. # in units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
 
         self.n_diagrams = 19
 
@@ -653,11 +654,14 @@ class PTEmu:
             self.training['SHAPE'].assign_table(hdul['MODEL_SHAPE'], self.nk, self.nkloop)
             self.training['FULL'].assign_samples(hdul['PARAMS_FULL'])
             self.training['FULL'].assign_table(hdul['MODEL_FULL'], self.nk, self.nkloop)
+            if not self.real_space:
+                self.s12_for_P6 = hdul['MODEL_Pell6'].header['SIG12']
+                self.P6 = hdul['MODEL_Pell6'].data['P_all']
 
 
     def train_emulator(self, max_f_eval=1000, num_restarts=5, data_type=None):
         if data_type is None:
-            ell_train = [0,2,4] if 'f' in self.params_list else [0]
+            ell_train = [0,2,4] if not self.real_space else [0]
             self.emu['PL'] = self.training['SHAPE'].GPy_model('PL')
             self.emu['s12'] = self.training['SHAPE'].GPy_model('s12')
             if self.RSD_model == 'VIR':
@@ -682,7 +686,7 @@ class PTEmu:
 
     def save_emulator(self, fname_base, data_type=None):
         if data_type is None:
-            ell_train = [0,2,4] if 'f' in self.params_list else [0]
+            ell_train = [0,2,4] if not self.real_space else [0]
             for dt in ['PL','s12']:
                 with open('{}_{}.pickle'.format(fname_base, dt), "wb") as f:
                     pickle.dump(self.emu[dt], f)
@@ -708,7 +712,7 @@ class PTEmu:
 
     def load_emulator(self, fname_base, data_type=None):
         if data_type is None:
-            ell_train = [0,2,4] if 'f' in self.params_list else [0]
+            ell_train = [0,2,4] if not self.real_space else [0]
             for dt in ['PL','s12']:
                 self.emu[dt] = pickle.load(
                     open('{}_{}.pickle'.format(fname_base, dt), "rb"))
@@ -853,6 +857,36 @@ class PTEmu:
 
         return np.array([b1sq, b1, 1., cell, b1sq*cnlo, b1*cnlo, cnlo, b1sq,
                          b1*b2, b1*g2, b1*g21, b2**2, b2*g2, g2**2, b2, g2, g21])
+
+
+    def get_bias_coeff_for_P6(self):
+        b1   = self.params['b1']
+        b2   = self.params['b2']
+        g2   = self.params['g2']
+        g21  = self.params['g21']
+        cnlo = self.params['cnlo'] if self.use_Mpc \
+             else self.params['cnlo']/self.params['h']**4
+        f = self.params['f']
+
+        b1sq = b1**2
+        b1f = b1*f
+        f2 = f**2
+        f3 = f**3
+        f4 = f**4
+
+        bb_tree = np.array([b1sq, b1*f, f2])
+        bb_loop = np.array([b1sq, b1sq*f, b1sq*f2, b1f, b1f*f, b1f*f2,
+                            f2, f3, f4, b1*b2, b1f*b2, b1*g2, b1f*g2, b1*g21,
+                            b2**2, b2*g2, g2**2, b2*f, b2*f2, g2*f, g2*f2,
+                            g21*f])
+        bb_k4ctr = np.array([b1sq*f4, b1f*f4, f2*f4])
+
+        s12ratio = (self.params['s12']/self.s12_for_P6)**2
+        bb_tree *= s12ratio
+        bb_loop *= s12ratio**2
+        bb_k4ctr *= s12ratio
+
+        return np.hstack([bb_tree, bb_loop, bb_k4ctr])
 
 
     def get_bias_coeff_for_chi2_decomposition(self):
@@ -1012,7 +1046,7 @@ class PTEmu:
 
     def build_Pell_spline_from_table(self, Pell, ell):
         if self.use_Mpc:
-            hfac = self.params['h']/self.emu_LCDM_params['h']
+            hfac = self.params['h']/self.emu_LCDM_params['h'] if ell != 6 else 1
             self.Pell_spline[ell] = interp1d(self.k_table*hfac, Pell,
                                              kind='cubic')
             self.Pell_min[ell] = Pell[0]
@@ -1027,12 +1061,14 @@ class PTEmu:
             self.neff_max[ell] = dlP_max/dlk_max
         else:
             Pell *= self.params['h']**3
+            hfac = 1./self.emu_LCDM_params['h'] if ell != 6 \
+                else 1./self.params['h']
             self.Pell_spline[ell] = interp1d(
-                self.k_table/self.emu_LCDM_params['h'], Pell, kind='cubic')
+                self.k_table*hfac, Pell, kind='cubic')
             self.Pell_min[ell] = Pell[0]
             self.Pell_max[ell] = Pell[-1]
-            self.k_table_min = self.k_table[0]/self.emu_LCDM_params['h']
-            self.k_table_max = self.k_table[-1]/self.emu_LCDM_params['h']
+            self.k_table_min = self.k_table[0]*hfac
+            self.k_table_max = self.k_table[-1]*hfac
             dlP_min = np.log10(Pell[2]) - np.log10(Pell[0])
             dlP_max = np.log10(Pell[-1]) - np.log10(Pell[-3])
             dlk_min = np.log10(self.k_table[2]) - np.log10(self.k_table[0])
@@ -1063,7 +1099,7 @@ class PTEmu:
 
 
     def Pdw(self, k, mu, params, de_model=None):
-        ell_for_recon = [0,2,4] if 'f' in self.params_list else [0]
+        ell_for_recon = [0,2,4] if not self.real_space else [0]
         self.eval_emulator(params, ell=ell_for_recon, de_model=de_model)
 
         Pdw_ell = np.zeros([self.nk,3])
@@ -1090,40 +1126,54 @@ class PTEmu:
 
     def Pell_fid_ktable(self, params, ell, de_model=None):
         ell = [ell] if not isinstance(ell, list) else ell
-        self.eval_emulator(params, ell, de_model=de_model)
+        ell_eval_emu = ell.copy()
+        try:
+            ell_eval_emu.remove(6)
+        except:
+            pass
+        self.eval_emulator(params, ell_eval_emu, de_model=de_model)
+
+        bij = self.get_bias_coeff(0)
 
         Pell = np.zeros([self.nk,len(ell)])
         for i,l in enumerate(ell):
-            bij = self.get_bias_coeff(l)
+            if l != 6:
+                bij[3] = self.params['c{}'.format(l)] if self.use_Mpc \
+                     else self.params['c{}'.format(l)]/self.params['h']**2
 
-            Pk_bij = np.zeros([self.nk,self.n_diagrams-2])
-            Pk_bij[:,:7] = np.multiply(self.Pk_ratios[l][:7*self.nk].reshape(
-                (7,self.nk)), self.Pk_lin).T
-            Pk_bij[(self.nk-self.nkloop):,7:17] = np.multiply(
-                self.Pk_ratios[l][7*self.nk:].reshape(
-                    (10,self.nkloop)), self.Pk_lin[(self.nk-self.nkloop):]).T
+                Pk_bij = np.zeros([self.nk,self.n_diagrams-2])
+                Pk_bij[:,:7] = np.multiply(
+                    self.Pk_ratios[l][:7*self.nk].reshape((7,self.nk)),
+                    self.Pk_lin).T
+                Pk_bij[(self.nk-self.nkloop):,7:17] = np.multiply(
+                    self.Pk_ratios[l][7*self.nk:].reshape((10,self.nkloop)),
+                    self.Pk_lin[(self.nk-self.nkloop):]).T
 
-            Pell[:,i] = np.dot(bij,Pk_bij.T)
+                Pell[:,i] = np.dot(bij, Pk_bij.T)
 
-            # add shot noise
-            if l == 0:
-                N0   = self.params['N0'] if self.use_Mpc \
+                # add shot noise
+                if l == 0:
+                    N0   = self.params['N0'] if self.use_Mpc \
                     else self.params['N0']/self.params['h']**3
-                N20  = self.params['N20'] if self.use_Mpc \
+                    N20  = self.params['N20'] if self.use_Mpc \
                     else self.params['N20']/self.params['h']**5
-                Pell[:,i] += np.ones_like(self.k_table)*N0/self.nbar \
-                           + self.k_table**2*N20/self.nbar
-            elif l == 2:
-                N22  = self.params['N22'] if self.use_Mpc \
+                    Pell[:,i] += np.ones_like(self.k_table)*N0/self.nbar \
+                    + self.k_table**2*N20/self.nbar
+                elif l == 2:
+                    N22  = self.params['N22'] if self.use_Mpc \
                     else self.params['N22']/self.params['h']**5
-                Pell[:,i] += self.k_table**2*N22/self.nbar
+                    Pell[:,i] += self.k_table**2*N22/self.nbar
+            else:
+                bij_for_P6 = self.get_bias_coeff_for_P6()
+                Pell[:,i] = np.dot(bij_for_P6, self.P6.T)
 
         return Pell
 
 
     def Pell(self, k, params, ell, de_model=None, alpha_tr_lo=None,
-             W_damping=None):
-        ell_for_recon = [0,2,4] if 'f' in self.params_list else [0]
+             W_damping=None, ell_for_recon=None):
+        if ell_for_recon is None:
+            ell_for_recon = [0,2,4,6] if not self.real_space else [0]
 
         def P2d(q, mu):
             t = 0.
@@ -1194,10 +1244,11 @@ class PTEmu:
 
 
     def Pell_convolved(self, k, params, ell, obs_id, de_model=None,
-                       alpha_tr_lo=None, W_damping=None):
-        ell_for_mixing_matrix = [0,2,4] if 'f' in self.params_list else [0]
+                       alpha_tr_lo=None, W_damping=None, ell_for_recon=None):
+        ell_for_mixing_matrix = [0,2,4] if not self.real_space else [0]
         Pell = self.Pell(self.data[obs_id].bins_mixing_matrix[:,1], params,
-                         ell_for_mixing_matrix, de_model, alpha_tr_lo)
+                         ell_for_mixing_matrix, de_model, alpha_tr_lo,
+                         W_damping, ell_for_recon)
         Pell_list = np.hstack([Pell['ell{}'.format(l)] for l
                                in ell_for_mixing_matrix])
         Pell_convolved = np.dot(self.data[obs_id].W_mixing_matrix, Pell_list)
@@ -1239,7 +1290,7 @@ class PTEmu:
                            7*self.nk + (n-6)*self.nkloop]
 
         if ids is not None:
-            ell_for_recon = [0,2,4] if 'f' in self.params_list else [0]
+            ell_for_recon = [0,2,4] if not self.real_space else [0]
             self.eval_emulator(params, ell=ell_for_recon, de_model=de_model)
 
             PX_ell = np.zeros([self.nk, 3])
@@ -1266,9 +1317,60 @@ class PTEmu:
         return PX_2d
 
 
+    def PX_ell6_novir_noAP(self, X):
+        f = self.params['f']
+        if X == 'P0L_b1b1':
+            P6X = self.P6[:,0]
+        elif X == 'PNL_b1':
+            fvec = np.array([f, f, f**2, f**3])
+            P6X = np.dot(self.P6[:,[1,6,7,8]], fvec)
+        elif X == 'PNL_id':
+            f2 = f**2
+            fvec = np.array([f2, f2, f*f2, f2**2])
+            P6X = np.dot(self.P6[:,[2,9,10,11]], fvec)
+        elif X == 'P1L_b1b1':
+            fvec = np.array([1, f, f**2])
+            P6X = np.dot(self.P6[:,[3,4,5]], fvec)
+        elif X == 'P1L_b1b2':
+            fvec = np.array([1, f])
+            P6X = np.dot(self.P6[:,[12,13]], fvec)
+        elif X == 'P1L_b1g2':
+            fvec = np.array([1, f])
+            P6X = np.dot(self.P6[:,[14,15]], fvec)
+        elif X == 'P1L_b1g21':
+            P6X = self.P6[:,16]
+        elif X == 'P1L_b2b2':
+            P6X = self.P6[:,17]
+        elif X == 'P1L_b2g2':
+            P6X = self.P6[:,18]
+        elif X == 'P1L_g2g2':
+            P6X = self.P6[:,19]
+        elif X == 'P1L_b2':
+            fvec = np.array([f, f**2])
+            P6X = np.dot(self.P6[:,[20,21]], fvec)
+        elif X == 'P1L_g2':
+            fvec = np.array([f, f**2])
+            P6X = np.dot(self.P6[:,[22,23]], fvec)
+        elif X == 'P1L_g21':
+            P6X = f*self.P6[:,24]
+        elif X == 'Pctr_b1b1cnlo':
+            P6X = f**4*self.P6[:,25]
+        elif X == 'Pctr_b1cnlo':
+            P6X = f**5*self.P6[:,26]
+        elif X == 'Pctr_cnlo':
+            P6X = f**6*self.P6[:,27]
+        return P6X
+
+
     def PX_ell(self, k, params, ell, X, de_model=None, alpha_tr_lo=None,
-               W_damping=None):
-        ell_for_recon = [0,2,4] if 'f' in self.params_list else [0]
+               W_damping=None, ell_for_recon=None):
+        if ell_for_recon is None:
+            ell_for_recon = [0,2,4,6] if not self.real_space else [0]
+        ell_eval_emu = ell_for_recon.copy()
+        try:
+            ell_eval_emu.remove(6)
+        except:
+            pass
 
         def P2d(q, mu):
             t = 0.
@@ -1321,17 +1423,21 @@ class PTEmu:
                         ids = [n*self.nk, (n+1)*self.nk]
                     else:
                         ids = [7*self.nk + (n-7)*self.nkloop,
-                        7*self.nk + (n-6)*self.nkloop]
+                               7*self.nk + (n-6)*self.nkloop]
 
-            self.eval_emulator(params, ell=ell_for_recon, de_model=de_model)
+            self.eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
             if X == 'Pctr_clo':
                 PX_ell[self.nk - (ids[1]-ids[0]):, int(ell_clo/2)] = \
                     self.Pk_ratios[ell_clo][ids[0]:ids[1]]
             else:
                 for i, l in enumerate(ell_for_recon):
-                    PX_ell[self.nk - (ids[1]-ids[0]):, i] = \
-                        self.Pk_ratios[l][ids[0]:ids[1]]
-            PX_ell = (PX_ell.T*self.Pk_lin).T
+                    if l != 6:
+                        PX_ell[self.nk - (ids[1]-ids[0]):, i] = \
+                            self.Pk_ratios[l][ids[0]:ids[1]]
+                    else:
+                        PX_ell[:,i] = self.PX_ell6_novir_noAP(X)
+            PX_ell[:,:len(ell_eval_emu)] = (PX_ell[:,:len(ell_eval_emu)].T \
+                                            * self.Pk_lin).T
         else:
             if X == 'Pnoise_N0':
                 PX_ell[:,0] = np.ones_like(self.k_table)
@@ -1370,16 +1476,20 @@ class PTEmu:
         Pell = np.zeros([self.nk,len(ell)])
 
         for i,l in enumerate(ell):
-            Pk_bij = np.zeros([self.nk,self.n_diagrams])
-            cnt = 0
-            for n in np.array([0,1,2,13,14,15,16,17,18])+self.n_diagrams*int(l/2):
-                Pk_bij[:,cnt] = table[:,1+n]
-                cnt += 1
-            for n in np.arange(3,13)+self.n_diagrams*int(l/2):
-                Pk_bij[:,cnt] = table[:,1+n]
-                cnt += 1
+            if l != 6:
+                Pk_bij = np.zeros([self.nk,self.n_diagrams])
+                cnt = 0
+                for n in np.array([0,1,2,13,14,15,16,17,18])+self.n_diagrams*int(l/2):
+                    Pk_bij[:,cnt] = table[:,1+n]
+                    cnt += 1
+                for n in np.arange(3,13)+self.n_diagrams*int(l/2):
+                    Pk_bij[:,cnt] = table[:,1+n]
+                    cnt += 1
 
-            Pell[:,i] = np.dot(bij,Pk_bij.T)
+                Pell[:,i] = np.dot(bij,Pk_bij.T)
+            else:
+                bij_for_P6 = self.get_bias_coeff_for_P6()
+                Pell[:,i] = np.dot(bij_for_P6, self.P6.T)
 
         return Pell
 
@@ -1387,7 +1497,7 @@ class PTEmu:
     def Pell_from_table(self, table, k, params, ell, de_model='lambda',
                         alpha_tr_lo=None, W_damping=None):
         ell = [ell] if not isinstance(ell, list) else ell
-        ell_for_recon = [0,2,4] if 'f' in self.params_list else [0]
+        ell_for_recon = [0,2,4] if not self.real_space else [0]
 
         Pell_noise_spline = {}
 
@@ -1485,8 +1595,9 @@ class PTEmu:
 
     def Pell_from_novir_noAP_table(self, table, k, params, ell,
                                    de_model='lambda', alpha_tr_lo=None,
-                                   W_damping=None):
-        ell_for_recon = [0,2,4] if 'f' in self.params_list else [0]
+                                   W_damping=None, ell_for_recon=None):
+        if ell_for_recon is None:
+            ell_for_recon = [0,2,4,6] if not self.real_space else [0]
 
         def P2d(q, mu):
             t = 0.
@@ -1568,7 +1679,7 @@ class PTEmu:
 
     def PX_ell_from_table(self, table, k, params, ell, X, de_model='lambda',
                           alpha_tr_lo=None):
-        ell_for_recon = [0,2,4] if 'f' in self.params_list else [0]
+        ell_for_recon = [0,2,4] if not self.real_space else [0]
 
         def P2d(q, mu):
             t = 0.
@@ -1659,7 +1770,7 @@ class PTEmu:
         if Nmodes is None:
             Nmodes = volume/3/(2*np.pi**2)*((k+dk/2)**3 - (k-dk/2)**3)
 
-        if 'f' in self.params_list:
+        if not self.real_space:
             P0 = Pell['ell0']
             P2 = Pell['ell2']
             P4 = Pell['ell4']
@@ -1703,7 +1814,7 @@ class PTEmu:
         cov = np.zeros([sum(nbins),sum(nbins)])
 
         k_all = np.unique(np.hstack(k))
-        ell_for_cov = [0,2,4] if 'f' in self.params_list else 0
+        ell_for_cov = [0,2,4] if not self.real_space else 0
         Pell = self.Pell(k_all, params, ell=ell_for_cov, de_model=de_model,
                          alpha_tr_lo=alpha_tr_lo, W_damping=W_damping)
         Pell['ell0'] += 1./self.nbar
@@ -1755,7 +1866,7 @@ class PTEmu:
         cov = np.zeros([sum(nbins),sum(nbins)])
 
         k_all = np.unique(np.hstack(k))
-        ell_for_cov = [0,2,4] if 'f' in self.params_list else 0
+        ell_for_cov = [0,2,4] if not self.real_space else 0
         Pell = self.Pell_from_table(table, k_all, params, ell=ell_for_cov)
         Pell['ell0'] += 1./self.nbar
 
@@ -1786,7 +1897,7 @@ class PTEmu:
 
 
     def chi2(self, obs_id, params, kmax, de_model=None, alpha_tr_lo=None,
-             W_damping=None, chi2_decomposition=False):
+             W_damping=None, chi2_decomposition=False, ell_for_recon=None):
         if (not self.data[obs_id].kmax_is_set or (self.data[obs_id].kmax != kmax
                 and self.data[obs_id].kmax != [kmax for i in
                                                range(self.data[obs_id].n_ell)])
@@ -1799,7 +1910,7 @@ class PTEmu:
         if not chi2_decomposition:
             Pell = self.Pell(self.data[obs_id].bins_kmax, params, ell,
                              de_model=de_model, alpha_tr_lo=alpha_tr_lo,
-                             W_damping=W_damping)
+                             W_damping=W_damping, ell_for_recon=ell_for_recon)
             Pell_list = np.hstack([Pell[l] for l in Pell.keys()])
 
             diff = Pell_list - self.data[obs_id].signal_kmax
@@ -1826,7 +1937,8 @@ class PTEmu:
                     PX_ell = self.PX_ell(self.data[obs_id].bins_kmax, params,
                                          ell, X, de_model=de_model,
                                          alpha_tr_lo=alpha_tr_lo,
-                                         W_damping=W_damping)
+                                         W_damping=W_damping,
+                                         ell_for_recon=ell_for_recon)
                     PX_ell_list[:,i] = np.hstack([PX_ell[l] for l
                                                   in PX_ell.keys()])
 
