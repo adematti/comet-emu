@@ -594,6 +594,8 @@ class PTEmu:
         self.PX_ell_spline = {}
         self.Pell_min = {}
         self.Pell_max = {}
+        self.k_table_min = {}
+        self.k_table_max = {}
         self.neff_min = {}
         self.neff_max = {}
 
@@ -1016,47 +1018,49 @@ class PTEmu:
 
 
     def build_Pell_spline(self, Pell, ell):
+        id_min = 0 if not ell == 6 else self.nk-self.nkloop
         if self.use_Mpc:
             self.Pell_spline[ell] = interp1d(self.k_table, Pell, kind='cubic')
-            self.Pell_min[ell] = Pell[0]
+            self.Pell_min[ell] = Pell[id_min]
             self.Pell_max[ell] = Pell[-1]
-            self.k_table_min = self.k_table[0]
-            self.k_table_max = self.k_table[-1]
-            dlP_min = np.log10(Pell[2]) - np.log10(Pell[0])
-            dlP_max = np.log10(Pell[-1]) - np.log10(Pell[-3])
-            dlk_min = np.log10(self.k_table[2]) - np.log10(self.k_table[0])
-            dlk_max = np.log10(self.k_table[-1]) - np.log10(self.k_table[-3])
+            self.k_table_min[ell] = self.k_table[id_min]
+            self.k_table_max[ell] = self.k_table[-1]
+            dlP_min = np.log10(np.abs(Pell[id_min+2]/Pell[id_min]))
+            dlP_max = np.log10(np.abs(Pell[-1]/Pell[-3]))
+            dlk_min = np.log10(self.k_table[id_min+2]/self.k_table[id_min])
+            dlk_max = np.log10(self.k_table[-1]/self.k_table[-3])
             self.neff_min[ell] = dlP_min/dlk_min
             self.neff_max[ell] = dlP_max/dlk_max
         else:
             Pell *= self.params['h']**3
             self.Pell_spline[ell] = interp1d(self.k_table/self.params['h'],
                                              Pell, kind='cubic')
-            self.Pell_min[ell] = Pell[0]
+            self.Pell_min[ell] = Pell[id_min]
             self.Pell_max[ell] = Pell[-1]
-            self.k_table_min = self.k_table[0]/self.params['h']
-            self.k_table_max = self.k_table[-1]/self.params['h']
-            dlP_min = np.log10(Pell[2]) - np.log10(Pell[0])
-            dlP_max = np.log10(Pell[-1]) - np.log10(Pell[-3])
-            dlk_min = np.log10(self.k_table[2]) - np.log10(self.k_table[0])
-            dlk_max = np.log10(self.k_table[-1]) - np.log10(self.k_table[-3])
+            self.k_table_min[ell] = self.k_table[id_min]/self.params['h']
+            self.k_table_max[ell] = self.k_table[-1]/self.params['h']
+            dlP_min = np.log10(np.abs(Pell[id_min+2]/Pell[id_min]))
+            dlP_max = np.log10(np.abs(Pell[-1]/Pell[-3]))
+            dlk_min = np.log10(self.k_table[id_min+2]/self.k_table[id_min])
+            dlk_max = np.log10(self.k_table[-1]/self.k_table[-3])
             self.neff_min[ell] = dlP_min/dlk_min
             self.neff_max[ell] = dlP_max/dlk_max
 
 
     def build_Pell_spline_from_table(self, Pell, ell):
+        id_min = 0 if not ell == 6 else self.nk-self.nkloop
         if self.use_Mpc:
             hfac = self.params['h']/self.emu_LCDM_params['h'] if ell != 6 else 1
             self.Pell_spline[ell] = interp1d(self.k_table*hfac, Pell,
                                              kind='cubic')
-            self.Pell_min[ell] = Pell[0]
+            self.Pell_min[ell] = Pell[id_min]
             self.Pell_max[ell] = Pell[-1]
-            self.k_table_min = self.k_table[0]*hfac
-            self.k_table_max = self.k_table[-1]*hfac
-            dlP_min = np.log10(Pell[2]) - np.log10(Pell[0])
-            dlP_max = np.log10(Pell[-1]) - np.log10(Pell[-3])
-            dlk_min = np.log10(self.k_table[2]) - np.log10(self.k_table[0])
-            dlk_max = np.log10(self.k_table[-1]) - np.log10(self.k_table[-3])
+            self.k_table_min[ell] = self.k_table[id_min]*hfac
+            self.k_table_max[ell] = self.k_table[-1]*hfac
+            dlP_min = np.log10(np.abs(Pell[id_min+2]/Pell[id_min]))
+            dlP_max = np.log10(np.abs(Pell[-1]/Pell[-3]))
+            dlk_min = np.log10(self.k_table[id_min+2]/self.k_table[id_min])
+            dlk_max = np.log10(self.k_table[-1]/self.k_table[-3])
             self.neff_min[ell] = dlP_min/dlk_min
             self.neff_max[ell] = dlP_max/dlk_max
         else:
@@ -1065,24 +1069,28 @@ class PTEmu:
                 else 1./self.params['h']
             self.Pell_spline[ell] = interp1d(
                 self.k_table*hfac, Pell, kind='cubic')
-            self.Pell_min[ell] = Pell[0]
+            self.Pell_min[ell] = Pell[id_min]
             self.Pell_max[ell] = Pell[-1]
-            self.k_table_min = self.k_table[0]*hfac
-            self.k_table_max = self.k_table[-1]*hfac
-            dlP_min = np.log10(Pell[2]) - np.log10(Pell[0])
-            dlP_max = np.log10(Pell[-1]) - np.log10(Pell[-3])
-            dlk_min = np.log10(self.k_table[2]) - np.log10(self.k_table[0])
-            dlk_max = np.log10(self.k_table[-1]) - np.log10(self.k_table[-3])
+            self.k_table_min[ell] = self.k_table[id_min]*hfac
+            self.k_table_max[ell] = self.k_table[-1]*hfac
+            dlP_min = np.log10(np.abs(Pell[id_min+2]/Pell[id_min]))
+            dlP_max = np.log10(np.abs(Pell[-1]/Pell[-3]))
+            dlk_min = np.log10(self.k_table[id_min+2]/self.k_table[id_min])
+            dlk_max = np.log10(self.k_table[-1]/self.k_table[-3])
             self.neff_min[ell] = dlP_min/dlk_min
             self.neff_max[ell] = dlP_max/dlk_max
 
 
     def eval_Pell_spline(self, k, ell):
-        spline = np.where(k < self.k_table_min,
-                     self.Pell_min[ell] * (k/self.k_table_min)**self.neff_min[ell],
-                     np.where(k > self.k_table_max,
-                         self.Pell_max[ell] * (k/self.k_table_max)**self.neff_max[ell],
-                         self.Pell_spline[ell](k)))
+        mask_low = k < self.k_table_min[ell]
+        mask_high = k > self.k_table_max[ell]
+        spline = np.hstack(
+            [self.Pell_min[ell] \
+             * (k[mask_low]/self.k_table_min[ell])**self.neff_min[ell],
+             self.Pell_spline[ell](k[np.invert(mask_low) & np.invert(mask_high)]),
+             self.Pell_max[ell] \
+             * (k[mask_high]/self.k_table_max[ell])**self.neff_max[ell]]
+            )
         return spline
 
 
@@ -1098,14 +1106,24 @@ class PTEmu:
         return PL_spline(k)
 
 
-    def Pdw(self, k, mu, params, de_model=None):
-        ell_for_recon = [0,2,4] if not self.real_space else [0]
-        self.eval_emulator(params, ell=ell_for_recon, de_model=de_model)
+    def Pdw(self, k, mu, params, de_model=None, ell_for_recon=None):
+        if ell_for_recon is None:
+            ell_for_recon = [0,2,4,6] if not self.real_space else [0]
+        ell_eval_emu = ell_for_recon.copy()
+        try:
+            ell_eval_emu.remove(6)
+        except:
+            pass
+        self.eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
 
-        Pdw_ell = np.zeros([self.nk,3])
-        for i,ell in enumerate([0,2,4]):
-            Pdw_ell[:,i] = self.Pk_ratios[ell][:self.nk]
-        Pdw_ell = (Pdw_ell.T*self.Pk_lin).T
+        Pdw_ell = np.zeros([self.nk, len(ell_for_recon)])
+        for i,ell in enumerate(ell_for_recon):
+            if ell != 6:
+                Pdw_ell[:,i] = self.Pk_ratios[ell][:self.nk]
+            else:
+                Pdw_ell[:,i] = self.P6[:,0]
+        Pdw_ell[:,:len(ell_eval_emu)] = (Pdw_ell[:,:len(ell_eval_emu)].T \
+                                         * self.Pk_lin).T
 
         Pdw_spline = {}
         for i,ell in enumerate(ell_for_recon):
