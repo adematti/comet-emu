@@ -791,6 +791,7 @@ class PTEmu:
                 wa = params_fid['wa']
             self.cosmo.update_cosmology(Om0, H0, Ok0=Ok0, de_model=de_model,
                                         w0=w0, wa=wa)
+            self.h_fid = params_fid['h']
             self.H_fid = self.cosmo.Hz(params_fid['z'])
             self.Dm_fid = self.cosmo.comoving_transverse_distance(params_fid['z'])
 
@@ -847,6 +848,9 @@ class PTEmu:
             self.params['alpha_lo'] = self.H_fid/self.cosmo.Hz(self.params['z'])
             self.params['alpha_tr'] = self.cosmo.comoving_transverse_distance(
                 self.params['z'])/self.Dm_fid
+            if not self.use_Mpc:
+                self.params['alpha_lo'] *= (self.params['h']/self.h_fid)
+                self.params['alpha_tr'] *= (self.params['h']/self.h_fid)
         elif de_model is not None:
             self.params['alpha_lo'] = alpha_tr_lo[1]
             self.params['alpha_tr'] = alpha_tr_lo[0]
