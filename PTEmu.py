@@ -2171,7 +2171,7 @@ class PTEmu:
                                                range(self.data[obs_id].n_ell)])
             ):
             self.data[obs_id].set_kmax(kmax)
-            self.chi2_decomposition = None
+            self.chi2_decomposition_from_table = None
 
         ell = [2*l for l in range(self.data[obs_id].n_ell)
                if self.data[obs_id].nbins[l] > 0]
