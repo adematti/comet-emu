@@ -574,11 +574,6 @@ class PTEmu:
         self.training   = {}
         self.validation = {}
 
-        self.training['SHAPE']    = Tables(self.params_shape_list)
-        self.training['FULL']     = Tables(self.params_list)
-        self.validation['SHAPE']  = Tables(self.params_shape_list, validation=True)
-        self.validation['FULL']   = Tables(self.params_list, validation=True)
-
         self.emu   = {}
         self.cosmo = Cosmology(0.3, 67) # Initialise with arbitrary values
 
@@ -621,8 +616,8 @@ class PTEmu:
                 self.load_emulator_data(fname='../tables/ZS_VIR.fits')
                 self.load_emulator(fname_base='../models/ZS_VIR')
         except:
-            print('Table or model files not found. Initialise with '
-                  '`load_emulator_data` and `load_emulator`, respectively.')
+            print('Table and/or model files not found. Initialise with '
+                  '`load_emulator_data` and/or `load_emulator`, respectively.')
 
         # if fname_base is not None:
         #     self.load_emulator_data(fname='{}.fits'.format(fname_base))
@@ -670,6 +665,11 @@ class PTEmu:
                 max = hdul['PARAMS_FULL'].header['MAX:{}'.format(p)]
                 self.params_ranges[p] = [min,max]
             self.init_params_dict()
+
+            self.training['SHAPE']    = Tables(self.params_shape_list)
+            self.training['FULL']     = Tables(self.params_list)
+            self.validation['SHAPE']  = Tables(self.params_shape_list, validation=True)
+            self.validation['FULL']   = Tables(self.params_list, validation=True)
 
         self.k_table   = hdul['K_TABLE'].data['bins']
         self.nk        = self.k_table.shape[0]
