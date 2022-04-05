@@ -606,18 +606,15 @@ class PTEmu:
         self.chi2_decomposition_from_table = None
 
         try:
-            if model == 'RS':
-                self.load_emulator_data(fname='../tables/RS.fits')
-                self.load_emulator(fname_base='../models/RS')
-            elif model == 'ZS:EFT':
-                self.load_emulator_data(fname='../tables/ZS_EFT.fits')
-                self.load_emulator(fname_base='../models/ZS_EFT')
-            elif model == 'ZS:VIR':
-                self.load_emulator_data(fname='../tables/ZS_VIR.fits')
-                self.load_emulator(fname_base='../models/ZS_VIR')
+            self.load_emulator_data(fname='../tables/{}.fits'.format(model))
         except:
-            print('Table and/or model files not found. Initialise with '
-                  '`load_emulator_data` and/or `load_emulator`, respectively.')
+            print('Table file for this model not found. Initialise '
+                  'with `load_emulator_data`')
+        try:
+            self.load_emulator(fname_base='../models/{}'.format(model))
+        except:
+            print('Emulator files for this model not found. Initialise with '
+                  '`load_emulator`, or train the emulator first, if necessary.')
 
         # if fname_base is not None:
         #     self.load_emulator_data(fname='{}.fits'.format(fname_base))
