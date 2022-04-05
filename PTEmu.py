@@ -530,29 +530,33 @@ class Tables:
     def GPy_model(self, data_type):
         kernel = GPy.kern.RBF(input_dim=self.n_params,
                               variance=np.var(self.model_transformed[data_type]),
-                              lengthscale=np.ones(self.n_params), ARD=True)
+                              lengthscale=np.ones(self.n_params), ARD=True) \
+                 + GPy.kern.Matern32(input_dim=self.n_params,
+                                    variance=np.var(self.model_transformed[data_type]),
+                                    lengthscale=np.ones(self.n_params), ARD=True) \
+                 + GPy.kern.White(input_dim=self.n_params,
+                                      variance=np.var(self.model_transformed[data_type]))
+                 # + GPy.kern.Matern32(input_dim=self.n_params,
+                 #                     variance=np.var(self.model_transformed[data_type]),
+                 #                     lengthscale=np.ones(self.n_params), ARD=True)
+                 # + GPy.kern.RatQuad(input_dim=self.n_params,
+                 #                    variance=np.var(self.model_transformed[data_type]),
+                 #                    lengthscale=np.ones(self.n_params), power=1., ARD=True) \
         return GPy.models.GPRegression(
             self.samples, self.model_transformed[data_type], kernel)
 
 
 
 class PTEmu:
-    def __init__(
-        self, params, use_Mpc=True, fname_base=None,
-        emu_LCDM_params={'wc':0.11544,'wb':0.0222191,'ns':0.9632,
-                         'h':0.695,'As':2.2078559,'z':1.0}
-        ):
-
-        self.params_shape_list    = [key for key,val in params.items() \
-                                     if 'SHAPE' in val]
-        self.params_list          = [p for p in params.keys()]
-        self.bias_params_list     = ['b1','b2','g2','g21','c0','c2','c4','cnlo',
-                                     'N0','N20','N22']
-        self.RSD_params_list      = []
+    def __init__(self, model, use_Mpc=True):
+        self.bias_params_list = ['b1','b2','g2','g21','c0','c2','c4','cnlo',
+                                 'N0','N20','N22']
+        self.RSD_params_list = []
         self.de_model_params_list = {'lambda':['h','As','Ok','z'],
                                      'w0':['h','As','Ok','w0','z'],
                                      'w0wa':['h','As','Ok','w0','wa','z']}
 
+        self.n_diagrams = 19
         self.diagrams_emulated = ['P0L_b1b1', 'PNL_b1', 'PNL_id','Pctr_clo',
                                   'Pctr_b1b1cnlo','Pctr_b1cnlo','Pctr_cnlo',
                                   'P1L_b1b1','P1L_b1b2','P1L_b1g2','P1L_b1g21',
@@ -564,18 +568,8 @@ class PTEmu:
                              'P1L_b2b2','P1L_b2g2','P1L_g2g2','P1L_b2','P1L_g2',
                              'P1L_g21','Pnoise_N0','Pnoise_N20','Pnoise_N22']
 
-        self.params             = {p:0. for p in self.params_list + \
-            self.bias_params_list + self.de_model_params_list['w0wa']}
-        self.params['w0']       = -1
-        self.params['alpha_tr'] = 1
-        self.params['alpha_lo'] = 1
-        self.emu_LCDM_params    = emu_LCDM_params
-
         self.use_Mpc = use_Mpc
-        self.real_space = False if 'f' in self.params_list else True
         self.nbar = 1. # in units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
-
-        self.n_diagrams = 19
 
         self.training   = {}
         self.validation = {}
@@ -616,9 +610,23 @@ class PTEmu:
         self.chi2_decomposition = None
         self.chi2_decomposition_from_table = None
 
-        if fname_base is not None:
-            self.load_emulator_data(fname='{}.fits'.format(fname_base))
-            self.load_emulator(fname_base=fname_base)
+        try:
+            if model == 'RS':
+                self.load_emulator_data(fname='../tables/RS.fits')
+                self.load_emulator(fname_base='../models/RS')
+            elif model == 'ZS:EFT':
+                self.load_emulator_data(fname='../tables/ZS_EFT.fits')
+                self.load_emulator(fname_base='../models/ZS_EFT')
+            elif model == 'ZS:VIR':
+                self.load_emulator_data(fname='../tables/ZS_VIR.fits')
+                self.load_emulator(fname_base='../models/ZS_VIR')
+        except:
+            print('Table or model files not found. Initialise with '
+                  '`load_emulator_data` and `load_emulator`, respectively.')
+
+        # if fname_base is not None:
+        #     self.load_emulator_data(fname='{}.fits'.format(fname_base))
+        #     self.load_emulator(fname_base=fname_base)
 
 
     def generate_samples(self, type, ranges, n_samples, n_trials=0, validation=False):
@@ -635,17 +643,33 @@ class PTEmu:
             self.training[type].save_samples(fname)
 
 
+    def init_params_dict(self):
+        self.params = {p:0. for p in self.params_list + self.bias_params_list \
+                       + self.de_model_params_list['w0wa']}
+        self.params['w0'] = -1
+        self.params['alpha_tr'] = 1
+        self.params['alpha_lo'] = 1
+
+
     def load_emulator_data(self, fname, validation=False):
         hdul = fits.open(fname)
 
-        # check that parameter match and abort if not!
         if not validation:
-            params_shape_fits = [hdul['PARAMS_SHAPE'].header['TTYPE{}'.format(n+1)] for n in range(hdul['PARAMS_SHAPE'].header['TFIELDS'])]
-            if not set(self.params_shape_list) == set(params_shape_fits):
-                raise KeyError('Fits table list of shape parameters does not match.')
-            params_full_fits = [hdul['PARAMS_FULL'].header['TTYPE{}'.format(n+1)] for n in range(hdul['PARAMS_FULL'].header['TFIELDS'])]
-            if not set(self.params_list) == set(params_full_fits):
-                raise KeyError('Fits table list of all parameters does not match.')
+            self.params_shape_list = [hdul['PARAMS_SHAPE'].header['TTYPE{}'.format(n+1)] for n in range(hdul['PARAMS_SHAPE'].header['TFIELDS'])]
+            self.params_list = [hdul['PARAMS_FULL'].header['TTYPE{}'.format(n+1)] for n in range(hdul['PARAMS_FULL'].header['TFIELDS'])]
+            self.real_space = False if 'f' in self.params_list else True
+            self.emu_LCDM_params = {p:hdul['PRIMARY'].header['TRAINING:{}'.format(p)] for p in ['wc','wb','ns','h','As','z']}
+            self.params_shape_ranges = {}
+            self.params_ranges = {}
+            for p in self.params_shape_list:
+                min = hdul['PARAMS_SHAPE'].header['MIN:{}'.format(p)]
+                max = hdul['PARAMS_SHAPE'].header['MAX:{}'.format(p)]
+                self.params_shape_ranges[p] = [min,max]
+            for p in self.params_list:
+                min = hdul['PARAMS_FULL'].header['MIN:{}'.format(p)]
+                max = hdul['PARAMS_FULL'].header['MAX:{}'.format(p)]
+                self.params_ranges[p] = [min,max]
+            self.init_params_dict()
 
         self.k_table   = hdul['K_TABLE'].data['bins']
         self.nk        = self.k_table.shape[0]
