@@ -1,3 +1,5 @@
+"""Main PTEmu module."""
+
 import numpy as np
 from scipy.interpolate import interp1d
 from scipy.spatial.distance import cdist
@@ -10,105 +12,346 @@ from pyDOE import *
 
 
 class Cosmology:
-    def __init__(self, Om0, H0, Ok0=0, Or0=0, de_model='lambda', w0=-1, wa=0):
+    r"""Class containing cosmological parameters and background quantities.
+
+    The dark energy equation of state is parametrized as
+    :math:`w(a)=w_0+w_a(1-a)`.
+    """
+
+    def __init__(self, Om0, H0, Ok0=0.0, Or0=0.0, de_model='lambda',
+                 w0=-1.0, wa=0.0):
+        r"""Class constructor.
+
+        Parameters
+        ----------
+        Om0: float
+            Fractional total matter density at present time,
+            :math:`\Omega_\mathrm{m,0}`.
+        H0: float
+            Hubble constant at present time, :math:`H_0`.
+        Ok0: float, optional
+            Fractional curvature density at present time,
+            :math:`\Omega_\mathrm{k,0}`. Defaults to 0.0.
+        Or0: float, optional
+            Fractional radiation density at present time,
+            :math:`\Omega_\mathrm{r,0}`, Defaults to 0.0.
+        de_model: str, optional
+            Chosen dark energy model. It can be chosen from the list
+            [`'lambda'`, `'w0'`, `'w0wa'`]. Defaults to `'lambda'`.
+        w0: float, optional
+            Dark energy equation of state at present time,
+            :math:`w_0`. Defaults to -1.0.
+        wa: float, optional
+            Negative derivative of the dark energy equation of state with
+            respect to the scale factor, :math:`w_a`. Defaults to 0.0.
+        """
         self.Om0 = Om0
         self.Ok0 = Ok0
         self.Or0 = Or0
         self.H0 = H0
-        self.Ode0 = 1. - self.Om0 - self.Ok0 - self.Or0
 
+        self.Ode0 = 1.0 - self.Om0 - self.Ok0 - self.Or0
         self.hubble_distance = 2.998E5/self.H0
 
         self.de_model = de_model
         self.w0 = w0
         self.wa = wa
 
-        self.flat = True if self.Ok0 == 0 else False
-        self.relspecies = False if self.Or0 == 0 else True
+        self.flat = True if self.Ok0 == 0.0 else False
+        self.relspecies = False if self.Or0 == 0.0 else True
 
+    def update_cosmology(self, Om0, H0, Ok0=0.0, Or0=0.0, de_model='lambda',
+                         w0=-1.0, wa=0.0):
+        r"""
+        Update the class to a new cosmology.
 
-    def update_cosmology(self, Om0, H0, Ok0=0, Or0=0, de_model='lambda', w0=-1, wa=0):
+        Parameters
+        ----------
+        Om0: float
+            Fractional total matter density at present time,
+            :math:`\Omega_\mathrm{m,0}`.
+        H0: float
+            Hubble constant at present time, :math:`H_0`.
+        Ok0: float, optional
+            Fractional curvature density at present time,
+            :math:`\Omega_\mathrm{k,0}`. Defaults to 0.0.
+        Or0: float, optional
+            Fractional radiation density at present time,
+            :math:`\Omega_\mathrm{r,0}`, Defaults to 0.0.
+        de_model: str, optional
+            Chosen dark energy model. It can be chosen from the list
+            [`'lambda'`, `'w0'`, `'w0wa'`]. Defaults to `'lambda'`.
+        w0: float, optional
+            Dark energy equation of state at present time,
+            :math:`w_0`. Defaults to -1.0.
+        wa: float, optional
+            Negative derivative of the dark energy equation of state with
+            respect to the scale factor, :math:`w_a`. Defaults to 0.0.
+        """
         self.Om0 = Om0
         self.Ok0 = Ok0
         self.Or0 = Or0
         self.H0 = H0
-        self.Ode0 = 1. - self.Om0 - self.Ok0 - self.Or0
 
+        self.Ode0 = 1.0 - self.Om0 - self.Ok0 - self.Or0
         self.hubble_distance = 2.998E5/self.H0
 
         self.de_model = de_model
         self.w0 = w0
         self.wa = wa
 
-        self.flat = True if self.Ok0 == 0 else False
-        self.relspecies = False if self.Or0 == 0 else True
-
+        self.flat = True if self.Ok0 == 0.0 else False
+        self.relspecies = False if self.Or0 == 0.0 else True
 
     def DE_z(self, z):
+        r"""
+        Energy density of the dark energy component as a function of redshift.
+
+        This is normalized to the value at present time.
+
+        .. math::
+             \frac{\rho_\mathrm{DE}(z)}{\rho_\mathrm{DE}(0)} = \
+             \exp\left[-\int_0^z \frac{dz'}{1+z'}\left(1+w\left(z'\right)\
+             \right) \right]
+
+        Parameters
+        ----------
+        z: float or numpy.ndarray
+            Redshifts at which to evaluate the energy density.
+
+        Returns
+        -------
+        de_z: float or numpy.ndarray
+            Energy density of the dark energy component
+            at the specified redshifts.
+        """
         if self.de_model == 'lambda':
-            de_z = 1.
+            de_z = 1.0
         elif self.de_model == 'w0':
-            de_z = (1.+z)**(3.*(1.+self.w0))
+            de_z = (1.0+z)**(3.0*(1.0+self.w0))
         elif self.de_model == 'w0wa':
-            a = 1./(1.+z)
-            de_z = a**(-3.*(1.+self.w0+self.wa))*np.exp(-3.*self.wa*(1.-a))
+            a = 1.0/(1.0+z)
+            de_z = a**(-3.0*(1.0+self.w0+self.wa))*np.exp(-3.0*self.wa*(1.0-a))
         return de_z
 
-
     def wz(self, z):
+        r"""
+        Dark energy equation of state as a function of redshift.
+
+        .. math::
+             w(z) = w_0+w_a\frac{z}{1+z}
+
+        Parameters
+        ----------
+        z: float or numpy.ndarray
+            Redshifts at which to evaluate the dark energy equation of state.
+
+        Returns
+        -------
+        w: float or numpy.ndarray
+            Dark energy equation of state at the specified redshifts.
+        """
         if self.de_model == 'lambda':
-            w = -1.*np.ones_like(z)
+            w = -1.0*np.ones_like(z)
         elif self.de_model == 'w0':
             w = self.w0*np.ones_like(z)
         elif self.de_model == 'w0wa':
-            w = self.w0 + self.wa*z/(1.+z)
+            w = self.w0 + self.wa*z/(1.0+z)
         return w
 
-
     def Ez(self, z):
-        ainv = 1.+z
+        r"""
+        Expansion factor as a function of redshift.
+
+        .. math::
+             E(z) =\left[\Omega_\mathrm{m,0}(1+z)^3 \
+             + \Omega_\mathrm{r,0}(1+z)^4 \\
+             + \Omega_\mathrm{k,0}(1+z)^2 \
+             + \Omega_\mathrm{DE,0}\exp\left[-\int_0^z\frac{dz'}{1+z'} \
+             \left(1+w\left(z'\right)\right) \right]\right]^\frac{1}{2}
+
+        Parameters
+        ----------
+        z: float or numpy.ndarray
+            Redshifts at which to evaluate the expansion factor.
+
+        Returns
+        -------
+        Ez: float or numpy.ndarray
+            Expansion factor at the specified redshifts.
+        """
+        ainv = 1.0+z
         Ez2 = self.Om0*ainv**3 + self.Ode0*self.DE_z(z)
         if not self.flat:
             Ez2 += self.Ok0*ainv**2
         if self.relspecies:
             Ez2 += self.Or0*ainv**4
-        return np.sqrt(Ez2)
-
+        Ez = np.sqrt(Ez2)
+        return Ez
 
     def one_over_Ez(self, z):
-        return 1./self.Ez(z)
+        r"""
+        Inverse of expansion factor as a function of redshift.
 
+        Parameters
+        ----------
+        z: float or numpy.ndarray
+            Redshifts at which to evaluate the inverse expansion factor.
+
+        Returns
+        -------
+        inv_Ez: float or numpy.ndarray
+            Inverse expansion factor at the specified redshifts.
+        """
+        inv_Ez = 1.0/self.Ez(z)
+        return inv_Ez
 
     def Hz(self, z):
-        return self.H0*self.Ez(z)
+        r"""
+        Hubble expansion factor.
 
+        .. math::
+             H(z) = H_0 E(z)
+
+        Parameters
+        ----------
+        z: float or numpy.ndarray
+            Redshifts at which to evaluate the Hubble factor.
+
+        Returns
+        -------
+        Hz: float or numpy.ndarray
+            Hubble expansion factor at the specified redshifts.
+        """
+        Hz = self.H0*self.Ez(z)
+        return Hz
 
     def Om(self, z):
-        return self.Om0*(1.+z)**3/(self.Ez(z))**2
+        r"""
+        Fractional total matter density as a function of redshift.
 
+        .. math::
+             \Omega_\mathrm{m}(z) = \frac{\Omega_\mathrm{m,0}(1+z)^3}{E^2(z)}
+
+        Parameters
+        ----------
+        z: float or numpy.ndarray
+            Redshifts at which to evaluate the energy density.
+
+        Returns
+        -------
+        Om: float or numpy.ndarray
+            Fractional total matter density at the specified redshifts.
+        """
+        Om = self.Om0*(1.0+z)**3/(self.Ez(z))**2
+        return Om
 
     def Ode(self, z):
-        return self.Ode0/(self.Ez(z))**2*self.DE_z(z)
+        r"""
+        Fractional dark energy density as a function of redshift.
 
+        .. math::
+             \Omega_\mathrm{DE}(z) = \frac{\Omega_\mathrm{DE,0}\exp\left[ \
+             -\int_0^z \frac{dz'}{1+z'}\left(1+w\left(z'\right)\right) \
+             \right]}{E^2(z)}
+
+        Parameters
+        ----------
+        z: float or numpy.ndarray
+            Redshifts at which to evaluate the energy density.
+
+        Returns
+        -------
+        Ode: float or numpy.ndarray
+            Fractional dark energy density at the specified redshifts.
+        """
+        Ode = self.Ode0/(self.Ez(z))**2*self.DE_z(z)
+        return Ode
 
     def comoving_transverse_distance(self, z):
-        r = quad(self.one_over_Ez, 0, z)[0]
+        r"""
+        Comoving transverse distance as a function of redshift.
+
+        .. math::
+            :nowrap:
+
+            \begin{gather*}
+                d_H = \frac{c}{H_0} \\
+
+                D_\mathrm{C}(z) = d_H \int_0^z \frac{dz'}{E(z')} \\
+
+                D_\mathrm{M}(z) =
+                \begin{cases}
+                   \frac{d_H}{\sqrt{-\Omega_\mathrm{k,0}}}\sin \left(\
+                   \frac{\sqrt{-\Omega_\mathrm{k,0}}D_\mathrm{C}(z)}{d_H}\
+                   \right), & \text{if}\ \Omega_\mathrm{k,0}<0 \\
+                   D_\mathrm{C}(z), & \text{if}\ \Omega_\mathrm{k,0}=0 \\
+                   \frac{d_H}{\sqrt{\Omega_\mathrm{k,0}}}\sinh \left(\
+                   \frac{\sqrt{\Omega_\mathrm{k,0}}D_\mathrm{C}(z)}{d_H}\
+                   \right), & \text{if}\ \Omega_\mathrm{k,0}>0
+               \end{cases}
+            \end{gather*}
+
+        Parameters
+        ----------
+        z: float
+            Redshift at which to evaluate the comoving transverse distance.
+
+        Returns
+        -------
+        dm: float
+            Comoving transverse distance at the specified redshift.
+        """
+        r = quad(self.one_over_Ez, 0.0, z)[0]
         if self.flat:
             dm = r
-        elif self.Ok0 > 0:
+        elif self.Ok0 > 0.0:
             sqrt_Ok0 = np.sqrt(self.Ok0)
             dm = np.sinh(sqrt_Ok0*r)/sqrt_Ok0
         else:
             sqrt_Ok0 = np.sqrt(-self.Ok0)
             dm = np.sin(sqrt_Ok0*r)/sqrt_Ok0
-        return self.hubble_distance*dm
-
+        dm *= self.hubble_distance
+        return dm
 
     def angular_diameter_distance(self, z):
-        return self.comoving_transverse_distance(z)/(1.+z)
+        r"""
+        Angular diameter distance as a function of redshift.
 
+        .. math::
+            D_\mathrm{A}(z) = \frac{1}{1+z}D_\mathrm{M}(z)
+
+        Parameters
+        ----------
+        z: float
+            Redshift at which to evaluate the angular diameter distance.
+
+        Returns
+        -------
+        da: float
+            Angular diameter distance at the specified redshift.
+        """
+        da = self.comoving_transverse_distance(z)/(1.0+z)
+        return da
 
     def growth_factor(self, z, get_growth_rate=False):
+        r"""
+        Linear growth factor :math:`D(z)` as a function of redshift.
+
+        Parameters
+        ----------
+        z: float
+            Redshift at which to evaluate the growth factor.
+        get_growth_rate: bool
+            Flag specifying whether to return also the linear growth rate.
+            Defaults to `False`.
+
+        Returns
+        -------
+        Dz: float or list
+            Linear growth factor or list containing both the linear growth
+            factor and growth rate at the specified redshift.
+        """
         def Ez_for_D(z):
             ainv = 1.+z
             Ez2 = self.Om0*ainv**3 + self.Ode0*self.DE_z(z)
@@ -123,12 +366,12 @@ class Cosmology:
 
         def growth_factor_from_ODE(z_eval):
             def derivatives_D(a, y):
-                z  = 1./a - 1.
-                D  = y[0]
+                z = 1./a - 1.
+                D = y[0]
                 Dp = y[1]
 
-                wa   = self.wz(z)
-                Oma  = self.Om(z)
+                wa = self.wz(z)
+                Oma = self.Om(z)
                 Odea = self.Ode(z)
 
                 u1 = -(2. - 0.5*(Oma + (3.*wa+1.)*Odea))/a
@@ -141,14 +384,15 @@ class Cosmology:
             a_max = a_eval*1.01
 
             dic = solve_ivp(derivatives_D, (a_min, a_max), [a_min, 1.0],
-                            t_eval=a_eval, atol=1E-6, rtol=1E-6, vectorized=True)
-            D  = dic['y'][0,:]
+                            t_eval=a_eval, atol=1E-6, rtol=1E-6,
+                            vectorized=True)
+            D = dic['y'][0, :]
 
             if (dic['status'] != 0) or (D.shape[0] != a_eval.shape[0]):
                 raise Exception('The calculation of the growth factor failed.')
 
             if get_growth_rate:
-                Dp = dic['y'][1,:]
+                Dp = dic['y'][1, :]
                 f = a_eval*Dp/D
                 return [D, f]
             else:
@@ -157,12 +401,14 @@ class Cosmology:
         if self.de_model == 'lambda':
             if self.flat and not self.relspecies:
                 a3 = 1./(1+z)**3
-                Dz = 5./6*betainc(5./6,2./3,self.Ode0*a3/(self.Om0+self.Ode0*a3)) \
-                   *(self.Om0/self.Ode0)**(1./3)*np.sqrt(1 + self.Om0/(self.Ode0*a3)) \
-                   *beta(5./6,2./3)
+                Dz = (5./6*betainc(5./6, 2./3,
+                                   self.Ode0*a3/(self.Om0+self.Ode0*a3)) *
+                      (self.Om0 / self.Ode0)**(1. / 3) *
+                      np.sqrt(1 + self.Om0 / (self.Ode0 * a3)) *
+                      beta(5. / 6, 2. / 3))
             else:
                 # integrate integral expression
-                Dz = 2.5*self.Om0*Ez_for_D(z)*quad(integrand,z,np.inf)[0]
+                Dz = 2.5*self.Om0*Ez_for_D(z)*quad(integrand, z, np.inf)[0]
             if get_growth_rate:
                 Omz = self.Om(z)
                 f = -1. - Omz/2 + self.Ode(z) + 2.5*Omz/Dz/(1.+z)
@@ -173,8 +419,20 @@ class Cosmology:
 
         return Dz
 
-
     def growth_rate(self, z):
+        r"""
+        Linear growth rate :math:`f(z)` as a function of redshift.
+
+        Parameters
+        ----------
+        z: float
+            Redshift at which to evaluate the growth rate.
+
+        Returns
+        -------
+        f: float
+            Linear growth rate at the specified redshift.
+        """
         def Ez_for_D(z):
             ainv = 1.+z
             Ez2 = self.Om0*ainv**3 + self.Ode0*self.DE_z(z)
@@ -186,23 +444,77 @@ class Cosmology:
 
         if self.de_model == 'lambda':
             Omz = self.Om(z)
-            f = -1. - Omz/2 + self.Ode(z) + 2.5*Omz/self.growth_factor(z)/(1.+z)
+            f = -1. - Omz/2 + self.Ode(z) \
+                + 2.5*Omz/self.growth_factor(z)/(1.+z)
         else:
             f = self.growth_factor(z, get_growth_rate=True)[1]
         return f
 
-
     def comoving_volume(self, zmin, zmax, fsky):
+        r"""
+        Comoving volume.
+
+        Computes the comoving transverse volume
+        between :math:`z_\mathrm{min}` and :math:`z_\mathrm{max}`,
+        for a given sky fraction :math:`f_\mathrm{sky}`.
+
+        .. math::
+            V_\mathrm{M} = \frac{4\pi f_\mathrm{sky}}{3} \left(D_\mathrm{M}^3\
+            (z_\mathrm{max}) - D_\mathrm{M}^3(z_\mathrm{min}))\right)
+
+        Parameters
+        ----------
+        zmin: float
+            Lower redshift limit.
+        zmax: float
+            Upper redshift limit.
+        fsky: float
+            Sky fraction.
+
+        Returns
+        -------
+        vol: float
+            Comoving transverse volume between the specified minimum and
+            maximum redshifts, and for the given sky fraction.
+        """
         def differential_comoving_volume(z):
             dm = self.comoving_transverse_distance(z)
             return self.hubble_distance*dm**2/self.Ez(z)
 
-        return fsky*4*np.pi*quad(differential_comoving_volume, zmin, zmax)[0]
+        vol = fsky*4*np.pi*quad(differential_comoving_volume, zmin, zmax)[0]
 
+        return vol
 
 
 class MeasuredData:
+    r"""Class for handling data vectors and covariance matrices."""
+
     def __init__(self, **kwargs):
+        r"""Class constructor.
+
+        Keywords argument can be specified from the Parameters list.
+
+        Parameters
+        ----------
+        bins: numpy.ndarray, optional
+            Array containing the sampled :math:`k` positions.
+        signal: numpy.ndarray, optional
+            Array containing the power spectrum multipoles :math:`P_{\ell}(k)`.
+            If more than one multipole is provided, the first and second index
+            of the array runs over the different :math:`k` and the different
+            multipole, respectively.
+        cov: numpy.ndarray, optional
+            Covariance matrix corresponding to `signal`. This must be a 2-d
+            array, whose blocks correspond to the auto- (along the diagonal)
+            and cross-covariances of the multipoles.
+        theory_cov: bool, optional
+            Flag to determine if the provided covariance matrix is theoretical
+            (`True`) or estimated from simulations (`False`). Defaults to True.
+        n_realizations: int, optional
+            If the provided covariance is estimated from numerical simulations,
+            this parameter is required, and specifies the total number of
+            resamplings (needed for Hartlap corrections).
+        """
         if 'bins' in kwargs:
             self.bins = kwargs.get('bins')
         if 'signal' in kwargs:
@@ -228,8 +540,32 @@ class MeasuredData:
 
         self.kmax_is_set = False
 
-
     def update(self, **kwargs):
+        r"""Update the class with new data.
+
+        Keywords argument can be specified from the Parameters list.
+
+        Parameters
+        ----------
+        bins: numpy.ndarray, optional
+            Array containing the sampled :math:`k` positions.
+        signal: numpy.ndarray, optional
+            Array containing the power spectrum multipoles :math:`P_{\ell}(k)`.
+            If more than one multipole is provided, the first and second index
+            of the array runs over the different :math:`k` and the different
+            multipole, respectively.
+        cov: numpy.ndarray, optional
+            Covariance matrix corresponding to `signal`. This must be a 2-d
+            array, whose blocks correspond to the auto- (along the diagonal)
+            and cross-covariances of the multipoles.
+        theory_cov: bool, optional
+            Flag to determine if the provided covariance matrix is theoretical
+            (`True`) or estimated from simulations (`False`). Defaults to True.
+        n_realizations: int, optional
+            If the provided covariance is estimated from numerical simulations,
+            this parameter is required, and specifies the total number of
+            resamplings (needed for Hartlap corrections).
+        """
         if 'bins' in kwargs:
             self.bins = kwargs.get('bins')
         if 'signal' in kwargs:
@@ -257,8 +593,11 @@ class MeasuredData:
         if self.kmax_is_set:
             self.set_kmax(self.kmax)
 
-
     def clear_data(self):
+        r"""Clear the data.
+
+        Sets to `None` the class attributes.
+        """
         self.bins = None
         self.signal = None
         self.cov = None
@@ -266,8 +605,20 @@ class MeasuredData:
         self.W_mixing_matrix = None
         self.kmax_is_set = False
 
-
     def set_kmax(self, kmax):
+        r"""Set the maximum mode used in the computation of the :math:`\chi^2`.
+
+        In addition, the window function is applied to the data vectors and
+        the covariance matrix.
+
+        Parameters
+        ----------
+        kmax: float or list
+            Maximum :math:`k` for the individual multipoles. If a `float` is
+            provided, this is used for all the multipolesof the data vector.
+            Otherwise, each entry of the `list` is specific for a given
+            multipole.
+        """
         if not isinstance(kmax, list):
             self.kmax = [kmax for i in range(self.n_ell)]
         else:
@@ -289,47 +640,107 @@ class MeasuredData:
             self.bins_kmax.append(self.bins[:self.nbins[ell]])
             self.signal_kmax = np.concatenate(
                 (self.signal_kmax, self.signal[:self.nbins[ell], ell])) \
-                if self.signal_kmax.size else self.signal[:self.nbins[ell], ell]
+                if self.signal_kmax.size else self.signal[:self.nbins[ell],
+                                                          ell]
 
-        self.cov_kmax = np.zeros([sum(self.nbins),sum(self.nbins)])
+        self.cov_kmax = np.zeros([sum(self.nbins), sum(self.nbins)])
         for ell1 in range(self.n_ell):
             for ell2 in range(self.n_ell):
-                self.cov_kmax[sum(self.nbins[:ell1]):sum(self.nbins[:ell1+1]),
-                              sum(self.nbins[:ell2]):sum(self.nbins[:ell2+1])] = \
+                self.cov_kmax[
+                    sum(self.nbins[:ell1]):sum(self.nbins[:ell1+1]),
+                    sum(self.nbins[:ell2]):sum(self.nbins[:ell2+1])] = \
                     self.cov[ell1*nbin_total:ell1*nbin_total+self.nbins[ell1],
                              ell2*nbin_total:ell2*nbin_total+self.nbins[ell2]]
         self.inverse_cov_kmax = np.linalg.inv(self.cov_kmax)
         self.inverse_cov_kmax *= self.AHfactor(sum(self.nbins))
 
-        self.SN_kmax = self.signal_kmax @ self.inverse_cov_kmax @ self.signal_kmax
+        self.SN_kmax = (self.signal_kmax @ self.inverse_cov_kmax @
+                        self.signal_kmax)
 
         self.kmax_is_set = True
 
-
     def AHfactor(self, nbins):
-        return 1. if self.theory_cov else (self.n_realizations - nbins -2) \
-            * 1./(self.n_realizations - 1)
+        r"""Compute the Anderson-Hartlap correction to the covariance matrix.
 
+        Returns 1 if the class attribute `theory_cov` is set to True.
+        Otherwise, returns
+
+        .. math:: \frac{N_\mathrm{sim}-N_\mathrm{bins}-2}{N_\mathrm{sim}-1}
+
+
+        Parameters
+        ----------
+        nbins: int
+            Number of :math:`k` bins at which the power spectrum multipoles
+            are sampled.
+
+        Returns
+        -------
+        AHfactor: float
+            Andreson-Hartlap corrceting factor.
+        """
+        return 1.0 if self.theory_cov else (self.n_realizations-nbins-2.0) \
+            * 1.0/(self.n_realizations - 1.0)
 
     def get_signal(self, ell, kmax=None):
+        r"""Get data power spectrum multipole.
+
+        Returns the input data power spectrum multipole of order :math:`\ell`
+        up to :math:`k_\mathrm{max}`.
+
+        Parameters
+        ----------
+        ell: int
+            Specific multipole order :math:`\ell`.
+            Can be chosen from the list [0,2,4].
+        kmax: float, optional
+            :math:`k_\mathrm{max}` up to which the multipole is provided. If
+            `None`, the corresponding class attribute is used instead.
+
+        Returns
+        -------
+        signal_kmax: numpy.ndarray
+            Data power spectrum multipole of order :math:`\ell` up to
+            :math:`k_\mathrm{max}`.
+        """
         if kmax is None and not self.kmax_is_set:
             self.set_kmax(np.amax(self.bins))
-        elif (kmax is not None and (not self.kmax_is_set
-              or (self.kmax != kmax
-                  and self.kmax != [kmax for i in range(self.n_ell)]))
-              ):
+        elif (kmax is not None and
+              (not self.kmax_is_set or
+               (self.kmax != kmax and
+                self.kmax != [kmax for i in range(self.n_ell)]))):
             self.set_kmax(kmax)
         n = int(ell/2)
         return self.signal_kmax[sum(self.nbins[:n]):sum(self.nbins[:n+1])]
 
-
     def get_std(self, ell, kmax=None):
+        r"""Get standard deviation of data power spectrum multipole.
+
+        Returns the standard deviation of the input data power spectrum
+        multipole of order :math:`\ell` up to :math:`k_\mathrm{max}`.
+
+        Parameters
+        ----------
+        ell: int
+            Specific multipole order :math:`\ell`.
+            Can be chosen from the list [0,2,4].
+        kmax: float, optional
+            :math:`k_\mathrm{max}` up to which the standard deviation
+            is provided. If `None`, the corresponding class attribute
+            is used instead.
+
+        Returns
+        -------
+        std_kmax: numpy.ndarray
+            Standard deviation of the data power spectrum multipole of
+            order :math:`\ell` up to :math:`k_\mathrm{max}`.
+        """
         if kmax is None and not self.kmax_is_set:
             self.set_kmax(np.amax(self.bins))
-        elif (kmax is not None and (not self.kmax_is_set
-              or (self.kmax != kmax
-                  and self.kmax != [kmax for i in range(self.n_ell)]))
-              ):
+        elif (kmax is not None and
+              (not self.kmax_is_set or
+               (self.kmax != kmax and
+                self.kmax != [kmax for i in range(self.n_ell)]))):
             self.set_kmax(kmax)
         n = int(ell/2)
         var = np.diag(self.cov_kmax)[sum(self.nbins[:n]):sum(self.nbins[:n+1])]
@@ -337,7 +748,23 @@ class MeasuredData:
 
 
 class Tables:
+    r"""Class for handling the tables of the emulator.
+
+    It handles both the training and validation sets, in the form of tables
+    containing the different contributions to :math:`P_\mathrm{gg}(k,\mu)`.
+    """
+
     def __init__(self, params, validation=False):
+        r"""Class constructor.
+
+        Parameters
+        ----------
+        params: list
+            List of parameters used to train the emulator.
+        validation: bool, optional
+            A flag specifying if the class is meant for the validation of the
+            emulator. Defaults to False.
+        """
         self.params = params
         self.n_params = len(params)
         self.param_ranges = None
@@ -346,97 +773,172 @@ class Tables:
         self.model_transformed = None
 
         self.n_diagrams = 19
-        self.names_diagrams = ['P0L_b1b1', 'PNL_b1', 'PNL_id', 'P1L_b1b1', 'P1L_b1b2',
-                               'P1L_b1g2','P1L_b1g21','P1L_b2b2','P1L_b2g2','P1L_g2g2',
-                               'P1L_b2','P1L_g2','P1L_g21','Pctr_c0','Pctr_c2','Pctr_c4',
+        self.names_diagrams = ['P0L_b1b1', 'PNL_b1', 'PNL_id', 'P1L_b1b1',
+                               'P1L_b1b2', 'P1L_b1g2', 'P1L_b1g21', 'P1L_b2b2',
+                               'P1L_b2g2', 'P1L_g2g2', 'P1L_b2', 'P1L_g2',
+                               'P1L_g21', 'Pctr_c0', 'Pctr_c2', 'Pctr_c4',
                                'Pctr_b1b1cnlo', 'Pctr_b1cnlo', 'Pctr_cnlo']
 
-
     def set_param_ranges(self, ranges):
+        r"""Set ranges for the parameters of the emulator.
+
+        Parameters
+        ----------
+        ranges: dict
+            Dictionary containing the parameter ranges. Each of them is a list
+            with two entries, which correspond to the minimum and maximum
+            value of the parameter.
+        """
         if self.param_ranges is None:
             self.param_ranges = {}
         for p in self.params:
             self.param_ranges[p] = ranges[p]
 
-
     def generate_samples(self, ranges, n_samples, n_trials=0):
+        r"""Generate parameter sample.
+
+        The sample is built inside the specified parameter ranges and with the
+        given size. Depending on the value of the class attribute `validation`,
+        the sample is going to be generated using a Latin HyperCube (training)
+        or randomly across the hypervolume (validation).
+
+        Parameters
+        ----------
+        ranges: dict
+            Dictionary containing the parameter ranges. Each of them is a list
+            with two entries, which correspond to the minimum and maximum
+            value of the parameter.
+        n_samples: int
+            Size of the sample. `n_samples` points are going to be generated.
+        n_trials: int, optional
+            Number of resamplings of the Latin HyperCube when a training
+            sample is requested. This is meant to obtain the best coverture of
+            the hypervolume (with maxed minimum distance among points).
+            Defaults to 0.
+        """
         self.set_param_ranges(ranges)
         self.n_samples = n_samples
 
         if self.validation:
             self.samples = np.random.rand(self.n_samples, self.n_params)
         else:
-            self.samples = lhs(self.n_params, samples=self.n_samples, criterion='center')
+            self.samples = lhs(self.n_params, samples=self.n_samples,
+                               criterion='center')
             dist = cdist(self.samples, self.samples, metric='euclidean')
             min_dist = np.amin(dist[dist > 0])
             for n in range(n_trials):
-                samples_new = lhs(self.n_params, samples=self.n_samples, criterion='center')
+                samples_new = lhs(self.n_params, samples=self.n_samples,
+                                  criterion='center')
                 dist = cdist(samples_new, samples_new, metric='euclidean')
                 min_dist_new = np.amin(dist[dist > 0])
                 if (min_dist_new > min_dist):
                     min_dist = min_dist_new
                     self.samples = samples_new
 
-        for n,p in enumerate(self.params):
-            self.samples[:, n] = self.samples[:, n] * (self.param_ranges[p][1] - self.param_ranges[p][0]) \
-                               + self.param_ranges[p][0]
-
+        for n, p in enumerate(self.params):
+            self.samples[:, n] = (self.samples[:, n] *
+                                  (self.param_ranges[p][1] -
+                                   self.param_ranges[p][0]) +
+                                  self.param_ranges[p][0])
 
     def save_samples(self, fname):
+        r"""Save sample to file.
+
+        Parameters
+        ----------
+        fname: str
+            Name of output file.
+        """
         np.savetxt(fname, self.samples)
 
-
     def load_samples(self, fname):
+        r"""Load sample from file.
+
+        Parameters
+        ----------
+        fname: str
+            Name of output file to be read.
+        """
         self.samples = np.loadtxt(fname)
         self.n_samples = self.samples.shape[0]
 
-
     def assign_samples(self, samples_hdu):
+        r"""Read sample from HDU object.
+
+        Reads sample from Header Data Unit and stores it as class attribute.
+
+        Parameters
+        ----------
+        samples_hdu: astropy.io.fits.BinTableHDU
+            Header Data Unit containing the sample.
+        """
         self.n_samples = samples_hdu.header['NAXIS2']
         if self.validation:
-            self.samples = np.zeros([self.n_samples,samples_hdu.header['TFIELDS']])
-            for i,p in enumerate([samples_hdu.header['TTYPE{}'.format(n+1)] for n in range(samples_hdu.header['TFIELDS'])]):
-                self.samples[:,i] = samples_hdu.data[p]
+            self.samples = np.zeros([self.n_samples,
+                                     samples_hdu.header['TFIELDS']])
+            for i, p in enumerate([samples_hdu.header['TTYPE{}'.format(n+1)]
+                                  for n in range(
+                                    samples_hdu.header['TFIELDS'])]):
+                self.samples[:, i] = samples_hdu.data[p]
         else:
-            self.samples = np.zeros([self.n_samples,self.n_params])
-            for i,p in enumerate(self.params):
-                self.samples[:,i] = samples_hdu.data[p]
-
+            self.samples = np.zeros([self.n_samples, self.n_params])
+            for i, p in enumerate(self.params):
+                self.samples[:, i] = samples_hdu.data[p]
 
     def assign_table(self, table_hdu, nk, nkloop):
-        self.nk     = nk
+        r"""Read table from HDU object.
+
+        Reads table from Header Data Unit and stores it as class attribute.
+
+        Parameters
+        ----------
+        table_hdu: astropy.io.fits.BinTableHDU
+            Header Data Unit containing the table.
+        nk: int
+            Number of :math:`k` bins of the table.
+        nkloop: int
+            Number of :math:`k` bins of the table corresponding to the loop
+            predictions.
+        """
+        self.nk = nk
         self.nkloop = nkloop
 
         if 'MODEL_SHAPE' == table_hdu.header['EXTNAME']:
             if self.model is None:
                 self.model = {}
-            for TYPE in [table_hdu.header['TTYPE{}'.format(i+1)] for i in range(table_hdu.header['TFIELDS'])]:
+            for TYPE in [table_hdu.header['TTYPE{}'.format(i+1)]
+                         for i in range(table_hdu.header['TFIELDS'])]:
                 self.model[TYPE] = table_hdu.data[TYPE]
                 if self.model[TYPE].ndim == 1:
-                    self.model[TYPE]= self.model[TYPE][:,None]
+                    self.model[TYPE] = self.model[TYPE][:, None]
             if not self.validation:
                 self.transform_emulator_data(data_type=list(self.model.keys()))
         elif 'MODEL_FULL' == table_hdu.header['EXTNAME']:
             if self.model is None:
                 self.model = {}
             self.model['PL'] = table_hdu.data['PL']
-            for ell in [0,2,4]:
+            for ell in [0, 2, 4]:
                 for diagram in self.names_diagrams:
                     diagram_full = '{}_ell{}'.format(diagram, ell)
                     if diagram == 'PNL_b1':
-                        # combine tree-level, one-loop and IR k^2 correction terms
-                        self.model[diagram_full] = table_hdu.data['P0L_b1_ell{}'.format(ell)] \
-                                                 + table_hdu.data['P1L_b1_ell{}'.format(ell)] \
-                                                 + table_hdu.data['Pk2corr_b1_ell{}'.format(ell)]
+                        # combine tree-level, one-loop
+                        # and IR k^2 correction terms
+                        self.model[diagram_full] = (
+                            table_hdu.data['P0L_b1_ell{}'.format(ell)] +
+                            table_hdu.data['P1L_b1_ell{}'.format(ell)] +
+                            table_hdu.data['Pk2corr_b1_ell{}'.format(ell)])
                     elif diagram == 'PNL_id':
-                        # combine tree-level, one-loop and IR k^2 correction terms
-                        self.model[diagram_full] = table_hdu.data['P0L_id_ell{}'.format(ell)] \
-                                                 + table_hdu.data['P1L_id_ell{}'.format(ell)] \
-                                                 + table_hdu.data['Pk2corr_id_ell{}'.format(ell)]
+                        # combine tree-level, one-loop
+                        # and IR k^2 correction terms
+                        self.model[diagram_full] = (
+                            table_hdu.data['P0L_id_ell{}'.format(ell)] +
+                            table_hdu.data['P1L_id_ell{}'.format(ell)] +
+                            table_hdu.data['Pk2corr_id_ell{}'.format(ell)])
                     elif diagram == 'P1L_b1b1':
                         # combine one-loop and IR k^2 correction terms
-                        self.model[diagram_full] = table_hdu.data['P1L_b1b1_ell{}'.format(ell)] \
-                                                 + table_hdu.data['Pk2corr_b1b1_ell{}'.format(ell)]
+                        self.model[diagram_full] = (
+                            table_hdu.data['P1L_b1b1_ell{}'.format(ell)] +
+                            table_hdu.data['Pk2corr_b1b1_ell{}'.format(ell)])
                     else:
                         self.model[diagram_full] = table_hdu.data[diagram_full]
             if not self.validation:
@@ -446,139 +948,251 @@ class Tables:
         else:
             raise KeyError('HDU table does not contain valid identifiers.')
 
-
     def get_flip_and_offset(self, table):
+        r"""Compute flip and offset for the rescaling of a table.
+
+        Parameters
+        ----------
+        table: numpy.ndarray
+            Table containing a given term as a function of :math:`k` (first
+            index) and the different parameter sample (second index).
+
+        Returns
+        -------
+        flip: list
+            Flip value for each :math:`k` entry.
+        max_offset: list
+            Maximum offset for each :math:`k` entry.
+        """
         flip = []
         offset_list = []
         for i in range(table.shape[0]):
-            idmax = np.abs(table[i,:]).argmax()
-            flip.append(np.sign(table[i,idmax]))
-            offset_list.append(np.abs(np.amin(flip[-1]*table[i,:])))
+            idmax = np.abs(table[i, :]).argmax()
+            flip.append(np.sign(table[i, idmax]))
+            offset_list.append(np.abs(np.amin(flip[-1]*table[i, :])))
         if len(offset_list) == 0:
             max_offset = 0.
         else:
             max_offset = max(offset_list)*1.1
         return flip, max_offset
 
-
     def transform(self, table, data_type):
-        if data_type not in ['PL','s12','sv']:
-            self.flip[data_type], self.offset[data_type] = self.get_flip_and_offset(table.T)
+        r"""Rescale the dynamical range of a table for the emulation.
+
+        Applies flip, offset, and rescales subtracting the mean and dividing
+        by the standard deviation of the considered quantity.
+
+        Parameters
+        ----------
+        table: numpy.ndarray
+            Table containing a given term as a function of :math:`k` (first
+            index) and the different parameter sample (second index).
+        data_type: str
+            Type of the table that is passed as input. This is used as a
+            keyword for the dictionary where the values of flip, offset,
+            mean and standard deviation are stored.
+
+        Returns
+        -------
+        resc_table: numpy.ndarray
+            Rescaled table.
+        """
+        if data_type not in ['PL', 's12', 'sv']:
+            self.flip[data_type], self.offset[data_type] = \
+                self.get_flip_and_offset(table.T)
         else:
-            self.flip[data_type]    = np.ones(table.shape[1])
-            self.offset[data_type]  = 0.
+            self.flip[data_type] = np.ones(table.shape[1])
+            self.offset[data_type] = 0.
         temp = np.log10(self.flip[data_type]*table+self.offset[data_type])
         self.mean[data_type] = np.mean(temp, axis=0)
-        self.std[data_type]  = np.std(temp, axis=0)
+        self.std[data_type] = np.std(temp, axis=0)
         return (temp-self.mean[data_type])/self.std[data_type]
 
-
     def transform_inv(self, table, data_type):
-        return (10**(table*self.std[data_type] + self.mean[data_type]) - self.offset[data_type]) \
-            *self.flip[data_type]
+        r"""Rescale back the dynamical range of a table.
 
+        Performs the inverse operations of **transform**. Needed to obtain
+        predictions from the emulator in the original metric.
+
+        Parameters
+        ----------
+        table: numpy.ndarray
+            Table containing a given term as a function of :math:`k` (first
+            index) and the different parameter sample (second index).
+        data_type: str
+            Type of the table that is passed as input. This is used as a
+            keyword for the dictionary where the values of flip, offset,
+            mean and standard deviation are stored.
+
+        Returns
+        -------
+        resc_table: numpy.ndarray
+            Rescaled table.
+        """
+        return (10**(table*self.std[data_type] + self.mean[data_type]) -
+                self.offset[data_type]) * self.flip[data_type]
 
     def transform_emulator_data(self, data_type=None):
+        r"""Rescale class attribute tables.
+
+        Parameters
+        ----------
+        data_type: str or list, optional
+            Types of the tables which have to be rescaled.
+        """
         if data_type is not None:
-            data_type = [data_type] if not isinstance(data_type,list) else data_type
+            data_type = ([data_type] if not isinstance(data_type, list)
+                         else data_type)
             for dt in data_type:
                 if self.model_transformed is None:
                     self.model_transformed = {}
-                    self.mean   = {}
-                    self.std    = {}
-                    self.flip   = {}
+                    self.mean = {}
+                    self.std = {}
+                    self.flip = {}
                     self.offset = {}
-                self.model_transformed[dt] = self.transform(self.model[dt], data_type=dt)
+                self.model_transformed[dt] = self.transform(self.model[dt],
+                                                            data_type=dt)
         else:
             self.model_transformed = {}
-            self.mean   = {}
-            self.std    = {}
-            self.flip   = {}
+            self.mean = {}
+            self.std = {}
+            self.flip = {}
             self.offset = {}
-            for ell in [0,2,4]:
+            for ell in [0, 2, 4]:
                 temp = np.zeros([self.n_samples, 7*self.nk + 10*self.nkloop])
                 cnt = 0
-                # only include the cell_ell counterterm (the others are negligible without AP)
-                for diagram in ['P0L_b1b1', 'PNL_b1', 'PNL_id','Pctr_c{}'.format(ell),
-                                'Pctr_b1b1cnlo','Pctr_b1cnlo','Pctr_cnlo']:
+                # only include the cell_ell counterterm
+                # (the others are negligible without AP)
+                for diagram in ['P0L_b1b1', 'PNL_b1', 'PNL_id',
+                                'Pctr_c{}'.format(ell), 'Pctr_b1b1cnlo',
+                                'Pctr_b1cnlo', 'Pctr_cnlo']:
                     diagram_full = '{}_ell{}'.format(diagram, ell)
-                    temp[:, cnt*self.nk:(cnt+1)*self.nk] = self.model[diagram_full]/self.model['PL']
+                    temp[:, cnt*self.nk:(cnt+1)*self.nk] = \
+                        self.model[diagram_full]/self.model['PL']
                     cnt += 1
                 cnt = 0
-                for diagram in ['P1L_b1b1', 'P1L_b1b2','P1L_b1g2','P1L_b1g21','P1L_b2b2',
-                                'P1L_b2g2','P1L_g2g2','P1L_b2','P1L_g2','P1L_g21']:
+                for diagram in ['P1L_b1b1', 'P1L_b1b2', 'P1L_b1g2',
+                                'P1L_b1g21', 'P1L_b2b2', 'P1L_b2g2',
+                                'P1L_g2g2', 'P1L_b2', 'P1L_g2', 'P1L_g21']:
                     diagram_full = '{}_ell{}'.format(diagram, ell)
-                    temp[:, 7*self.nk+cnt*self.nkloop:7*self.nk+(cnt+1)*self.nkloop] \
-                        = self.model[diagram_full][:,(self.nk-self.nkloop):] \
-                        / self.model['PL'][:,(self.nk-self.nkloop):]
+                    temp[:,
+                         7*self.nk + cnt*self.nkloop:7*self.nk +
+                         (cnt+1)*self.nkloop] = (
+                            self.model[diagram_full][:,
+                                                     (self.nk-self.nkloop):] /
+                            self.model['PL'][:, (self.nk-self.nkloop):])
                     cnt += 1
 
-                self.model_transformed[ell] = self.transform(temp, data_type=ell)
-
+                self.model_transformed[ell] = self.transform(temp,
+                                                             data_type=ell)
 
     def convert_dictionary(self):
+        r"""Convert internal table, from dictionary to numpy.ndarray."""
         temp = np.zeros([self.n_samples, self.nk, 1+self.n_diagrams*3])
-        temp[:,:,0] = self.model['PL']
-        for ell in [0,2,4]:
-            for cnt,diagram in enumerate(self.names_diagrams):
+        temp[:, :, 0] = self.model['PL']
+        for ell in [0, 2, 4]:
+            for cnt, diagram in enumerate(self.names_diagrams):
                 diagram_full = '{}_ell{}'.format(diagram, ell)
-                temp[:, :, 1+cnt+self.n_diagrams*int(ell/2)] = self.model[diagram_full]
+                temp[:, :, 1+cnt+self.n_diagrams*int(ell/2)] = \
+                    self.model[diagram_full]
                 cnt += 1
         self.model = temp
 
-
     def GPy_model(self, data_type):
-        kernel = GPy.kern.RBF(input_dim=self.n_params,
-                              variance=np.var(self.model_transformed[data_type]),
-                              lengthscale=np.ones(self.n_params), ARD=True) \
-                 + GPy.kern.Matern32(input_dim=self.n_params,
-                                    variance=np.var(self.model_transformed[data_type]),
-                                    lengthscale=np.ones(self.n_params), ARD=True) \
-                 + GPy.kern.White(input_dim=self.n_params,
-                                      variance=np.var(self.model_transformed[data_type]))
-                 # + GPy.kern.Matern32(input_dim=self.n_params,
-                 #                     variance=np.var(self.model_transformed[data_type]),
-                 #                     lengthscale=np.ones(self.n_params), ARD=True)
-                 # + GPy.kern.RatQuad(input_dim=self.n_params,
-                 #                    variance=np.var(self.model_transformed[data_type]),
-                 #                    lengthscale=np.ones(self.n_params), power=1., ARD=True) \
+        r"""Run the Gaussian Regression model.
+
+        Defines a Gaussian kernel for the covariance of the Gaussian process,
+        and train the emulator using the rescaled table as input.
+
+        Parameters
+        ----------
+        data_type: str
+            Type of the table that is used to build the emulator.
+        """
+        kernel = (GPy.kern.RBF(input_dim=self.n_params,
+                               variance=np.var(
+                                self.model_transformed[data_type]),
+                               lengthscale=np.ones(self.n_params),
+                               ARD=True) +
+                  GPy.kern.Matern32(input_dim=self.n_params,
+                                    variance=np.var(
+                                        self.model_transformed[data_type]),
+                                    lengthscale=np.ones(self.n_params),
+                                    ARD=True) +
+                  GPy.kern.White(input_dim=self.n_params,
+                                 variance=np.var(
+                                    self.model_transformed[data_type])))
+        # + GPy.kern.Matern32(input_dim=self.n_params,
+        #                     variance=np.var(
+        #                      self.model_transformed[data_type]),
+        #                     lengthscale=np.ones(self.n_params),
+        #                     ARD=True)
+        # + GPy.kern.RatQuad(input_dim=self.n_params,
+        #                    variance=np.var(
+        #                      self.model_transformed[data_type]),
+        #                    lengthscale=np.ones(self.n_params),
+        #                    power=1., ARD=True) \
         return GPy.models.GPRegression(
             self.samples, self.model_transformed[data_type], kernel)
 
 
-
 class PTEmu:
+    r"""Main class for the emulator of the power spectrum multipoles.
+
+    The emulator makes use of evolution mapping (Sanchez 2020,
+    Sanchez et al 2021) to compress the information of evolution parameters
+    (e.g. :math:`h,\,\Omega_\mathrm{K},\,w_0,\,w_\mathrm{a},\,A_\mathrm{s},
+    \ldots`) into the single quantity :math:`\sigma_{12}`.
+    The latter, together with the parameters affecting the shape of the power
+    spectrum (e.g. :math:`\omega_\mathrm{b},\,\omega_\mathrm{c},\,
+    n_\mathrm{s},\ldots`), are used as base of the emulator.
+    """
+
     def __init__(self, model, use_Mpc=True):
-        self.bias_params_list = ['b1','b2','g2','g21','c0','c2','c4','cnlo',
-                                 'N0','N20','N22']
+        r"""Class constructor.
+
+        Parameters
+        ----------
+        model: str
+            Identifier of the selected model.
+        use_Mpc: bool, optional
+            Flag that determines if the input and output quantities are
+            specified in :math:`\mathrm{Mpc}` (True) or :math:`\mathrm{Mpc}/h`
+            (False) units. Defaults to True.
+        """
+        self.bias_params_list = ['b1', 'b2', 'g2', 'g21', 'c0', 'c2', 'c4',
+                                 'cnlo', 'N0', 'N20', 'N22']
         self.RSD_params_list = []
-        self.de_model_params_list = {'lambda':['h','As','Ok','z'],
-                                     'w0':['h','As','Ok','w0','z'],
-                                     'w0wa':['h','As','Ok','w0','wa','z']}
+        self.de_model_params_list = {
+            'lambda': ['h', 'As', 'Ok', 'z'],
+            'w0': ['h', 'As', 'Ok', 'w0', 'z'],
+            'w0wa': ['h', 'As', 'Ok', 'w0', 'wa', 'z']}
 
         self.n_diagrams = 19
-        self.diagrams_emulated = ['P0L_b1b1', 'PNL_b1', 'PNL_id','Pctr_clo',
-                                  'Pctr_b1b1cnlo','Pctr_b1cnlo','Pctr_cnlo',
-                                  'P1L_b1b1','P1L_b1b2','P1L_b1g2','P1L_b1g21',
-                                  'P1L_b2b2','P1L_b2g2','P1L_g2g2','P1L_b2',
-                                  'P1L_g2','P1L_g21']
-        self.diagrams_all = ['P0L_b1b1', 'PNL_b1', 'PNL_id','Pctr_c0','Pctr_c2',
-                             'Pctr_c4','Pctr_b1b1cnlo','Pctr_b1cnlo','Pctr_cnlo',
-                             'P1L_b1b1','P1L_b1b2','P1L_b1g2','P1L_b1g21',
-                             'P1L_b2b2','P1L_b2g2','P1L_g2g2','P1L_b2','P1L_g2',
-                             'P1L_g21','Pnoise_N0','Pnoise_N20','Pnoise_N22']
+        self.diagrams_emulated = ['P0L_b1b1', 'PNL_b1', 'PNL_id', 'Pctr_clo',
+                                  'Pctr_b1b1cnlo', 'Pctr_b1cnlo', 'Pctr_cnlo',
+                                  'P1L_b1b1', 'P1L_b1b2', 'P1L_b1g2',
+                                  'P1L_b1g21', 'P1L_b2b2', 'P1L_b2g2',
+                                  'P1L_g2g2', 'P1L_b2', 'P1L_g2', 'P1L_g21']
+        self.diagrams_all = ['P0L_b1b1', 'PNL_b1', 'PNL_id', 'Pctr_c0',
+                             'Pctr_c2', 'Pctr_c4', 'Pctr_b1b1cnlo',
+                             'Pctr_b1cnlo', 'Pctr_cnlo', 'P1L_b1b1',
+                             'P1L_b1b2', 'P1L_b1g2', 'P1L_b1g21', 'P1L_b2b2',
+                             'P1L_b2g2', 'P1L_g2g2', 'P1L_b2', 'P1L_g2',
+                             'P1L_g21', 'Pnoise_N0', 'Pnoise_N20',
+                             'Pnoise_N22']
 
         self.use_Mpc = use_Mpc
-        self.nbar = 1. # in units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
+        self.nbar = 1.  # in units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
 
-        self.training   = {}
+        self.training = {}
         self.validation = {}
 
-        self.emu   = {}
-        self.cosmo = Cosmology(0.3, 67) # Initialise with arbitrary values
+        self.emu = {}
+        self.cosmo = Cosmology(0.3, 67)  # Initialise with arbitrary values
 
-        self.Pk_lin    = None
-        self.Pk_ratios = {0:None, 2:None, 4:None}
+        self.Pk_lin = None
+        self.Pk_ratios = {0: None, 2: None, 4: None}
 
         self.Pell_spline = {}
         self.Pell_min = {}
@@ -586,11 +1200,11 @@ class PTEmu:
         self.neff_min = {}
         self.neff_max = {}
 
-        self.PX_ell_spline = {X:{} for X in self.diagrams_all}
-        self.PX_ell_min = {X:{} for X in self.diagrams_all}
-        self.PX_ell_max = {X:{} for X in self.diagrams_all}
-        self.X_neff_min = {X:{} for X in self.diagrams_all}
-        self.X_neff_max = {X:{} for X in self.diagrams_all}
+        self.PX_ell_spline = {X: {} for X in self.diagrams_all}
+        self.PX_ell_min = {X: {} for X in self.diagrams_all}
+        self.PX_ell_max = {X: {} for X in self.diagrams_all}
+        self.X_neff_min = {X: {} for X in self.diagrams_all}
+        self.X_neff_max = {X: {} for X in self.diagrams_all}
         self.PX_ell_list = {}
 
         self.k_table_min = {}
@@ -599,7 +1213,7 @@ class PTEmu:
         self.data = {}
 
         self.splines_up_to_date = False
-        self.X_splines_up_to_date = {X:False for X in self.diagrams_all}
+        self.X_splines_up_to_date = {X: False for X in self.diagrams_all}
         self.emu_params_updated = False
 
         self.chi2_decomposition = None
@@ -607,93 +1221,160 @@ class PTEmu:
 
         try:
             self.load_emulator_data(fname='../tables/{}.fits'.format(model))
-        except:
+        except Exception:
             print('Table file for this model not found. Initialise '
                   'with `load_emulator_data`')
         try:
             self.load_emulator(fname_base='../models/{}'.format(model))
-        except:
+        except Exception:
             print('Emulator files for this model not found. Initialise with '
-                  '`load_emulator`, or train the emulator first, if necessary.')
+                  '`load_emulator`, or train the emulator first, '
+                  'if necessary.')
 
         # if fname_base is not None:
         #     self.load_emulator_data(fname='{}.fits'.format(fname_base))
         #     self.load_emulator(fname_base=fname_base)
 
+    def generate_samples(self, type, ranges, n_samples, n_trials=0,
+                         validation=False):
+        r"""Generate sample for training or validating the emulator.
 
-    def generate_samples(self, type, ranges, n_samples, n_trials=0, validation=False):
+        Parameters
+        ----------
+        type: str
+            Type of sample, based on the quantity to emulate. Can be either
+            `SHAPE` or `FULL`.
+        ranges: dict
+            Dictionary containing the parameter ranges. Each of them is a list
+            with two entries, which correspond to the minimum and maximum
+            value of the parameter.
+        n_samples: int
+            Size of the sample. `n_samples` points are going to be generated.
+        n_trials: int, optional
+            Number of resamplings of the Latin HyperCube when a training
+            sample is requested. This is meant to obtain the best coverture of
+            the hypervolume (with maxed minimum distance among points).
+            Defaults to 0.
+        validation: bool, optional
+            Flag to determine if the sample is for the training (False)
+            or the validation (True) of the emulator. Defaults to False.
+        """
         if validation:
             self.validation[type].generate_samples(ranges, n_samples, n_trials)
         else:
             self.training[type].generate_samples(ranges, n_samples, n_trials)
 
-
     def save_samples(self, type, fname, validation=False):
+        r"""Save a sample to file.
+
+        Parameters
+        ----------
+        type: str
+            Type of sample, based on the quantity to emulate. Can be either
+            `SHAPE` or `FULL`.
+        fname: str
+            Name of output file.
+        validation: bool, optional
+            Flag to determine if the sample is for the training (False)
+            or the validation (True) of the emulator. Defaults to False.
+        """
         if validation:
             self.validation[type].save_samples(fname)
         else:
             self.training[type].save_samples(fname)
 
-
     def init_params_dict(self):
-        self.params = {p:0. for p in self.params_list + self.bias_params_list \
-                       + self.de_model_params_list['w0wa']}
+        self.params = {p: 0. for p in self.params_list +
+                       self.bias_params_list +
+                       self.de_model_params_list['w0wa']}
         self.params['w0'] = -1
         self.params['alpha_tr'] = 1
         self.params['alpha_lo'] = 1
 
-
     def load_emulator_data(self, fname, validation=False):
+        r"""Load tables of the emulator.
+
+        Parameters
+        ----------
+        fname: str
+            Name of the output fits file to read.
+        validation: bool, optional
+            Flag to determine if the sample is for the training (False)
+            or the validation (True) of the emulator. Defaults to False.
+        """
         hdul = fits.open(fname)
 
         if not validation:
-            self.params_shape_list = [hdul['PARAMS_SHAPE'].header['TTYPE{}'.format(n+1)] for n in range(hdul['PARAMS_SHAPE'].header['TFIELDS'])]
-            self.params_list = [hdul['PARAMS_FULL'].header['TTYPE{}'.format(n+1)] for n in range(hdul['PARAMS_FULL'].header['TFIELDS'])]
+            self.params_shape_list = ([
+                hdul['PARAMS_SHAPE'].header['TTYPE{}'.format(n+1)]
+                for n in range(hdul['PARAMS_SHAPE'].header['TFIELDS'])])
+            self.params_list = ([
+                hdul['PARAMS_FULL'].header['TTYPE{}'.format(n+1)]
+                for n in range(hdul['PARAMS_FULL'].header['TFIELDS'])])
             self.real_space = False if 'f' in self.params_list else True
-            self.emu_LCDM_params = {p:hdul['PRIMARY'].header['TRAINING:{}'.format(p)] for p in ['wc','wb','ns','h','As','z']}
+            self.emu_LCDM_params = ({
+                p: hdul['PRIMARY'].header['TRAINING:{}'.format(p)]
+                for p in ['wc', 'wb', 'ns', 'h', 'As', 'z']})
             self.params_shape_ranges = {}
             self.params_ranges = {}
             for p in self.params_shape_list:
                 min = hdul['PARAMS_SHAPE'].header['MIN:{}'.format(p)]
                 max = hdul['PARAMS_SHAPE'].header['MAX:{}'.format(p)]
-                self.params_shape_ranges[p] = [min,max]
+                self.params_shape_ranges[p] = [min, max]
             for p in self.params_list:
                 min = hdul['PARAMS_FULL'].header['MIN:{}'.format(p)]
                 max = hdul['PARAMS_FULL'].header['MAX:{}'.format(p)]
-                self.params_ranges[p] = [min,max]
+                self.params_ranges[p] = [min, max]
             self.init_params_dict()
 
-            self.training['SHAPE']    = Tables(self.params_shape_list)
-            self.training['FULL']     = Tables(self.params_list)
-            self.validation['SHAPE']  = Tables(self.params_shape_list, validation=True)
-            self.validation['FULL']   = Tables(self.params_list, validation=True)
+            self.training['SHAPE'] = Tables(self.params_shape_list)
+            self.training['FULL'] = Tables(self.params_list)
+            self.validation['SHAPE'] = Tables(self.params_shape_list,
+                                              validation=True)
+            self.validation['FULL'] = Tables(self.params_list,
+                                             validation=True)
 
-        self.k_table   = hdul['K_TABLE'].data['bins']
-        self.nk        = self.k_table.shape[0]
-        self.nkloop    = sum(self.k_table > hdul['K_TABLE'].header['k1loop'])
+        self.k_table = hdul['K_TABLE'].data['bins']
+        self.nk = self.k_table.shape[0]
+        self.nkloop = sum(self.k_table > hdul['K_TABLE'].header['k1loop'])
         self.RSD_model = hdul['MODEL_FULL'].header['RSD_model']
 
         if self.RSD_model == 'VIR':
             self.RSD_params_list.append('avir')
-            self.params['avir']  = 0
+            self.params['avir'] = 0
 
         if validation:
             self.validation['FULL'].model = None
             self.validation['FULL'].assign_samples(hdul['PARAMS_FULL'])
-            self.validation['FULL'].assign_table(hdul['MODEL_FULL'], self.nk, self.nkloop)
+            self.validation['FULL'].assign_table(hdul['MODEL_FULL'],
+                                                 self.nk, self.nkloop)
         else:
             self.training['SHAPE'].assign_samples(hdul['PARAMS_SHAPE'])
-            self.training['SHAPE'].assign_table(hdul['MODEL_SHAPE'], self.nk, self.nkloop)
+            self.training['SHAPE'].assign_table(hdul['MODEL_SHAPE'],
+                                                self.nk, self.nkloop)
             self.training['FULL'].assign_samples(hdul['PARAMS_FULL'])
-            self.training['FULL'].assign_table(hdul['MODEL_FULL'], self.nk, self.nkloop)
+            self.training['FULL'].assign_table(hdul['MODEL_FULL'],
+                                               self.nk, self.nkloop)
             if not self.real_space:
                 self.s12_for_P6 = hdul['MODEL_Pell6'].header['SIG12']
                 self.P6 = hdul['MODEL_Pell6'].data['P_all']
 
-
     def train_emulator(self, max_f_eval=1000, num_restarts=5, data_type=None):
+        r"""Train the emulator.
+
+        Parameters
+        ----------
+        max_f_eval: int, optional
+            Maximum number of function evaluation. Defaults to 1000.
+        num_restarts: int, optional
+            Number of iterations of the Gaussian process.
+        data_type: str, optional
+            Type of the table that is used to train the emulator. If None,
+            it creates an emulator for all the tables that are stored as
+            class attributes. Defaults to None.
+        """
         if data_type is None:
-            ell_train = [0,2,4] if not self.real_space else [0]
+            ell_train = [0, 2, 4] if not self.real_space else [0]
             self.emu['PL'] = self.training['SHAPE'].GPy_model('PL')
             self.emu['s12'] = self.training['SHAPE'].GPy_model('s12')
             if self.RSD_model == 'VIR':
@@ -708,18 +1389,28 @@ class PTEmu:
             data_type = [data_type] if not isinstance(data_type, list) \
                 else data_type
             for dt in data_type:
-                if dt in ['PL','s12','sv']:
+                if dt in ['PL', 's12', 'sv']:
                     self.emu[dt] = self.training['SHAPE'].GPy_model(dt)
                 else:
                     self.emu[dt] = self.training['FULL'].GPy_model(dt)
                 self.emu[dt].optimize(max_f_eval=max_f_eval)
                 self.emu[dt].optimize_restarts(num_restarts=num_restarts)
 
-
     def save_emulator(self, fname_base, data_type=None):
+        r"""Save the emulator to pickle format.
+
+        Parameters
+        ----------
+        fname_base: str
+            Root name of the output pickle file.
+        data_type: str, optional
+            Type of the table which refers to the output emulator. If None,
+            it saves the emulator for all the tables that are stored as
+            class attributes. Defaults to None.
+        """
         if data_type is None:
-            ell_train = [0,2,4] if not self.real_space else [0]
-            for dt in ['PL','s12']:
+            ell_train = [0, 2, 4] if not self.real_space else [0]
+            for dt in ['PL', 's12']:
                 with open('{}_{}.pickle'.format(fname_base, dt), "wb") as f:
                     pickle.dump(self.emu[dt], f)
             if self.RSD_model == 'VIR':
@@ -733,19 +1424,30 @@ class PTEmu:
             data_type = [data_type] if not isinstance(data_type, list) \
                 else data_type
             for dt in data_type:
-                if dt in ['PL','s12','sv']:
-                    with open('{}_{}.pickle'.format(fname_base, dt), "wb") as f:
+                if dt in ['PL', 's12', 'sv']:
+                    with open('{}_{}.pickle'.format(fname_base, dt),
+                              "wb") as f:
                         pickle.dump(self.emu[dt], f)
                 else:
                     with open('{}_ratios_ell{}.pickle'.format(fname_base, dt),
                               "wb") as f:
                         pickle.dump(self.emu[dt], f)
 
-
     def load_emulator(self, fname_base, data_type=None):
+        r"""Load the emulator from pickle file.
+
+        Parameters
+        ----------
+        fname_base: str
+            Root name of the input pickle file.
+        data_type: str, optional
+            Type of the table which refers to the input emulator. If None,
+            it loads the emulators for all the tables that are stored as
+            class attributes. Defaults to None.
+        """
         if data_type is None:
-            ell_train = [0,2,4] if not self.real_space else [0]
-            for dt in ['PL','s12']:
+            ell_train = [0, 2, 4] if not self.real_space else [0]
+            for dt in ['PL', 's12']:
                 self.emu[dt] = pickle.load(
                     open('{}_{}.pickle'.format(fname_base, dt), "rb"))
             if self.RSD_model == 'VIR':
@@ -759,7 +1461,7 @@ class PTEmu:
             data_type = [data_type] if not isinstance(data_type, list) \
                 else data_type
             for dt in data_type:
-                if dt in ['PL','s12','sv']:
+                if dt in ['PL', 's12', 'sv']:
                     self.emu[dt] = pickle.load(
                         open('{}_{}.pickle'.format(fname_base, dt), "rb"))
                 else:
@@ -767,11 +1469,24 @@ class PTEmu:
                         open('{}_ratios_ell{}.pickle'.format(fname_base, dt),
                              "rb"))
 
-
     def define_units(self, use_Mpc):
+        r"""Define units for the power spectrum and number density.
+
+        Sets the internal class attribute `use_Mpc`, clears all the data
+        objects (if defined), and resets the number density to 1 in the set
+        of units corresponding to the input flag. The number density value
+        can be explicitly changed calling **define_nbar**.
+
+        Parameters
+        ----------
+        use_Mpc: bool
+            Flag that determines if the input and output quantities are
+            specified in :math:`\mathrm{Mpc}` (True) or :math:`\mathrm{Mpc}/h`
+            (False) units.
+        """
         if use_Mpc != self.use_Mpc:
             self.use_Mpc = use_Mpc
-            self.nbar = 1. # in units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
+            self.nbar = 1.  # units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
             for obs_id in self.data.keys():
                 self.data[obs_id].clear_data()
             self.splines_up_to_date = False
@@ -779,28 +1494,76 @@ class PTEmu:
             print("Number density resetted to nbar = 1 {}. Data set (if "
                   "defined) cleared.".format(nbar_unit))
 
-
     def define_nbar(self, nbar):
+        r"""Define number density.
+
+        Sets the internal class attribute `nbar` to the value provided as
+        input. The latter is intended to be in the current units of the
+        emulator, which can be specified at instanciation, or using the
+        method **define_units**.
+
+        Parameters
+        ----------
+        nbar: float
+            Number density of the sample.
+        """
         self.nbar = np.copy(nbar)
         self.splines_up_to_date = False
 
-
     def define_data_set(self, obs_id, **kwargs):
-        if not obs_id in self.data.keys():
+        r"""Define data sample.
+
+        If the identifier of the data sample is not present in the internal
+        data dictionary, it assigns a new `MeasuredData` object to it.
+        Otherwise it updates the already existing entry.
+
+        Parameters
+        ----------
+        obs_id: str
+            Identifier of the data sample.
+        **kwargs: dict
+            Dictionary of keyword arguments (check doc of `MeasuredData`
+            class).
+        """
+        if obs_id not in self.data.keys():
             self.data[obs_id] = MeasuredData(**kwargs)
         else:
             self.data[obs_id].update(**kwargs)
 
-
     def define_fiducial_cosmology(self, HDm_fid=None, params_fid=None,
                                   de_model='lambda'):
+        r"""Define fiducial cosmology.
+
+        Sets the internal attributes of the class to store the parameters of
+        the fiducial cosmology (required for AP corrections).
+
+        Parameters
+        ----------
+        HDm_fid: list or numpy.ndarray, optional
+            List containing the fiducial expansion factor :math:`H(z)` and
+            angular diameter distance :math:`D_\mathrm{A}(z)`, in the units
+            defined at the class instanciation or with the method
+            **define_units**. If None, the method expects to find a dictionary
+            containing the parameters of the fiducial cosmology. Defaults to
+            None.
+        params_fid: dict, optional
+            Dictionary containing the parameters of the fiducial cosmology,
+            used to compute the expansion factor :math:`H(z)` and
+            angular diameter distance :math:`D_\mathrm{A}(z)`, in the units
+            defined at the class instanciation or with the method
+            **define_units**. Defaults to None.
+        de_model: str, optional
+            String that determines the dark energy equation of state. Can be
+            chosen form the list ['lambda', 'w0', 'w0wa'].
+            Deafults to 'lambda'.
+        """
         if HDm_fid is not None:
             self.H_fid = HDm_fid[0]
             self.Dm_fid = HDm_fid[1]
         else:
             Om0 = (params_fid['wc']+params_fid['wb'])/params_fid['h']**2
             H0 = params_fid['h']*100
-            Ok0 = 0 if not 'Ok' in params_fid else params_fid['Ok']
+            Ok0 = 0 if 'Ok' not in params_fid else params_fid['Ok']
             if de_model == 'lambda':
                 w0 = -1
                 wa = 0
@@ -814,10 +1577,27 @@ class PTEmu:
                                         w0=w0, wa=wa)
             self.h_fid = params_fid['h']
             self.H_fid = self.cosmo.Hz(params_fid['z'])
-            self.Dm_fid = self.cosmo.comoving_transverse_distance(params_fid['z'])
-
+            self.Dm_fid = \
+                self.cosmo.comoving_transverse_distance(params_fid['z'])
 
     def update_params(self, params, de_model=None):
+        r"""Update parameters of the emulator.
+
+        Sets the internal attributes of the class to store the parameters
+        of the emulator.
+
+        Parameters
+        ----------
+        params: dict
+            Dictionary containing the list of parameters which are internally
+            used by the emulator. The keywords of the dictionary specify the
+            name of the parameters, while the values specify the values of the
+            parameters.
+        de_model: str, optional
+            String that determines the dark energy equation of state. Can be
+            chosen form the list ['lambda', 'w0', 'w0wa'].
+            Deafults to 'lambda'.
+        """
         try:
             if de_model is None and self.use_Mpc:
                 emu_params_updated = any([params[p] != self.params[p] for p
@@ -846,7 +1626,7 @@ class PTEmu:
             print('Not all required parameter values have been defined.')
 
         if emu_params_updated:
-            self.Pk_ratios = {0:None, 2:None, 4:None}
+            self.Pk_ratios = {0: None, 2: None, 4: None}
             self.chi2_decomposition = None
             self.chi2_decomposition_from_table = None
 
@@ -858,15 +1638,36 @@ class PTEmu:
 
         return emu_params_updated
 
-
     def update_AP_params(self, params, de_model=None, alpha_tr_lo=None):
+        r"""Update AP parameters.
+
+        Sets the internal attributes of the class to store the AP parameters.
+
+        Parameters
+        ----------
+        params: dict
+            Dictionary containing the list of parameters which are internally
+            used by the emulator. The keywords of the dictionary specify the
+            name of the parameters, while the values specify the values of the
+            parameters.
+        de_model: str, optional
+            String that determines the dark energy equation of state. Can be
+            chosen form the list ['lambda', 'w0', 'w0wa'].
+            Deafults to 'lambda'.
+        alpha_tr_lo: list or numpy.ndarray, optional
+            List containing the user-provided AP parameters, in the form
+            :math:`(\alpha_\perp, \alpha_\parallel)`. If provided, prevents
+            computation from correct formulas (ratios of expansion factors and
+            angular diameter distance). Defaults to None.
+        """
         if de_model is not None and alpha_tr_lo is None:
             Om0 = (self.params['wc']+self.params['wb'])/self.params['h']**2
             H0 = 100*self.params['h']
             self.cosmo.update_cosmology(
                 Om0=Om0, H0=H0, Ok0=self.params['Ok'],
                 de_model=de_model, w0=self.params['w0'], wa=self.params['wa'])
-            self.params['alpha_lo'] = self.H_fid/self.cosmo.Hz(self.params['z'])
+            self.params['alpha_lo'] = \
+                self.H_fid/self.cosmo.Hz(self.params['z'])
             self.params['alpha_tr'] = self.cosmo.comoving_transverse_distance(
                 self.params['z'])/self.Dm_fid
             if not self.use_Mpc:
@@ -875,33 +1676,65 @@ class PTEmu:
         elif de_model is not None:
             self.params['alpha_lo'] = alpha_tr_lo[1]
             self.params['alpha_tr'] = alpha_tr_lo[0]
-        elif de_model is None and 'alpha_lo' in params and 'alpha_tr' in params:
+        elif (de_model is None and
+              'alpha_lo' in params and
+              'alpha_tr' in params):
             self.params['alpha_lo'] = params['alpha_lo']
             self.params['alpha_tr'] = params['alpha_tr']
 
-
     def get_bias_coeff(self, ell):
-        b1   = self.params['b1']
-        b2   = self.params['b2']
-        g2   = self.params['g2']
-        g21  = self.params['g21']
+        r"""Get bias coefficients for the various model tables.
+
+        Each term of the :math:`P_{\ell}` expansion is multiplied by a
+        combination of bias parameters. This method returns such
+        combinations in an array format.
+
+        Parameters
+        ----------
+        ell: int
+            Order :math:`\ell` of the selected multipole.
+            Can be chosen from the list [0,2,4].
+
+        Returns
+        -------
+        bias_comb: numpy.ndarray
+            Combinations of bias parameters that multiply each term of the
+            expansion of the multipole of order :math:`\ell`. The output
+            corresponds to
+
+            .. math::
+                :nowrap:
+
+                    \begin{gather*}
+                    [b_1^2, b_1, 1, c_\ell, b_1^2c_\mathrm{nlo},
+                    b_1c_\mathrm{nlo}, c_\mathrm{nlo}, b_1^2, \\
+                    b_1b_2, b_1\gamma_2, b_1\gamma_{21}, b_2^2, b_2\gamma_2,
+                    \gamma_2^2, b_2, \gamma_2, \gamma_{21}]
+                    \end{gather*}
+
+            where ...
+        """
+        b1 = self.params['b1']
+        b2 = self.params['b2']
+        g2 = self.params['g2']
+        g21 = self.params['g21']
         cell = self.params['c{}'.format(ell)] if self.use_Mpc \
-             else self.params['c{}'.format(ell)]/self.params['h']**2
+            else self.params['c{}'.format(ell)]/self.params['h']**2
         cnlo = self.params['cnlo'] if self.use_Mpc \
-             else self.params['cnlo']/self.params['h']**4
+            else self.params['cnlo']/self.params['h']**4
         b1sq = b1**2
 
-        return np.array([b1sq, b1, 1., cell, b1sq*cnlo, b1*cnlo, cnlo, b1sq,
-                         b1*b2, b1*g2, b1*g21, b2**2, b2*g2, g2**2, b2, g2, g21])
-
+        return np.array([b1sq, b1, 1., cell, b1sq*cnlo, b1*cnlo,
+                         cnlo, b1sq, b1*b2, b1*g2, b1*g21, b2**2,
+                         b2*g2, g2**2, b2, g2, g21])
 
     def get_bias_coeff_for_P6(self):
-        b1   = self.params['b1']
-        b2   = self.params['b2']
-        g2   = self.params['g2']
-        g21  = self.params['g21']
+        b1 = self.params['b1']
+        b2 = self.params['b2']
+        g2 = self.params['g2']
+        g21 = self.params['g21']
         cnlo = self.params['cnlo'] if self.use_Mpc \
-             else self.params['cnlo']/self.params['h']**4
+            else self.params['cnlo']/self.params['h']**4
         f = self.params['f']
 
         b1sq = b1**2
@@ -923,7 +1756,6 @@ class PTEmu:
         bb_k4ctr *= s12ratio
 
         return np.hstack([bb_tree, bb_loop, bb_k4ctr])
-
 
     def get_bias_coeff_for_chi2_decomposition(self):
         b1 = self.params['b1']
@@ -950,17 +1782,16 @@ class PTEmu:
                          b1sq, b1*b2, b1*g2, b1*g21, b2**2, b2*g2, g2**2, b2,
                          g2, g21, N0/self.nbar, N20/self.nbar, N22/self.nbar])
 
-
     def get_bias_coeff_for_table(self):
-        b1   = self.params['b1']
-        b2   = self.params['b2']
-        g2   = self.params['g2']
-        g21  = self.params['g21']
-        c0   = self.params['c0'] if self.use_Mpc \
+        b1 = self.params['b1']
+        b2 = self.params['b2']
+        g2 = self.params['g2']
+        g21 = self.params['g21']
+        c0 = self.params['c0'] if self.use_Mpc \
             else self.params['c0']/self.params['h']**2
-        c2   = self.params['c2'] if self.use_Mpc \
+        c2 = self.params['c2'] if self.use_Mpc \
             else self.params['c2']/self.params['h']**2
-        c4   = self.params['c4'] if self.use_Mpc \
+        c4 = self.params['c4'] if self.use_Mpc \
             else self.params['c4']/self.params['h']**2
         cnlo = self.params['cnlo'] if self.use_Mpc \
             else self.params['cnlo']/self.params['h']**4
@@ -970,24 +1801,25 @@ class PTEmu:
                          b1sq, b1*b2, b1*g2, b1*g21, b2**2, b2*g2, g2**2, b2,
                          g2, g21])
 
-
     def eval_emulator(self, params, ell, de_model=None):
         emu_params_updated = self.update_params(params, de_model=de_model)
-        params_shape = np.array([self.params[p] for p in self.params_shape_list])
+        params_shape = np.array(
+            [self.params[p] for p in self.params_shape_list])
 
         if de_model is None:
             params_all = np.array([self.params[p] for p in self.params_list])
 
             if self.Pk_lin is None or emu_params_updated:
                 sigma12 = self.training['SHAPE'].transform_inv(
-                    self.emu['s12'].predict(params_shape[None,:])[0][0], 's12')
+                    self.emu['s12'].predict(params_shape[None, :])[0][0],
+                    's12')
                 self.Pk_lin = self.training['SHAPE'].transform_inv(
-                    self.emu['PL'].predict(params_shape[None,:])[0][0], 'PL')
+                    self.emu['PL'].predict(params_shape[None, :])[0][0], 'PL')
                 self.Pk_lin *= (self.params['s12']/sigma12)**2
 
                 if self.RSD_model == 'VIR':
                     self.params['sv'] = self.training['SHAPE'].transform_inv(
-                        self.emu['sv'].predict(params_shape[None,:])[0][0],
+                        self.emu['sv'].predict(params_shape[None, :])[0][0],
                         'sv')[0]
                     self.params['sv'] *= self.params['s12']/sigma12
                     if not self.use_Mpc:
@@ -996,18 +1828,19 @@ class PTEmu:
             for l in ell:
                 if self.Pk_ratios[l] is None or emu_params_updated:
                     self.Pk_ratios[l] = self.training['FULL'].transform_inv(
-                        self.emu[l].predict(params_all[None,:])[0][0], l)
+                        self.emu[l].predict(params_all[None, :])[0][0], l)
         else:
             if self.Pk_lin is None or emu_params_updated:
                 sigma12 = self.training['SHAPE'].transform_inv(
-                    self.emu['s12'].predict(params_shape[None,:])[0][0], 's12')
+                    self.emu['s12'].predict(params_shape[None, :])[0][0],
+                    's12')
                 self.Pk_lin = self.training['SHAPE'].transform_inv(
-                    self.emu['PL'].predict(params_shape[None,:])[0][0], 'PL')
+                    self.emu['PL'].predict(params_shape[None, :])[0][0], 'PL')
 
                 # compute growth factors corresponding to fiducial and target
                 # parameters + growth rate
                 Om0_fid = (self.params['wc']+self.params['wb']) \
-                          / self.emu_LCDM_params['h']**2
+                    / self.emu_LCDM_params['h']**2
                 H0_fid = 100*self.emu_LCDM_params['h']
                 self.cosmo.update_cosmology(Om0=Om0_fid, H0=H0_fid)
                 Dfid = self.cosmo.growth_factor(self.emu_LCDM_params['z'])
@@ -1030,7 +1863,7 @@ class PTEmu:
 
                 if self.RSD_model == 'VIR':
                     self.params['sv'] = self.training['SHAPE'].transform_inv(
-                        self.emu['sv'].predict(params_shape[None,:])[0][0],
+                        self.emu['sv'].predict(params_shape[None, :])[0][0],
                         'sv')[0]
                     self.params['sv'] *= amplitude_scaling
                     if not self.use_Mpc:
@@ -1041,14 +1874,12 @@ class PTEmu:
             for l in ell:
                 if self.Pk_ratios[l] is None or emu_params_updated:
                     self.Pk_ratios[l] = self.training['FULL'].transform_inv(
-                        self.emu[l].predict(params_all[None,:])[0][0], l)
-
+                        self.emu[l].predict(params_all[None, :])[0][0], l)
 
     def W_kurt(self, k, mu):
         t1 = (self.params['f']*k*mu)**2
         t2 = 1. + t1*self.params['avir']**2
         return 1./np.sqrt(t2)*np.exp(-t1*self.params['sv']**2/t2)
-
 
     def build_Pell_spline(self, Pell, ell):
         id_min = 0 if not ell == 6 else self.nk-self.nkloop
@@ -1079,11 +1910,11 @@ class PTEmu:
             self.neff_min[ell] = dlP_min/dlk_min
             self.neff_max[ell] = dlP_max/dlk_max
 
-
     # def build_PX_ell_spline(self, PX_ell, X, ell):
     #     id_min = 0 if not ell == 6 else self.nk-self.nkloop
     #     if self.use_Mpc:
-    #         self.PX_ell_spline[X][ell] = interp1d(self.k_table, PX_ell, kind='cubic')
+    #         self.PX_ell_spline[X][ell] = interp1d(
+    #            self.k_table, PX_ell, kind='cubic')
     #         self.PX_ell_min[X][ell] = PX_ell[id_min]
     #         self.PX_ell_max[X][ell] = PX_ell[-1]
     #         self.k_table_min[ell] = self.k_table[id_min]
@@ -1096,8 +1927,8 @@ class PTEmu:
     #         self.X_neff_max[X][ell] = dlP_max/dlk_max
     #     else:
     #         PX_ell *= self.params['h']**3
-    #         self.PX_ell_spline[X][ell] = interp1d(self.k_table/self.params['h'],
-    #                                               PX_ell, kind='cubic')
+    #         self.PX_ell_spline[X][ell] = interp1d(
+    #            self.k_table/self.params['h'], PX_ell, kind='cubic')
     #         self.PX_ell_min[X][ell] = PX_ell[id_min]
     #         self.PX_ell_max[X][ell] = PX_ell[-1]
     #         self.k_table_min[ell] = self.k_table[id_min]/self.params['h']
@@ -1109,11 +1940,11 @@ class PTEmu:
     #         self.X_neff_min[X][ell] = dlP_min/dlk_min
     #         self.X_neff_max[X][ell] = dlP_max/dlk_max
 
-
     def build_Pell_spline_from_table(self, Pell, ell):
         id_min = 0 if not ell == 6 else self.nk-self.nkloop
         if self.use_Mpc:
-            hfac = self.params['h']/self.emu_LCDM_params['h'] if ell != 6 else 1
+            hfac = (self.params['h']/self.emu_LCDM_params['h']
+                    if ell != 6 else 1)
             self.Pell_spline[ell] = interp1d(self.k_table*hfac, Pell,
                                              kind='cubic')
             self.Pell_min[ell] = Pell[id_min]
@@ -1143,19 +1974,18 @@ class PTEmu:
             self.neff_min[ell] = dlP_min/dlk_min
             self.neff_max[ell] = dlP_max/dlk_max
 
-
     def eval_Pell_spline(self, k, ell):
         mask_low = k < self.k_table_min[ell]
         mask_high = k > self.k_table_max[ell]
         spline = np.hstack(
-            [self.Pell_min[ell] \
-             * (k[mask_low]/self.k_table_min[ell])**self.neff_min[ell],
-             self.Pell_spline[ell](k[np.invert(mask_low) & np.invert(mask_high)]),
-             self.Pell_max[ell] \
-             * (k[mask_high]/self.k_table_max[ell])**self.neff_max[ell]]
+            [self.Pell_min[ell] *
+             (k[mask_low]/self.k_table_min[ell])**self.neff_min[ell],
+             self.Pell_spline[ell](
+                k[np.invert(mask_low) & np.invert(mask_high)]),
+             self.Pell_max[ell] *
+             (k[mask_high]/self.k_table_max[ell])**self.neff_max[ell]]
             )
         return spline
-
 
     def PL(self, k, params, de_model=None):
         self.eval_emulator(params, ell=[], de_model=de_model)
@@ -1168,10 +1998,9 @@ class PTEmu:
 
         return PL_spline(k)
 
-
     def Pdw(self, k, mu, params, de_model=None, ell_for_recon=None):
         if ell_for_recon is None:
-            ell_for_recon = [0,2,4,6] if not self.real_space else [0]
+            ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
         ell_eval_emu = ell_for_recon.copy()
         try:
             ell_eval_emu.remove(6)
@@ -1180,22 +2009,22 @@ class PTEmu:
         self.eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
 
         Pdw_ell = np.zeros([self.nk, len(ell_for_recon)])
-        for i,ell in enumerate(ell_for_recon):
+        for i, ell in enumerate(ell_for_recon):
             if ell != 6:
-                Pdw_ell[:,i] = self.Pk_ratios[ell][:self.nk]
+                Pdw_ell[:, i] = self.Pk_ratios[ell][:self.nk]
             else:
-                Pdw_ell[:,i] = self.P6[:,0]
-        Pdw_ell[:,:len(ell_eval_emu)] = (Pdw_ell[:,:len(ell_eval_emu)].T \
-                                         * self.Pk_lin).T
+                Pdw_ell[:, i] = self.P6[:, 0]
+        Pdw_ell[:, :len(ell_eval_emu)] = (Pdw_ell[:, :len(ell_eval_emu)].T *
+                                          self.Pk_lin).T
 
         Pdw_spline = {}
-        for i,ell in enumerate(ell_for_recon):
+        for i, ell in enumerate(ell_for_recon):
             if self.use_Mpc:
-                Pdw_spline[ell] = interp1d(self.k_table, Pdw_ell[:,i],
+                Pdw_spline[ell] = interp1d(self.k_table, Pdw_ell[:, i],
                                            kind='cubic')
             else:
                 Pdw_spline[ell] = interp1d(self.k_table/self.params['h'],
-                                           Pdw_ell[:,i]*self.params['h']**3,
+                                           Pdw_ell[:, i]*self.params['h']**3,
                                            kind='cubic')
 
         Pdw_2d = 0.
@@ -1203,7 +2032,6 @@ class PTEmu:
             Pdw_2d += np.outer(Pdw_spline[ell](k), eval_legendre(ell, mu))
 
         return Pdw_2d
-
 
     def Pell_fid_ktable(self, params, ell, de_model=None):
         ell = [ell] if not isinstance(ell, list) else ell
@@ -1216,45 +2044,44 @@ class PTEmu:
 
         bij = self.get_bias_coeff(0)
 
-        Pell = np.zeros([self.nk,len(ell)])
-        for i,l in enumerate(ell):
+        Pell = np.zeros([self.nk, len(ell)])
+        for i, l in enumerate(ell):
             if l != 6:
                 bij[3] = self.params['c{}'.format(l)] if self.use_Mpc \
                      else self.params['c{}'.format(l)]/self.params['h']**2
 
-                Pk_bij = np.zeros([self.nk,self.n_diagrams-2])
-                Pk_bij[:,:7] = np.multiply(
-                    self.Pk_ratios[l][:7*self.nk].reshape((7,self.nk)),
+                Pk_bij = np.zeros([self.nk, self.n_diagrams-2])
+                Pk_bij[:, :7] = np.multiply(
+                    self.Pk_ratios[l][:7*self.nk].reshape((7, self.nk)),
                     self.Pk_lin).T
-                Pk_bij[(self.nk-self.nkloop):,7:17] = np.multiply(
-                    self.Pk_ratios[l][7*self.nk:].reshape((10,self.nkloop)),
+                Pk_bij[(self.nk-self.nkloop):, 7:17] = np.multiply(
+                    self.Pk_ratios[l][7*self.nk:].reshape((10, self.nkloop)),
                     self.Pk_lin[(self.nk-self.nkloop):]).T
 
-                Pell[:,i] = np.dot(bij, Pk_bij.T)
+                Pell[:, i] = np.dot(bij, Pk_bij.T)
 
                 # add shot noise
                 if l == 0:
-                    N0   = self.params['N0'] if self.use_Mpc \
+                    N0 = self.params['N0'] if self.use_Mpc \
                         else self.params['N0']/self.params['h']**3
-                    N20  = self.params['N20'] if self.use_Mpc \
+                    N20 = self.params['N20'] if self.use_Mpc \
                         else self.params['N20']/self.params['h']**5
-                    Pell[:,i] += np.ones_like(self.k_table)*N0/self.nbar \
-                                 + self.k_table**2*N20/self.nbar
+                    Pell[:, i] += (np.ones_like(self.k_table)*N0/self.nbar +
+                                   self.k_table**2*N20/self.nbar)
                 elif l == 2:
-                    N22  = self.params['N22'] if self.use_Mpc \
+                    N22 = self.params['N22'] if self.use_Mpc \
                         else self.params['N22']/self.params['h']**5
-                    Pell[:,i] += self.k_table**2*N22/self.nbar
+                    Pell[:, i] += self.k_table**2*N22/self.nbar
             else:
                 bij_for_P6 = self.get_bias_coeff_for_P6()
-                Pell[:,i] = np.dot(bij_for_P6, self.P6.T)
+                Pell[:, i] = np.dot(bij_for_P6, self.P6.T)
 
         return Pell
-
 
     def Pell(self, k, params, ell, de_model=None, alpha_tr_lo=None,
              W_damping=None, ell_for_recon=None):
         if ell_for_recon is None:
-            ell_for_recon = [0,2,4,6] if not self.real_space else [0]
+            ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
 
         def P2d(q, mu):
             t = 0.
@@ -1263,24 +2090,28 @@ class PTEmu:
             return t
 
         if self.RSD_model == 'EFT':
+
             def integrand(mu):
                 mu2 = mu**2
-                APfac = np.sqrt(mu2/self.params['alpha_lo']**2
-                                + (1. - mu2)/self.params['alpha_tr']**2)
+                APfac = np.sqrt(mu2/self.params['alpha_lo']**2 +
+                                (1. - mu2)/self.params['alpha_tr']**2)
                 kp = k*APfac
                 mup = mu/self.params['alpha_lo']/APfac
                 return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
+
         elif self.RSD_model == 'VIR':
             if W_damping is None:
                 W_damping = self.W_kurt
+
             def integrand(mu):
                 mu2 = mu**2
-                APfac = np.sqrt(mu2/self.params['alpha_lo']**2
-                                + (1. - mu2)/self.params['alpha_tr']**2)
+                APfac = np.sqrt(mu2/self.params['alpha_lo']**2 +
+                                (1. - mu2)/self.params['alpha_tr']**2)
                 kp = k*APfac
                 mup = mu/self.params['alpha_lo']/APfac
                 P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
                 return np.outer(P2d_damped, eval_legendre(ell, mu))
+
         else:
             raise ValueError('Unsupported RSD model.')
 
@@ -1288,8 +2119,8 @@ class PTEmu:
 
         if isinstance(k, list):
             if len(k) != len(ell):
-                raise ValueError("If 'k' is given as a list, it must match the "
-                                 "length of 'ell'.")
+                raise ValueError("If 'k' is given as a list, it must match the"
+                                 " length of 'ell'.")
             else:
                 k_list = k
                 k = np.unique(np.hstack(k_list))
@@ -1297,41 +2128,42 @@ class PTEmu:
             k_list = [k]*len(ell)
 
         params_updated = [params[p] != self.params[p] for p in params.keys()]
-        params_nonzero = [x for x in self.bias_params_list \
-                          + self.RSD_params_list if self.params[x] != 0]
+        params_nonzero = [x for x in self.bias_params_list +
+                          self.RSD_params_list if self.params[x] != 0]
 
         if (any(params_updated) or
                 any(p not in params.keys() for p in params_nonzero) or
                 not self.splines_up_to_date):
             Pell = self.Pell_fid_ktable(params, ell=ell_for_recon,
                                         de_model=de_model)
-            for i,l in enumerate(ell_for_recon):
-                self.build_Pell_spline(Pell[:,i], l)
+            for i, l in enumerate(ell_for_recon):
+                self.build_Pell_spline(Pell[:, i], l)
             self.splines_up_to_date = True
             self.chi2_decomposition = None
 
-        self.update_AP_params(params, de_model=de_model, alpha_tr_lo=alpha_tr_lo)
+        self.update_AP_params(params, de_model=de_model,
+                              alpha_tr_lo=alpha_tr_lo)
         alpha3 = self.params['alpha_tr']**2 * self.params['alpha_lo']
 
         Pell_model = quad_vec(integrand, 0, 1)[0]
         Pell_model *= (2*np.array(ell)+1) / alpha3
 
         Pell_dict = {}
-        for i,l in enumerate(ell):
+        for i, l in enumerate(ell):
             ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
-            Pell_dict['ell{}'.format(l)] = Pell_model[ids,i]
+            Pell_dict['ell{}'.format(l)] = Pell_model[ids, i]
 
         return Pell_dict
 
-
     def Pell_fixed_cosmo_boost(self, k, params, ell, de_model=None,
-             alpha_tr_lo=None, W_damping=None, ell_for_recon=None):
+                               alpha_tr_lo=None, W_damping=None,
+                               ell_for_recon=None):
         ell = [ell] if not isinstance(ell, list) else ell
 
         if isinstance(k, list):
             if len(k) != len(ell):
-                raise ValueError("If 'k' is given as a list, it must match the "
-                                 "length of 'ell'.")
+                raise ValueError("If 'k' is given as a list, it must match the"
+                                 " length of 'ell'.")
             else:
                 k_list = k
                 k = np.unique(np.hstack(k_list))
@@ -1351,16 +2183,16 @@ class PTEmu:
 
         if any(params[p] != self.params[p] for p in check_params):
             self.PX_ell_list = {
-                'ell{}'.format(l):np.zeros(
+                'ell{}'.format(l): np.zeros(
                     [k_list[i].shape[0], len(self.diagrams_all)])
-                for i,l in enumerate(ell)}
+                for i, l in enumerate(ell)}
             for i, X in enumerate(self.diagrams_all):
                 PX_ell = self.PX_ell(k_list, params, ell, X, de_model=de_model,
                                      alpha_tr_lo=alpha_tr_lo,
                                      W_damping=W_damping,
                                      ell_for_recon=ell_for_recon)
                 for l in PX_ell.keys():
-                    self.PX_ell_list[l][:,i] = PX_ell[l]
+                    self.PX_ell_list[l][:, i] = PX_ell[l]
 
         for p in self.bias_params_list:
             if p in params.keys():
@@ -1371,17 +2203,16 @@ class PTEmu:
         bX = self.get_bias_coeff_for_chi2_decomposition()
 
         Pell_dict = {}
-        for i,l in enumerate(ell):
+        for i, l in enumerate(ell):
             Pell_dict['ell{}'.format(l)] = np.dot(
                 self.PX_ell_list['ell{}'.format(l)], bX)
 
         return Pell_dict
 
-
     def Pell_convolved(self, k, params, ell, obs_id, de_model=None,
                        alpha_tr_lo=None, W_damping=None, ell_for_recon=None):
-        ell_for_mixing_matrix = [0,2,4] if not self.real_space else [0]
-        Pell = self.Pell(self.data[obs_id].bins_mixing_matrix[:,1], params,
+        ell_for_mixing_matrix = [0, 2, 4] if not self.real_space else [0]
+        Pell = self.Pell(self.data[obs_id].bins_mixing_matrix[:, 1], params,
                          ell_for_mixing_matrix, de_model, alpha_tr_lo,
                          W_damping, ell_for_recon)
         Pell_list = np.hstack([Pell['ell{}'.format(l)] for l
@@ -1392,8 +2223,8 @@ class PTEmu:
 
         if isinstance(k, list):
             if len(k) != len(ell):
-                raise ValueError("If 'k' is given as a list, it must match the "
-                                 "length of 'ell'.")
+                raise ValueError("If 'k' is given as a list, it must match the"
+                                 " length of 'ell'.")
             else:
                 k_list = k
                 k = np.unique(np.hstack(k_list))
@@ -1401,22 +2232,21 @@ class PTEmu:
             k_list = [k]*len(ell)
 
         Pell_dict = {}
-        if k != self.data[obs_id].bins_mixing_matrix[:,0]:
-            for i,l in enumerate(ell):
-                spline = interp1d(self.data[obs_id].bins_mixing_matrix[:,0],
-                                  Pell_convolved[:,i], kind='cubic')
+        if k != self.data[obs_id].bins_mixing_matrix[:, 0]:
+            for i, l in enumerate(ell):
+                spline = interp1d(self.data[obs_id].bins_mixing_matrix[:, 0],
+                                  Pell_convolved[:, i], kind='cubic')
                 Pell_dict['ell{}'.format(l)] = spline(k_list[i])
         else:
-            for i,l in enumerate(ell):
+            for i, l in enumerate(ell):
                 ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
-                Pell_dict['ell{}'.format(l)] = Pell_convolved[ids,i]
+                Pell_dict['ell{}'.format(l)] = Pell_convolved[ids, i]
 
         return Pell_dict
 
-
     def PX(self, k, mu, params, X, de_model=None):
         ids = None
-        for n,diagram in enumerate(self.diagrams_emulated):
+        for n, diagram in enumerate(self.diagrams_emulated):
             if diagram == X:
                 if n < 7:
                     ids = [n*self.nk, (n+1)*self.nk]
@@ -1425,22 +2255,23 @@ class PTEmu:
                            7*self.nk + (n-6)*self.nkloop]
 
         if ids is not None:
-            ell_for_recon = [0,2,4] if not self.real_space else [0]
+            ell_for_recon = [0, 2, 4] if not self.real_space else [0]
             self.eval_emulator(params, ell=ell_for_recon, de_model=de_model)
 
             PX_ell = np.zeros([self.nk, 3])
             for i, ell in enumerate(ell_for_recon):
-                PX_ell[self.nk - (ids[1]-ids[0]):,i] = self.Pk_ratios[ell][ids[0]:ids[1]]
+                PX_ell[self.nk - (ids[1]-ids[0]):, i] = \
+                    self.Pk_ratios[ell][ids[0]:ids[1]]
             PX_ell = (PX_ell.T*self.Pk_lin).T
 
             PX_spline = {}
             for i, ell in enumerate(ell_for_recon):
                 if self.use_Mpc:
-                    PX_spline[ell] = interp1d(self.k_table, PX_ell[:,i],
+                    PX_spline[ell] = interp1d(self.k_table, PX_ell[:, i],
                                               kind='cubic')
                 else:
                     PX_spline[ell] = interp1d(self.k_table/self.params['h'],
-                                              PX_ell[:,i]*self.params['h']**3,
+                                              PX_ell[:, i]*self.params['h']**3,
                                               kind='cubic')
 
             PX_2d = 0.
@@ -1451,60 +2282,58 @@ class PTEmu:
 
         return PX_2d
 
-
     def PX_ell6_novir_noAP(self, X):
         s12ratio = (self.params['s12']/self.s12_for_P6)**2
         s12ratio_sq = s12ratio**2
         f = self.params['f']
         if X == 'P0L_b1b1':
-            P6X = self.P6[:,0]*s12ratio
+            P6X = self.P6[:, 0]*s12ratio
         elif X == 'PNL_b1':
             fvec = np.array([f*s12ratio, f*s12ratio_sq, f**2*s12ratio_sq,
                              f**3*s12ratio_sq])
-            P6X = np.dot(self.P6[:,[1,6,7,8]], fvec)
+            P6X = np.dot(self.P6[:, [1, 6, 7, 8]], fvec)
         elif X == 'PNL_id':
             f2 = f**2
             fvec = np.array([f2*s12ratio, f2*s12ratio_sq, f*f2*s12ratio_sq,
                              f2**2*s12ratio_sq])
-            P6X = np.dot(self.P6[:,[2,9,10,11]], fvec)
+            P6X = np.dot(self.P6[:, [2, 9, 10, 11]], fvec)
         elif X == 'P1L_b1b1':
             fvec = np.array([1, f, f**2])
-            P6X = np.dot(self.P6[:,[3,4,5]], fvec)*s12ratio_sq
+            P6X = np.dot(self.P6[:, [3, 4, 5]], fvec)*s12ratio_sq
         elif X == 'P1L_b1b2':
             fvec = np.array([1, f])
-            P6X = np.dot(self.P6[:,[12,13]], fvec)*s12ratio_sq
+            P6X = np.dot(self.P6[:, [12, 13]], fvec)*s12ratio_sq
         elif X == 'P1L_b1g2':
             fvec = np.array([1, f])
-            P6X = np.dot(self.P6[:,[14,15]], fvec)*s12ratio_sq
+            P6X = np.dot(self.P6[:, [14, 15]], fvec)*s12ratio_sq
         elif X == 'P1L_b1g21':
-            P6X = self.P6[:,16]*s12ratio_sq
+            P6X = self.P6[:, 16]*s12ratio_sq
         elif X == 'P1L_b2b2':
-            P6X = self.P6[:,17]*s12ratio_sq
+            P6X = self.P6[:, 17]*s12ratio_sq
         elif X == 'P1L_b2g2':
-            P6X = self.P6[:,18]*s12ratio_sq
+            P6X = self.P6[:, 18]*s12ratio_sq
         elif X == 'P1L_g2g2':
-            P6X = self.P6[:,19]*s12ratio_sq
+            P6X = self.P6[:, 19]*s12ratio_sq
         elif X == 'P1L_b2':
             fvec = np.array([f, f**2])
-            P6X = np.dot(self.P6[:,[20,21]], fvec)*s12ratio_sq
+            P6X = np.dot(self.P6[:, [20, 21]], fvec)*s12ratio_sq
         elif X == 'P1L_g2':
             fvec = np.array([f, f**2])
-            P6X = np.dot(self.P6[:,[22,23]], fvec)*s12ratio_sq
+            P6X = np.dot(self.P6[:, [22, 23]], fvec)*s12ratio_sq
         elif X == 'P1L_g21':
-            P6X = f*self.P6[:,24]*s12ratio_sq
+            P6X = f*self.P6[:, 24]*s12ratio_sq
         elif X == 'Pctr_b1b1cnlo':
-            P6X = f**4*self.P6[:,25]*s12ratio
+            P6X = f**4*self.P6[:, 25]*s12ratio
         elif X == 'Pctr_b1cnlo':
-            P6X = f**5*self.P6[:,26]*s12ratio
+            P6X = f**5*self.P6[:, 26]*s12ratio
         elif X == 'Pctr_cnlo':
-            P6X = f**6*self.P6[:,27]*s12ratio
+            P6X = f**6*self.P6[:, 27]*s12ratio
         return P6X
-
 
     def PX_ell(self, k, params, ell, X, de_model=None, alpha_tr_lo=None,
                W_damping=None, ell_for_recon=None):
         if ell_for_recon is None:
-            ell_for_recon = [0,2,4,6] if not self.real_space else [0]
+            ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
         ell_eval_emu = ell_for_recon.copy()
         try:
             ell_eval_emu.remove(6)
@@ -1518,24 +2347,28 @@ class PTEmu:
             return t
 
         if self.RSD_model == 'EFT':
+
             def integrand(mu):
                 mu2 = mu**2
-                APfac = np.sqrt(mu2/self.params['alpha_lo']**2
-                                + (1. - mu2)/self.params['alpha_tr']**2)
+                APfac = np.sqrt(mu2/self.params['alpha_lo']**2 +
+                                (1. - mu2)/self.params['alpha_tr']**2)
                 kp = k*APfac
                 mup = mu/self.params['alpha_lo']/APfac
                 return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
+
         elif self.RSD_model == 'VIR':
             if W_damping is None:
                 W_damping = self.W_kurt
+
             def integrand(mu):
                 mu2 = mu**2
-                APfac = np.sqrt(mu2/self.params['alpha_lo']**2
-                                + (1. - mu2)/self.params['alpha_tr']**2)
+                APfac = np.sqrt(mu2/self.params['alpha_lo']**2 +
+                                (1. - mu2)/self.params['alpha_tr']**2)
                 kp = k*APfac
                 mup = mu/self.params['alpha_lo']/APfac
                 P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
                 return np.outer(P2d_damped, eval_legendre(ell, mu))
+
         else:
             raise ValueError('Unsupported RSD model.')
 
@@ -1543,8 +2376,8 @@ class PTEmu:
 
         if isinstance(k, list):
             if len(k) != len(ell):
-                raise ValueError("If 'k' is given as a list, it must match the "
-                                 "length of 'ell'.")
+                raise ValueError("If 'k' is given as a list, it must match the"
+                                 " length of 'ell'.")
             else:
                 k_list = k
                 k = np.unique(np.hstack(k_list))
@@ -1552,13 +2385,13 @@ class PTEmu:
             k_list = [k]*len(ell)
 
         PX_ell = np.zeros([self.nk, len(ell_for_recon)])
-        if X in ['Pctr_c0','Pctr_c2','Pctr_c4']:
+        if X in ['Pctr_c0', 'Pctr_c2', 'Pctr_c4']:
             ell_clo = int(X[-1])
             X_emu = 'Pctr_clo'
         else:
             X_emu = X
         if X_emu in self.diagrams_emulated:
-            for n,diagram in enumerate(self.diagrams_emulated):
+            for n, diagram in enumerate(self.diagrams_emulated):
                 if diagram == X_emu:
                     if n < 7:
                         ids = [n*self.nk, (n+1)*self.nk]
@@ -1576,39 +2409,42 @@ class PTEmu:
                         PX_ell[self.nk - (ids[1]-ids[0]):, i] = \
                             self.Pk_ratios[l][ids[0]:ids[1]]
                     else:
-                        PX_ell[:,i] = self.PX_ell6_novir_noAP(X_emu)
-            PX_ell[:,:len(ell_eval_emu)] = (PX_ell[:,:len(ell_eval_emu)].T \
-                                            * self.Pk_lin).T
+                        PX_ell[:, i] = self.PX_ell6_novir_noAP(X_emu)
+            PX_ell[:, :len(ell_eval_emu)] = (PX_ell[:, :len(ell_eval_emu)].T *
+                                             self.Pk_lin).T
         else:
             if X_emu == 'Pnoise_N0':
-                PX_ell[:,0] = np.ones_like(self.k_table)
+                PX_ell[:, 0] = np.ones_like(self.k_table)
             elif X_emu == 'Pnoise_N20':
-                PX_ell[:,0] = self.k_table**2
+                PX_ell[:, 0] = self.k_table**2
             elif X_emu == 'Pnoise_N22' and len(ell_for_recon) > 1:
-                PX_ell[:,1] = self.k_table**2
+                PX_ell[:, 1] = self.k_table**2
 
         for i, l in enumerate(ell_for_recon):
             if self.use_Mpc:
-                self.PX_ell_spline[X][l] = interp1d(self.k_table, PX_ell[:,i],
-                                                 kind='cubic')
+                self.PX_ell_spline[X][l] = interp1d(self.k_table,
+                                                    PX_ell[:, i],
+                                                    kind='cubic')
             else:
-                self.PX_ell_spline[X][l] = interp1d(self.k_table/self.params['h'],
-                                                 PX_ell[:,i]*self.params['h']**3,
-                                                 kind='cubic')
+                self.PX_ell_spline[X][l] = interp1d(self.k_table /
+                                                    self.params['h'],
+                                                    PX_ell[:, i] *
+                                                    self.params['h']**3,
+                                                    kind='cubic')
 
-        self.update_AP_params(params, de_model=de_model, alpha_tr_lo=alpha_tr_lo)
+        self.update_AP_params(params, de_model=de_model,
+                              alpha_tr_lo=alpha_tr_lo)
         alpha3 = self.params['alpha_tr']**2 * self.params['alpha_lo']
 
         PX_ell_model = quad_vec(integrand, 0, 1)[0]
         PX_ell_model *= (2*np.array(ell)+1) / alpha3
 
         PX_ell_dict = {}
-        for i,l in enumerate(ell):
+        for i, l in enumerate(ell):
             ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
-            PX_ell_dict['ell{}'.format(l)] = PX_ell_model[ids,i]
+            PX_ell_dict['ell{}'.format(l)] = PX_ell_model[ids, i]
 
         return PX_ell_dict
-
 
     # def Bell(self, tri, params, ell, de_model=None, alpha_tr_lo=None):
     #     def kernels(k1, k2, k3):
@@ -1620,36 +2456,35 @@ class PTEmu:
     #     # evaluate kernels for all combinations of pairs of k_i
     #     # construct cyclic permutations
 
-
     def Pell_from_table_fid_ktable(self, table, ell):
         ell = [ell] if not isinstance(ell, list) else ell
 
         bij = self.get_bias_coeff_for_table()
-        Pell = np.zeros([self.nk,len(ell)])
+        Pell = np.zeros([self.nk, len(ell)])
 
-        for i,l in enumerate(ell):
+        for i, l in enumerate(ell):
             if l != 6:
-                Pk_bij = np.zeros([self.nk,self.n_diagrams])
+                Pk_bij = np.zeros([self.nk, self.n_diagrams])
                 cnt = 0
-                for n in np.array([0,1,2,13,14,15,16,17,18])+self.n_diagrams*int(l/2):
-                    Pk_bij[:,cnt] = table[:,1+n]
+                for n in (np.array([0, 1, 2, 13, 14, 15, 16, 17, 18]) +
+                          self.n_diagrams*int(l/2)):
+                    Pk_bij[:, cnt] = table[:, 1+n]
                     cnt += 1
-                for n in np.arange(3,13)+self.n_diagrams*int(l/2):
-                    Pk_bij[:,cnt] = table[:,1+n]
+                for n in np.arange(3, 13)+self.n_diagrams*int(l/2):
+                    Pk_bij[:, cnt] = table[:, 1+n]
                     cnt += 1
 
-                Pell[:,i] = np.dot(bij,Pk_bij.T)
+                Pell[:, i] = np.dot(bij, Pk_bij.T)
             else:
                 bij_for_P6 = self.get_bias_coeff_for_P6()
-                Pell[:,i] = np.dot(bij_for_P6, self.P6.T)
+                Pell[:, i] = np.dot(bij_for_P6, self.P6.T)
 
         return Pell
-
 
     def Pell_from_table(self, table, k, params, ell, de_model='lambda',
                         alpha_tr_lo=None, W_damping=None):
         ell = [ell] if not isinstance(ell, list) else ell
-        ell_for_recon = [0,2,4] if not self.real_space else [0]
+        ell_for_recon = [0, 2, 4] if not self.real_space else [0]
 
         Pell_noise_spline = {}
 
@@ -1660,32 +2495,36 @@ class PTEmu:
             return t
 
         if self.RSD_model == 'EFT':
+
             def integrand(mu):
                 mu2 = mu**2
-                APfac = np.sqrt(mu2/self.params['alpha_lo']**2
-                                + (1. - mu2)/self.params['alpha_tr']**2)
+                APfac = np.sqrt(mu2/self.params['alpha_lo']**2 +
+                                (1. - mu2)/self.params['alpha_tr']**2)
                 kp = k*APfac
                 mup = mu/self.params['alpha_lo']/APfac
                 return np.outer(P_noise_2d(kp, mup), eval_legendre(ell, mu))
+
         elif self.RSD_model == 'VIR':
             self.eval_emulator(params, ell=[], de_model=de_model)
             if W_damping is None:
                 W_damping = self.W_kurt
+
             def integrand(mu):
                 mu2 = mu**2
-                APfac = np.sqrt(mu2/self.params['alpha_lo']**2
-                                + (1. - mu2)/self.params['alpha_tr']**2)
+                APfac = np.sqrt(mu2/self.params['alpha_lo']**2 +
+                                (1. - mu2)/self.params['alpha_tr']**2)
                 kp = k*APfac
                 mup = mu/self.params['alpha_lo']/APfac
                 P_noise_2d_damped = P_noise_2d(kp, mup) * W_damping(kp, mup)
                 return np.outer(P_noise_2d_damped, eval_legendre(ell, mu))
+
         else:
             raise ValueError('Unsupported RSD model.')
 
         if isinstance(k, list):
             if len(k) != len(ell):
-                raise ValueError("If 'k' is given as a list, it must match the "
-                                 "length of 'ell'.")
+                raise ValueError("If 'k' is given as a list, it must match the"
+                                 " length of 'ell'.")
             else:
                 k_list = k
                 k = np.unique(np.hstack(k_list))
@@ -1694,34 +2533,34 @@ class PTEmu:
 
         self.update_params(params, de_model=de_model)
         Pell = self.Pell_from_table_fid_ktable(table, ell)
-        Pell_noise = np.zeros([self.nk,len(ell_for_recon)])
+        Pell_noise = np.zeros([self.nk, len(ell_for_recon)])
         for i, l in enumerate(ell_for_recon):
             if l == 0:
-                N0   = self.params['N0'] if self.use_Mpc \
+                N0 = self.params['N0'] if self.use_Mpc \
                     else self.params['N0']/self.params['h']**3
-                N20  = self.params['N20'] if self.use_Mpc \
+                N20 = self.params['N20'] if self.use_Mpc \
                     else self.params['N20']/self.params['h']**5
-                Pell_noise[:,i] = np.ones_like(self.k_table)*N0/self.nbar \
-                                  + self.k_table**2*N20/self.nbar
+                Pell_noise[:, i] = (np.ones_like(self.k_table)*N0/self.nbar +
+                                    self.k_table**2*N20/self.nbar)
             elif l == 2:
-                N22  = self.params['N22'] if self.use_Mpc \
+                N22 = self.params['N22'] if self.use_Mpc \
                     else self.params['N22']/self.params['h']**5
-                Pell_noise[:,i] = self.k_table**2*N22/self.nbar
+                Pell_noise[:, i] = self.k_table**2*N22/self.nbar
 
         for i, l in enumerate(ell):
             if self.use_Mpc:
                 self.Pell_spline[l] = interp1d(
                     self.k_table*self.params['h']/self.emu_LCDM_params['h'],
-                    Pell[:,i], kind='cubic')
-                Pell_noise_spline[l] = interp1d(self.k_table, Pell_noise[:,i],
+                    Pell[:, i], kind='cubic')
+                Pell_noise_spline[l] = interp1d(self.k_table, Pell_noise[:, i],
                                                 kind='cubic')
             else:
                 self.Pell_spline[l] = interp1d(
                     self.k_table/self.emu_LCDM_params['h'],
-                    Pell[:,i]*self.params['h']**3, kind='cubic')
+                    Pell[:, i]*self.params['h']**3, kind='cubic')
                 Pell_noise_spline[l] = interp1d(
                     self.k_table/self.params['h'],
-                    Pell_noise[:,i]*self.params['h']**3,
+                    Pell_noise[:, i]*self.params['h']**3,
                     kind='cubic')
 
         self.update_AP_params(params, de_model=de_model,
@@ -1732,28 +2571,28 @@ class PTEmu:
         Pell_noise_model *= (2*np.array(ell)+1) / alpha3
 
         Pell_dict = {}
-        for i,l in enumerate(ell):
+        for i, l in enumerate(ell):
             ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
-            Pell_dict['ell{}'.format(l)] = self.Pell_spline[l](k_list[i]) \
-                                           + Pell_noise_model[ids,i]
+            Pell_dict['ell{}'.format(l)] = (self.Pell_spline[l](k_list[i]) +
+                                            Pell_noise_model[ids, i])
 
         # this is simply to guarantee that upon the next call of Pell or
         # Pell_LCDM the parameter values will be updated
         self.splines_up_to_date = False
         self.Pk_lin = None
-        self.Pk_ratios = {0:None, 2:None, 4:None}
+        self.Pk_ratios = {0: None, 2: None, 4: None}
 
         return Pell_dict
 
-
     def Pell_from_table_fixed_cosmo_boost(self, table, k, params, ell,
-             de_model='lambda', alpha_tr_lo=None, W_damping=None):
+                                          de_model='lambda', alpha_tr_lo=None,
+                                          W_damping=None):
         ell = [ell] if not isinstance(ell, list) else ell
 
         if isinstance(k, list):
             if len(k) != len(ell):
-                raise ValueError("If 'k' is given as a list, it must match the "
-                                 "length of 'ell'.")
+                raise ValueError("If 'k' is given as a list, it must match the"
+                                 " length of 'ell'.")
             else:
                 k_list = k
                 k = np.unique(np.hstack(k_list))
@@ -1773,16 +2612,16 @@ class PTEmu:
 
         if any(params[p] != self.params[p] for p in check_params):
             self.PX_ell_list = {
-                'ell{}'.format(l):np.zeros(
+                'ell{}'.format(l): np.zeros(
                     [k_list[i].shape[0], len(self.diagrams_all)])
-                for i,l in enumerate(ell)}
+                for i, l in enumerate(ell)}
             for i, X in enumerate(self.diagrams_all):
                 PX_ell = self.PX_ell_from_table(table, k_list, params, ell, X,
                                                 de_model=de_model,
                                                 alpha_tr_lo=alpha_tr_lo,
                                                 W_damping=W_damping)
                 for l in PX_ell.keys():
-                    self.PX_ell_list[l][:,i] = PX_ell[l]
+                    self.PX_ell_list[l][:, i] = PX_ell[l]
 
         for p in self.bias_params_list:
             if p in params.keys():
@@ -1793,18 +2632,17 @@ class PTEmu:
         bX = self.get_bias_coeff_for_chi2_decomposition()
 
         Pell_dict = {}
-        for i,l in enumerate(ell):
+        for i, l in enumerate(ell):
             Pell_dict['ell{}'.format(l)] = np.dot(
                 self.PX_ell_list['ell{}'.format(l)], bX)
 
         return Pell_dict
 
-
     def Pell_from_novir_noAP_table(self, table, k, params, ell,
                                    de_model='lambda', alpha_tr_lo=None,
                                    W_damping=None, ell_for_recon=None):
         if ell_for_recon is None:
-            ell_for_recon = [0,2,4,6] if not self.real_space else [0]
+            ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
 
         def P2d(q, mu):
             t = 0.
@@ -1813,24 +2651,28 @@ class PTEmu:
             return t
 
         if self.RSD_model == 'EFT':
+
             def integrand(mu):
                 mu2 = mu**2
-                APfac = np.sqrt(mu2/self.params['alpha_lo']**2
-                                + (1. - mu2)/self.params['alpha_tr']**2)
+                APfac = np.sqrt(mu2/self.params['alpha_lo']**2 +
+                                (1. - mu2)/self.params['alpha_tr']**2)
                 kp = k*APfac
                 mup = mu/self.params['alpha_lo']/APfac
                 return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
+
         elif self.RSD_model == 'VIR':
             if W_damping is None:
                 W_damping = self.W_kurt
+
             def integrand(mu):
                 mu2 = mu**2
-                APfac = np.sqrt(mu2/self.params['alpha_lo']**2
-                                + (1. - mu2)/self.params['alpha_tr']**2)
+                APfac = np.sqrt(mu2/self.params['alpha_lo']**2 +
+                                (1. - mu2)/self.params['alpha_tr']**2)
                 kp = k*APfac
                 mup = mu/self.params['alpha_lo']/APfac
                 P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
                 return np.outer(P2d_damped, eval_legendre(ell, mu))
+
         else:
             raise ValueError('Unsupported RSD model.')
 
@@ -1838,8 +2680,8 @@ class PTEmu:
 
         if isinstance(k, list):
             if len(k) != len(ell):
-                raise ValueError("If 'k' is given as a list, it must match the "
-                                 "length of 'ell'.")
+                raise ValueError("If 'k' is given as a list, it must match the"
+                                 " length of 'ell'.")
             else:
                 k_list = k
                 k = np.unique(np.hstack(k_list))
@@ -1850,18 +2692,18 @@ class PTEmu:
         Pell = self.Pell_from_table_fid_ktable(table, ell_for_recon)
         for i, l in enumerate(ell_for_recon):
             if l == 0:
-                N0   = self.params['N0'] if self.use_Mpc \
+                N0 = self.params['N0'] if self.use_Mpc \
                     else self.params['N0']/self.params['h']**3
-                N20  = self.params['N20'] if self.use_Mpc \
+                N20 = self.params['N20'] if self.use_Mpc \
                     else self.params['N20']/self.params['h']**5
-                Pell[:,i] += np.ones_like(self.k_table)*N0/self.nbar \
-                                          + self.k_table**2*N20/self.nbar
+                Pell[:, i] += (np.ones_like(self.k_table)*N0/self.nbar +
+                               self.k_table**2*N20/self.nbar)
             elif l == 2:
-                N22  = self.params['N22'] if self.use_Mpc \
+                N22 = self.params['N22'] if self.use_Mpc \
                     else self.params['N22']/self.params['h']**5
-                Pell[:,i] += self.k_table**2*N22/self.nbar
+                Pell[:, i] += self.k_table**2*N22/self.nbar
 
-            self.build_Pell_spline_from_table(Pell[:,i], l)
+            self.build_Pell_spline_from_table(Pell[:, i], l)
 
         self.update_AP_params(params, de_model=de_model,
                               alpha_tr_lo=alpha_tr_lo)
@@ -1871,22 +2713,21 @@ class PTEmu:
         Pell_model *= (2*np.array(ell)+1) / alpha3
 
         Pell_dict = {}
-        for i,l in enumerate(ell):
+        for i, l in enumerate(ell):
             ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
-            Pell_dict['ell{}'.format(l)] = Pell_model[ids,i]
+            Pell_dict['ell{}'.format(l)] = Pell_model[ids, i]
 
         # this is simply to guarantee that upon the next call of Pell or
         # Pell_LCDM the parameter values will be updated
         self.splines_up_to_date = False
         self.Pk_lin = None
-        self.Pk_ratios = {0:None, 2:None, 4:None}
+        self.Pk_ratios = {0: None, 2: None, 4: None}
 
         return Pell_dict
 
-
     def PX_ell_from_table(self, table, k, params, ell, X, de_model='lambda',
                           alpha_tr_lo=None, W_damping=None):
-        ell_for_recon = [0,2,4] if not self.real_space else [0]
+        ell_for_recon = [0, 2, 4] if not self.real_space else [0]
 
         def P2d(q, mu):
             t = 0.
@@ -1895,25 +2736,29 @@ class PTEmu:
             return t
 
         if self.RSD_model == 'EFT':
+
             def integrand(mu):
                 mu2 = mu**2
-                APfac = np.sqrt(mu2/self.params['alpha_lo']**2
-                                + (1. - mu2)/self.params['alpha_tr']**2)
+                APfac = np.sqrt(mu2/self.params['alpha_lo']**2 +
+                                (1. - mu2)/self.params['alpha_tr']**2)
                 kp = k*APfac
                 mup = mu/self.params['alpha_lo']/APfac
                 return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
+
         elif self.RSD_model == 'VIR':
             self.eval_emulator(params, ell=[], de_model=de_model)
             if W_damping is None:
                 W_damping = self.W_kurt
+
             def integrand(mu):
                 mu2 = mu**2
-                APfac = np.sqrt(mu2/self.params['alpha_lo']**2
-                                + (1. - mu2)/self.params['alpha_tr']**2)
+                APfac = np.sqrt(mu2/self.params['alpha_lo']**2 +
+                                (1. - mu2)/self.params['alpha_tr']**2)
                 kp = k*APfac
                 mup = mu/self.params['alpha_lo']/APfac
                 P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
                 return np.outer(P2d_damped, eval_legendre(ell, mu))
+
         else:
             raise ValueError('Unsupported RSD model.')
 
@@ -1921,8 +2766,8 @@ class PTEmu:
 
         if isinstance(k, list):
             if len(k) != len(ell):
-                raise ValueError("If 'k' is given as a list, it must match the "
-                                 "length of 'ell'.")
+                raise ValueError("If 'k' is given as a list, it must match the"
+                                 " length of 'ell'.")
             else:
                 k_list = k
                 k = np.unique(np.hstack(k_list))
@@ -1931,41 +2776,47 @@ class PTEmu:
 
         self.update_params(params, de_model=de_model)
         if X in self.diagrams_all[:-3]:
-            id_map = [0,1,2,13,14,15,16,17,18] + [i for i in range(3,13)]
-            for n,diagram in enumerate(self.diagrams_all[:-3]):
+            id_map = ([0, 1, 2, 13, 14, 15, 16, 17, 18] +
+                      [i for i in range(3, 13)])
+            for n, diagram in enumerate(self.diagrams_all[:-3]):
                 if diagram == X:
                     idX = id_map[n]+1
                     break
 
             PX_ell_dict = {}
-            for i,l in enumerate(ell):
+            for i, l in enumerate(ell):
                 if self.use_Mpc:
                     self.PX_ell_spline[X][l] = interp1d(
-                        self.k_table*self.params['h']/self.emu_LCDM_params['h'],
-                        table[:,idX+self.n_diagrams*int(l/2)], kind='cubic')
+                        self.k_table*self.params['h'] /
+                        self.emu_LCDM_params['h'],
+                        table[:, idX+self.n_diagrams*int(l/2)],
+                        kind='cubic')
                 else:
                     self.PX_ell_spline[X][l] = interp1d(
                         self.k_table/self.emu_LCDM_params['h'],
-                        table[:,idX+self.n_diagrams*int(l/2)]*self.params['h']**3,
+                        table[:, idX+self.n_diagrams*int(l/2)] *
+                        self.params['h']**3,
                         kind='cubic')
-                PX_ell_dict['ell{}'.format(l)] = self.PX_ell_spline[X][l](k_list[i])
+                PX_ell_dict['ell{}'.format(l)] = \
+                    self.PX_ell_spline[X][l](k_list[i])
         else:
             PX_ell = np.zeros([self.nk, len(ell_for_recon)])
             if X == 'Pnoise_N0':
-                PX_ell[:,0] = np.ones_like(self.k_table)
+                PX_ell[:, 0] = np.ones_like(self.k_table)
             elif X == 'Pnoise_N20':
-                PX_ell[:,0] = self.k_table**2
+                PX_ell[:, 0] = self.k_table**2
             elif X == 'Pnoise_N22' and len(ell_for_recon) > 1:
-                PX_ell[:,1] = self.k_table**2
+                PX_ell[:, 1] = self.k_table**2
 
             for i, l in enumerate(ell_for_recon):
                 if self.use_Mpc:
-                    self.PX_ell_spline[X][l] = interp1d(self.k_table, PX_ell[:,i],
-                                                     kind='cubic')
+                    self.PX_ell_spline[X][l] = interp1d(self.k_table,
+                                                        PX_ell[:, i],
+                                                        kind='cubic')
                 else:
                     self.PX_ell_spline[X][l] = interp1d(
                         self.k_table/self.params['h'],
-                        PX_ell[:,i]*self.params['h']**3, kind='cubic')
+                        PX_ell[:, i]*self.params['h']**3, kind='cubic')
 
             self.update_AP_params(params, de_model=de_model,
                                   alpha_tr_lo=alpha_tr_lo)
@@ -1975,18 +2826,17 @@ class PTEmu:
             PX_ell_model *= (2*np.array(ell)+1) / alpha3
 
             PX_ell_dict = {}
-            for i,l in enumerate(ell):
+            for i, l in enumerate(ell):
                 ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
-                PX_ell_dict['ell{}'.format(l)] = PX_ell_model[ids,i]
+                PX_ell_dict['ell{}'.format(l)] = PX_ell_model[ids, i]
 
         # this is simply to guarantee that upon the next call of Pell or
         # Pell_LCDM the parameter values will be updated
         self.splines_up_to_date = False
         self.Pk_lin = None
-        self.Pk_ratios = {0:None, 2:None, 4:None}
+        self.Pk_ratios = {0: None, 2: None, 4: None}
 
         return PX_ell_dict
-
 
     def Gaussian_covariance(self, l1, l2, k, dk, Pell, volume, Nmodes=None):
         if Nmodes is None:
@@ -2000,7 +2850,7 @@ class PTEmu:
             if l1 == l2 == 0:
                 cov = P0**2 + 1./5.*P2**2 + 1./9.*P4**2
             elif l1 == 0 and l2 == 2:
-                cov = 2*P0*P2 + 2/7.*P2**2 + 4/7.*P2*P4+ 100/693.*P4**2
+                cov = 2*P0*P2 + 2/7.*P2**2 + 4/7.*P2*P4 + 100/693.*P4**2
             elif l1 == l2 == 2:
                 cov = 5*P0**2 + 20/7*P0*P2 + 20/7*P0*P4 + 15/7.*P2**2 \
                     + 120/77.*P2*P4 + 8945/9009.*P4**2
@@ -2018,7 +2868,6 @@ class PTEmu:
         cov *= 2./Nmodes
         return cov
 
-
     def Pell_covariance(self, k, params, ell, dk, de_model=None,
                         alpha_tr_lo=None, W_damping=None,
                         volume=None, zmin=None, zmax=None,
@@ -2033,10 +2882,10 @@ class PTEmu:
             k = [np.array(x) for x in k]
 
         nbins = [x.shape[0] for x in k]
-        cov = np.zeros([sum(nbins),sum(nbins)])
+        cov = np.zeros([sum(nbins), sum(nbins)])
 
         k_all = np.unique(np.hstack(k))
-        ell_for_cov = [0,2,4] if not self.real_space else 0
+        ell_for_cov = [0, 2, 4] if not self.real_space else 0
         Pell = self.Pell(k_all, params, ell=ell_for_cov, de_model=de_model,
                          alpha_tr_lo=alpha_tr_lo, W_damping=W_damping)
         Pell['ell0'] += 1./self.nbar
@@ -2045,7 +2894,8 @@ class PTEmu:
             Om0 = (self.params['wc']+self.params['wb'])/self.params['h']**2
             H0 = 100*self.params['h']
             self.cosmo.update_cosmology(Om0=Om0, H0=H0, Ok0=self.params['Ok'],
-                                        de_model=de_model, w0=self.params['w0'],
+                                        de_model=de_model,
+                                        w0=self.params['w0'],
                                         wa=self.params['wa'])
             volume = volfac*self.cosmo.comoving_volume(zmin, zmax, fsky)
             if not self.use_Mpc:
@@ -2054,15 +2904,16 @@ class PTEmu:
             raise ValueError("If no dark energy model is specified, a value "
                              "for the volume must be provided.")
 
-        for i,l1 in enumerate(ell):
-            for j,l2 in enumerate(ell):
+        for i, l1 in enumerate(ell):
+            for j, l2 in enumerate(ell):
                 if j >= i:
-                    kij, id1, id2 = np.intersect1d(k[i],k[j],return_indices=True)
+                    kij, id1, id2 = np.intersect1d(k[i], k[j],
+                                                   return_indices=True)
                     ids_ij = np.intersect1d(k_all, kij, return_indices=True)[1]
                     cov_l1l2 = self.Gaussian_covariance(
                         l1, l2, k_all, dk, Pell, volume)[ids_ij]
                     cov[sum(nbins[:i]):sum(nbins[:i+1]),
-                        sum(nbins[:j]):sum(nbins[:j+1])][id1,id2] = cov_l1l2
+                        sum(nbins[:j]):sum(nbins[:j+1])][id1, id2] = cov_l1l2
                 else:
                     cov[sum(nbins[:i]):sum(nbins[:i+1]),
                         sum(nbins[:j]):sum(nbins[:j+1])] = \
@@ -2071,9 +2922,8 @@ class PTEmu:
 
         return cov
 
-
-    def Pell_covariance_from_table(self, table, k, params, ell, dk, volume=None,
-                                   zmin=None, zmax=None,
+    def Pell_covariance_from_table(self, table, k, params, ell, dk,
+                                   volume=None, zmin=None, zmax=None,
                                    fsky=15000./(360**2/np.pi), volfac=1):
         ell = [ell] if not isinstance(ell, list) else ell
         if not isinstance(k, list):
@@ -2085,10 +2935,10 @@ class PTEmu:
             k = [np.array(x) for x in k]
 
         nbins = [x.shape[0] for x in k]
-        cov = np.zeros([sum(nbins),sum(nbins)])
+        cov = np.zeros([sum(nbins), sum(nbins)])
 
         k_all = np.unique(np.hstack(k))
-        ell_for_cov = [0,2,4] if not self.real_space else 0
+        ell_for_cov = [0, 2, 4] if not self.real_space else 0
         Pell = self.Pell_from_table(table, k_all, params, ell=ell_for_cov)
         Pell['ell0'] += 1./self.nbar
 
@@ -2100,15 +2950,16 @@ class PTEmu:
             if not self.use_Mpc:
                 volume *= self.params['h']**3
 
-        for i,l1 in enumerate(ell):
-            for j,l2 in enumerate(ell):
+        for i, l1 in enumerate(ell):
+            for j, l2 in enumerate(ell):
                 if j >= i:
-                    kij, id1, id2 = np.intersect1d(k[i],k[j],return_indices=True)
+                    kij, id1, id2 = np.intersect1d(k[i], k[j],
+                                                   return_indices=True)
                     ids_ij = np.intersect1d(k_all, kij, return_indices=True)[1]
                     cov_l1l2 = self.Gaussian_covariance(
                         l1, l2, k_all, dk, Pell, volume)[ids_ij]
                     cov[sum(nbins[:i]):sum(nbins[:i+1]),
-                        sum(nbins[:j]):sum(nbins[:j+1])][id1,id2] = cov_l1l2
+                        sum(nbins[:j]):sum(nbins[:j+1])][id1, id2] = cov_l1l2
                 else:
                     cov[sum(nbins[:i]):sum(nbins[:i+1]),
                         sum(nbins[:j]):sum(nbins[:j+1])] = \
@@ -2117,13 +2968,12 @@ class PTEmu:
 
         return cov
 
-
     def chi2(self, obs_id, params, kmax, de_model=None, alpha_tr_lo=None,
              W_damping=None, chi2_decomposition=False, ell_for_recon=None):
-        if (not self.data[obs_id].kmax_is_set or (self.data[obs_id].kmax != kmax
-                and self.data[obs_id].kmax != [kmax for i in
-                                               range(self.data[obs_id].n_ell)])
-            ):
+        if (not self.data[obs_id].kmax_is_set or
+            (self.data[obs_id].kmax != kmax and
+             self.data[obs_id].kmax !=
+             [kmax for i in range(self.data[obs_id].n_ell)])):
             self.data[obs_id].set_kmax(kmax)
             self.chi2_decomposition = None
 
@@ -2152,8 +3002,8 @@ class PTEmu:
                 if 'Ok' not in params:
                     check_params.remove('Ok')
 
-            if (any(params[p] != self.params[p] for p in check_params)
-                    or self.chi2_decomposition is None):
+            if (any(params[p] != self.params[p] for p in check_params) or
+                    self.chi2_decomposition is None):
                 PX_ell_list = np.zeros([sum(self.data[obs_id].nbins),
                                         len(self.diagrams_all)])
                 for i, X in enumerate(self.diagrams_all):
@@ -2162,8 +3012,8 @@ class PTEmu:
                                          alpha_tr_lo=alpha_tr_lo,
                                          W_damping=W_damping,
                                          ell_for_recon=ell_for_recon)
-                    PX_ell_list[:,i] = np.hstack([PX_ell[l] for l
-                                                  in PX_ell.keys()])
+                    PX_ell_list[:, i] = np.hstack([PX_ell[l] for l
+                                                   in PX_ell.keys()])
 
                 self.chi2_decomposition = {}
                 self.chi2_decomposition['DD'] = self.data[obs_id].SN_kmax
@@ -2182,21 +3032,20 @@ class PTEmu:
             self.splines_up_to_date = False
 
             bX = self.get_bias_coeff_for_chi2_decomposition()
-            chi2 = bX @ self.chi2_decomposition['XX'] @ bX \
-                   - 2*bX @ self.chi2_decomposition['XD'] \
-                   + self.chi2_decomposition['DD']
+            chi2 = (bX @ self.chi2_decomposition['XX'] @ bX -
+                    2*bX @ self.chi2_decomposition['XD'] +
+                    self.chi2_decomposition['DD'])
 
         return chi2
 
-
     def chi2_from_table(self, obs_id, table, params, kmax, de_model='lambda',
                         alpha_tr_lo=None, chi2_decomposition=False):
-        if (not self.data[obs_id].kmax_is_set or (self.data[obs_id].kmax != kmax
-                and self.data[obs_id].kmax != [kmax for i in
-                                               range(self.data[obs_id].n_ell)])
-            ):
+        if (not self.data[obs_id].kmax_is_set or
+            (self.data[obs_id].kmax != kmax and
+             self.data[obs_id].kmax !=
+             [kmax for i in range(self.data[obs_id].n_ell)])):
             self.data[obs_id].set_kmax(kmax)
-            self.chi2_decomposition_from_table = None
+            self.chi2_decomposition = None
 
         ell = [2*l for l in range(self.data[obs_id].n_ell)
                if self.data[obs_id].nbins[l] > 0]
@@ -2215,21 +3064,23 @@ class PTEmu:
             if 'Ok' not in params:
                 check_params.remove('Ok')
 
-            if (any(params[p] != self.params[p] for p in check_params)
-                    or self.chi2_decomposition_from_table is None):
+            if (any(params[p] != self.params[p] for p in check_params) or
+                    self.chi2_decomposition_from_table is None):
                 PX_ell_list = np.zeros([sum(self.data[obs_id].nbins),
                                         len(self.diagrams_all)])
                 for i, X in enumerate(self.diagrams_all):
-                    PX_ell = self.PX_ell_from_table(table,
-                                                    self.data[obs_id].bins_kmax,
-                                                    params, ell, X,
-                                                    de_model=de_model,
-                                                    alpha_tr_lo=alpha_tr_lo)
-                    PX_ell_list[:,i] = np.hstack([PX_ell[l] for l
+                    PX_ell = \
+                        self.PX_ell_from_table(table,
+                                               self.data[obs_id].bins_kmax,
+                                               params, ell, X,
+                                               de_model=de_model,
+                                               alpha_tr_lo=alpha_tr_lo)
+                    PX_ell_list[:, i] = np.hstack([PX_ell[l] for l
                                                   in PX_ell.keys()])
 
                 self.chi2_decomposition_from_table = {}
-                self.chi2_decomposition_from_table['DD'] = self.data[obs_id].SN_kmax
+                self.chi2_decomposition_from_table['DD'] = \
+                    self.data[obs_id].SN_kmax
                 self.chi2_decomposition_from_table['XD'] = PX_ell_list.T \
                     @ self.data[obs_id].inverse_cov_kmax \
                     @ self.data[obs_id].signal_kmax
@@ -2245,19 +3096,21 @@ class PTEmu:
             self.splines_up_to_date = False
 
             bX = self.get_bias_coeff_for_chi2_decomposition()
-            chi2 = bX @ self.chi2_decomposition_from_table['XX'] @ bX \
-                   - 2*bX @ self.chi2_decomposition_from_table['XD'] \
-                   + self.chi2_decomposition_from_table['DD']
+            chi2 = (bX @ self.chi2_decomposition_from_table['XX'] @ bX -
+                    2*bX @ self.chi2_decomposition_from_table['XD'] +
+                    self.chi2_decomposition_from_table['DD'])
 
         return chi2
 
-
     # def convert_ranges_LCDM(self, ranges, z):
     #     def s12_params(self, params):
-    #         params_shape = np.array([params[p] for p in self.params_shape_list])
-    #         sigma12 = self.training['SHAPE'].transform_inv(self.emu['s12'].predict(params_shape[None,:])[0][0], 's12')
+    #         params_shape = np.array([
+    #           params[p] for p in self.params_shape_list])
+    #         sigma12 = self.training['SHAPE'].transform_inv(
+    #           self.emu['s12'].predict(params_shape[None,:])[0][0], 's12')
     #
-    #         Om0_fid = (params['wc']+params['wb'])/self.emu_LCDM_params['h']**2
+    #         Om0_fid = (params['wc']+params['wb']) / \
+    #           self.emu_LCDM_params['h']**2
     #         H0_fid = 100*self.emu_LCDM_params['h']
     #         self.cosmo.update_cosmology(Om0=Om0_fid, H0=H0_fid)
     #         Dfid = self.cosmo.growth_factor(self.emu_LCDM_params['z'])
@@ -2268,10 +3121,12 @@ class PTEmu:
     #         D = self.cosmo.growth_factor(params['z'])
     #
     #         alpha_lo = self.H_fid/self.cosmo.Hz(params['z'])
-    #         alpha_tr = self.cosmo.comoving_transverse_distance(params['z'])/self.Dm_fid
+    #         alpha_tr = self.cosmo.comoving_transverse_distance(
+    #           params['z'])/self.Dm_fid
     #         f = self.cosmo.growth_rate(params['z'])
     #
-    #         s12 = sigma12[0]*np.sqrt(params['As']/self.emu_LCDM_params['As'])*(D/Dfid)
+    #         s12 = sigma12[0] * \
+    #           np.sqrt(params['As']/self.emu_LCDM_params['As'])*(D/Dfid)
     #         return np.array([s12,alpha_tr,alpha_lo,f])
     #
     #     params = {}
