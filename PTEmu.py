@@ -2285,10 +2285,10 @@ class PTEmu:
 
                 Pk_bij = np.zeros([self.nk, self.n_diagrams-2])
                 Pk_bij[:, :7] = np.multiply(
-                    self.Pk_ratios[l][:7*self.nk].reshape((7, self.nk)),
+                    self.Pk_ratios[mp][:7*self.nk].reshape((7, self.nk)),
                     self.Pk_lin).T
                 Pk_bij[(self.nk-self.nkloop):, 7:17] = np.multiply(
-                    self.Pk_ratios[l][7*self.nk:].reshape((10, self.nkloop)),
+                    self.Pk_ratios[mp][7*self.nk:].reshape((10, self.nkloop)),
                     self.Pk_lin[(self.nk-self.nkloop):]).T
 
                 Pell[:, i] = np.dot(bij, Pk_bij.T)
