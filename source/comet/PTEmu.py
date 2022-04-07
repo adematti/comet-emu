@@ -6,10 +6,12 @@ from scipy.integrate import quad_vec
 from scipy.special import eval_legendre
 from astropy.io import fits
 import pickle
-from cosmology import Cosmology
-from data import MeasuredData
-from tables import Tables
+from .cosmology import Cosmology
+from .data import MeasuredData
+from .tables import Tables
+import os
 
+base_dir = os.path.join(os.path.dirname(__file__), "..")
 
 class PTEmu:
     r"""Main class for the emulator of the power spectrum multipoles.
@@ -95,12 +97,12 @@ class PTEmu:
         self.chi2_decomposition_from_table = None
 
         try:
-            self.load_emulator_data(fname='../tables/{}.fits'.format(model))
+            self.load_emulator_data(fname=base_dir+'/data/tables/{}.fits'.format(model))
         except Exception:
             print('Table file for this model not found. Initialise '
                   'with `load_emulator_data`')
         try:
-            self.load_emulator(fname_base='../models/{}'.format(model))
+            self.load_emulator(fname_base=base_dir+'/data/models/{}'.format(model))
         except Exception:
             print('Emulator files for this model not found. Initialise with '
                   '`load_emulator`, or train the emulator first, '
