@@ -1284,6 +1284,11 @@ class PTEmu:
             self.training[type].save_samples(fname)
 
     def init_params_dict(self):
+        r"""Initialize params dictionary.
+
+        Sets up the internal class attribute which stores the model
+        parameters.
+        """
         self.params = {p: 0. for p in self.params_list +
                        self.bias_params_list +
                        self.de_model_params_list['w0wa']}
@@ -1339,7 +1344,7 @@ class PTEmu:
         self.nkloop = sum(self.k_table > hdul['K_TABLE'].header['k1loop'])
         self.RSD_model = hdul['MODEL_FULL'].header['RSD_model']
 
-        if self.RSD_model == 'VIR':
+        if self.RSD_model == 'VDG_infty':
             self.RSD_params_list.append('avir')
             self.params['avir'] = 0
 
@@ -1377,7 +1382,7 @@ class PTEmu:
             ell_train = [0, 2, 4] if not self.real_space else [0]
             self.emu['PL'] = self.training['SHAPE'].GPy_model('PL')
             self.emu['s12'] = self.training['SHAPE'].GPy_model('s12')
-            if self.RSD_model == 'VIR':
+            if self.RSD_model == 'VDG_infty':
                 self.emu['sv'] = self.training['SHAPE'].GPy_model('sv')
             for ell in ell_train:
                 self.emu[ell] = self.training['FULL'].GPy_model(ell)
@@ -1413,7 +1418,7 @@ class PTEmu:
             for dt in ['PL', 's12']:
                 with open('{}_{}.pickle'.format(fname_base, dt), "wb") as f:
                     pickle.dump(self.emu[dt], f)
-            if self.RSD_model == 'VIR':
+            if self.RSD_model == 'VDG_infty':
                 with open('{}_sv.pickle'.format(fname_base), "wb") as f:
                     pickle.dump(self.emu['sv'], f)
             for ell in ell_train:
@@ -1450,7 +1455,7 @@ class PTEmu:
             for dt in ['PL', 's12']:
                 self.emu[dt] = pickle.load(
                     open('{}_{}.pickle'.format(fname_base, dt), "rb"))
-            if self.RSD_model == 'VIR':
+            if self.RSD_model == 'VDG_infty':
                 self.emu['sv'] = pickle.load(
                     open('{}_{}.pickle'.format(fname_base, dt), "rb"))
             for ell in ell_train:
@@ -1596,7 +1601,7 @@ class PTEmu:
         de_model: str, optional
             String that determines the dark energy equation of state. Can be
             chosen form the list ['lambda', 'w0', 'w0wa'].
-            Deafults to 'lambda'.
+            Deafults to None.
         """
         try:
             if de_model is None and self.use_Mpc:
@@ -1653,7 +1658,7 @@ class PTEmu:
         de_model: str, optional
             String that determines the dark energy equation of state. Can be
             chosen form the list ['lambda', 'w0', 'w0wa'].
-            Deafults to 'lambda'.
+            Defaults to None.
         alpha_tr_lo: list or numpy.ndarray, optional
             List containing the user-provided AP parameters, in the form
             :math:`(\alpha_\perp, \alpha_\parallel)`. If provided, prevents
@@ -1683,7 +1688,7 @@ class PTEmu:
             self.params['alpha_tr'] = params['alpha_tr']
 
     def get_bias_coeff(self, ell):
-        r"""Get bias coefficients for the various model tables.
+        r"""Get bias coefficients for the emulated terms of given multipole.
 
         Each term of the :math:`P_{\ell}` expansion is multiplied by a
         combination of bias parameters. This method returns such
@@ -1697,7 +1702,7 @@ class PTEmu:
 
         Returns
         -------
-        bias_comb: numpy.ndarray
+        params_comb: numpy.ndarray
             Combinations of bias parameters that multiply each term of the
             expansion of the multipole of order :math:`\ell`. The output
             corresponds to
@@ -1711,8 +1716,6 @@ class PTEmu:
                     b_1b_2, b_1\gamma_2, b_1\gamma_{21}, b_2^2, b_2\gamma_2,
                     \gamma_2^2, b_2, \gamma_2, \gamma_{21}]
                     \end{gather*}
-
-            where ...
         """
         b1 = self.params['b1']
         b2 = self.params['b2']
@@ -1729,6 +1732,37 @@ class PTEmu:
                          b2*g2, g2**2, b2, g2, g21])
 
     def get_bias_coeff_for_P6(self):
+        r"""Get bias coefficients for the emulated terms of octopole.
+
+        Differently from the lower-order multipoles :math:`P_{0,2,4}`, the
+        shape parameters of :math:`P_6` are kept fixed to the best values
+        from Planck 2018 (TT+TE+EE), while each of the terms is rescaled by
+        the current value of the growth rate and :math:`\sigma_{12}`.
+        Each term of the :math:`P_6` expansion is multiplied by a
+        combination of growth rate and bias parameters. This method
+        returns such combinations in an array format.
+
+        Returns
+        -------
+        params_comb: numpy.ndarray
+            Combinations of bias parameters that multiply each term of the
+            expansion of the multipole of order :math:`\ell`. The output
+            corresponds to
+
+            .. math::
+                :nowrap:
+
+                    \begin{gather*}
+                    [b_1^2, b_1f, f^2, b_1^2, b_1^2f, b_1^2f^2, b_1f,
+                    b_1f^2, \\
+                    b_1f^3, f^2, f^3, f^4, b_1b_2, b_1b_2f, b_1\gamma_2,
+                    b_1\gamma_2f, \\
+                    b_1\gamma_{21}, b_2^2, b_2\gamma_2, \gamma_2^2, b_2f,
+                    b_2f^2, \gamma_2f, \gamma_2f^2, \\
+                    \gamma_{21}f, b_1^2c_\mathrm{nlo}f^4, b_1c_\mathrm{nlo}f^5,
+                    c_\mathrm{nlo}f^6]
+                    \end{gather*}
+        """
         b1 = self.params['b1']
         b2 = self.params['b2']
         g2 = self.params['g2']
@@ -1758,6 +1792,32 @@ class PTEmu:
         return np.hstack([bb_tree, bb_loop, bb_k4ctr])
 
     def get_bias_coeff_for_chi2_decomposition(self):
+        r"""Get bias coefficients for the :math:`\chi^2` tables.
+
+        In order to speed up the evaluation of the likelihood, the total
+        :math:`\chi^2` is factorised into separate contributions scaling with
+        different combinations of the bias and shot-noise parameters. This
+        method returns such combinations in an array format.
+
+        Returns
+        -------
+        params_comb: numpy.ndarray
+            Combinations of bias parameters that multiply each term of the
+            expansion of the multipole of order :math:`\ell`. The output
+            corresponds to
+
+            .. math::
+                :nowrap:
+
+                    \begin{gather*}
+                    [b_1^2, b_1, 1, c_0, c_2, c_4, b_1^2c_\mathrm{nlo},
+                    b_1c_\mathrm{nlo}, \\
+                    c_\mathrm{nlo}, b_1^2, b_1b_2, b_1\gamma_2, b_1\gamma_{21},
+                    b_2^2, b_2\gamma_2, \gamma_2^2, \\
+                    b_2, \gamma_2, \gamma_{21}, N_0/\bar{n},
+                    N_{20}/\bar{n}, N_{22}/\bar{n}].
+                    \end{gather*}
+        """
         b1 = self.params['b1']
         b2 = self.params['b2']
         g2 = self.params['g2']
@@ -1783,6 +1843,31 @@ class PTEmu:
                          g2, g21, N0/self.nbar, N20/self.nbar, N22/self.nbar])
 
     def get_bias_coeff_for_table(self):
+        r"""Get generic bias coefficients for all multipoles.
+
+        Each term of the :math:`P_{\ell}` expansion is multiplied by a
+        combination of bias parameters. This method returns such
+        combinations in an array format. Differently from **get_bias_coeff**,
+        this method returns all the counterterms. Meant for validation
+        purposes.
+
+        Returns
+        -------
+        params_comb: numpy.ndarray
+            Combinations of bias parameters that multiply each term of the
+            expansion of the multipoles. The output corresponds to
+
+            .. math::
+                :nowrap:
+
+                    \begin{gather*}
+                    [b_1^2, b_1, 1, c_0, c_2, c_4, b_1^2c_\mathrm{nlo},
+                    b_1c_\mathrm{nlo}, \\
+                    c_\mathrm{nlo}, b_1^2, b_1b_2, b_1\gamma_2, b_1\gamma_{21},
+                    b_2^2, b_2\gamma_2, \gamma_2^2, \\
+                    b_2, \gamma_2, \gamma_{21}]
+                    \end{gather*}
+        """
         b1 = self.params['b1']
         b2 = self.params['b2']
         g2 = self.params['g2']
@@ -1802,6 +1887,27 @@ class PTEmu:
                          g2, g21])
 
     def eval_emulator(self, params, ell, de_model=None):
+        r"""Evaluate the emulators for the different terms.
+
+        Sets up the internal parameters of the class, and evaluate the
+        emulators for the various ingredients of the model. The latters are
+        stored as class attributes.
+
+        Parameters
+        ----------
+        params: dict
+            Dictionary containing the list of parameters which are internally
+            used by the emulator. The keywords of the dictionary specify the
+            name of the parameters, while the values specify the values of the
+            parameters.
+        ell: list or numpy.ndarray
+            Specific multipole order :math:`\ell`.
+            Can be chosen from the list [0,2,4].
+        de_model: str, optional
+            String that determines the dark energy equation of state. Can be
+            chosen form the list ['lambda', 'w0', 'w0wa'].
+            Deafults to None.
+        """
         emu_params_updated = self.update_params(params, de_model=de_model)
         params_shape = np.array(
             [self.params[p] for p in self.params_shape_list])
@@ -1817,7 +1923,7 @@ class PTEmu:
                     self.emu['PL'].predict(params_shape[None, :])[0][0], 'PL')
                 self.Pk_lin *= (self.params['s12']/sigma12)**2
 
-                if self.RSD_model == 'VIR':
+                if self.RSD_model == 'VDG_infty':
                     self.params['sv'] = self.training['SHAPE'].transform_inv(
                         self.emu['sv'].predict(params_shape[None, :])[0][0],
                         'sv')[0]
@@ -1825,10 +1931,10 @@ class PTEmu:
                     if not self.use_Mpc:
                         self.params['sv'] *= self.params['h']
 
-            for l in ell:
-                if self.Pk_ratios[l] is None or emu_params_updated:
-                    self.Pk_ratios[l] = self.training['FULL'].transform_inv(
-                        self.emu[l].predict(params_all[None, :])[0][0], l)
+            for mp in ell:
+                if self.Pk_ratios[mp] is None or emu_params_updated:
+                    self.Pk_ratios[mp] = self.training['FULL'].transform_inv(
+                        self.emu[mp].predict(params_all[None, :])[0][0], mp)
         else:
             if self.Pk_lin is None or emu_params_updated:
                 sigma12 = self.training['SHAPE'].transform_inv(
@@ -1861,7 +1967,7 @@ class PTEmu:
                 self.params['s12'] = sigma12[0]*amplitude_scaling
                 self.params['f'] = f
 
-                if self.RSD_model == 'VIR':
+                if self.RSD_model == 'VDG_infty':
                     self.params['sv'] = self.training['SHAPE'].transform_inv(
                         self.emu['sv'].predict(params_shape[None, :])[0][0],
                         'sv')[0]
@@ -1871,17 +1977,67 @@ class PTEmu:
 
             params_all = np.array([self.params[p] for p in self.params_list])
 
-            for l in ell:
-                if self.Pk_ratios[l] is None or emu_params_updated:
-                    self.Pk_ratios[l] = self.training['FULL'].transform_inv(
-                        self.emu[l].predict(params_all[None, :])[0][0], l)
+            for mp in ell:
+                if self.Pk_ratios[mp] is None or emu_params_updated:
+                    self.Pk_ratios[mp] = self.training['FULL'].transform_inv(
+                        self.emu[mp].predict(params_all[None, :])[0][0], mp)
 
     def W_kurt(self, k, mu):
+        r"""Large scale limit of the velocity difference generating function.
+
+        In the large scale limit, :math:`r\rightarrow\infty`, the velocity
+        difference generating function :math:`W_\mathrm{G}` becomes
+        scale-indepentent, with a gaussian limit given by
+
+        .. math::
+            W_\infty(\lambda)=e^{-\lambda^2\sigma_\mathrm{v}^2},
+
+        with :math:`\lambda=fk\mu`, and :math:`\sigma_\mathrm{v}` is the
+        pairwise velocity dispersion. This method returns a modified version
+        of the gaussian limit, which also allows for non-zero kurtosis of the
+        pairwise velocity distribution,
+
+        .. math::
+            W_\infty(\lambda)=\frac{1}{\sqrt(1+a_\mathrm{vir}^2\lambda^2)}
+            e^{-\frac{\lambda^2\sigma_\mathrm{v}^2}
+            {1+a_\mathrm{vir}^2\lambda^2}},
+
+        where :math:`a_\mathrm{vir}` is a free parameter of the model.
+
+        Parameters
+        ----------
+        k: float
+            Value of the wavemode :math:`k`.
+        mu: float
+            Value of the cosine :math:`\mu` of the angle between
+            the pair separation and the line of sight.
+
+        Returns
+        -------
+        Winfty: float
+            Value of the pairwise velocity generating function in the large
+            scale limit.
+        """
         t1 = (self.params['f']*k*mu)**2
         t2 = 1. + t1*self.params['avir']**2
         return 1./np.sqrt(t2)*np.exp(-t1*self.params['sv']**2/t2)
 
     def build_Pell_spline(self, Pell, ell):
+        r"""Build spline object for power spectrum multipoles.
+
+        Generates a cubic spline object for the specified power spectrum
+        multipole, and stores it as class attribute.
+
+        Parameters
+        ----------
+        Pell: list or numpy.ndarray
+            Array containing the power spectrum multipole of order
+            :math:`\ell`, evaluated at the wavemodes defined by the class
+            attribute `k_table`.
+        ell: int
+            Specific multipole order :math:`\ell`.
+            Can be chosen from the list [0,2,4].
+        """
         id_min = 0 if not ell == 6 else self.nk-self.nkloop
         if self.use_Mpc:
             self.Pell_spline[ell] = interp1d(self.k_table, Pell, kind='cubic')
@@ -1941,6 +2097,22 @@ class PTEmu:
     #         self.X_neff_max[X][ell] = dlP_max/dlk_max
 
     def build_Pell_spline_from_table(self, Pell, ell):
+        r"""Build spline object for power spectrum multipoles.
+
+        Generates a cubic spline object for the specified power spectrum
+        multipole, and stores it as class attribute. Meant for validation
+        purposes.
+
+        Parameters
+        ----------
+        Pell: list or numpy.ndarray
+            Array containing the power spectrum multipole of order
+            :math:`\ell`, evaluated at the wavemodes defined by the class
+            attribute `k_table`.
+        ell: int
+            Specific multipole order :math:`\ell`.
+            Can be chosen from the list [0,2,4].
+        """
         id_min = 0 if not ell == 6 else self.nk-self.nkloop
         if self.use_Mpc:
             hfac = (self.params['h']/self.emu_LCDM_params['h']
@@ -1975,6 +2147,16 @@ class PTEmu:
             self.neff_max[ell] = dlP_max/dlk_max
 
     def eval_Pell_spline(self, k, ell):
+        r"""Evaluate the spline of the specified power spectrum multipole.
+
+        Parameters
+        ----------
+        k: float
+            Value of the warningavemode :math:`k`.
+        ell: int
+            Specific multipole order :math:`\ell`.
+            Can be chosen from the list [0,2,4].
+        """
         mask_low = k < self.k_table_min[ell]
         mask_high = k > self.k_table_max[ell]
         spline = np.hstack(
@@ -1988,6 +2170,31 @@ class PTEmu:
         return spline
 
     def PL(self, k, params, de_model=None):
+        r"""Compute the linear power spectrum predictions.
+
+        Evaluates the emulator calling **eval_emulator**, and returns the
+        linear power spectrum :math:`P_\mathrm{L}(k)`.
+
+        Parameters
+        ----------
+        k: float or numpy.ndarray
+            Value of the wavemode :math:`k`.
+        params: dict
+            Dictionary containing the list of parameters which are internally
+            used by the emulator. The keywords of the dictionary specify the
+            name of the parameters, while the values specify the values of the
+            parameters.
+        de_model: str, optional
+            String that determines the dark energy equation of state. Can be
+            chosen form the list ['lambda', 'w0', 'w0wa'].
+            Defaults to None.
+
+        Returns
+        -------
+        PL: float or numpy.ndarray
+            Linear power spectrum :math:`P_\mathrm{L}(k)` evaluated at the
+            input wavemodes :math:`k`.
+        """
         self.eval_emulator(params, ell=[], de_model=de_model)
 
         if self.use_Mpc:
@@ -1999,12 +2206,38 @@ class PTEmu:
         return PL_spline(k)
 
     def Pdw(self, k, mu, params, de_model=None, ell_for_recon=None):
+        r"""Compute the leading order IR-resummed power spectrum.
+
+        Evaluates the emulator calling **eval_emulator**, and returns the
+        leading order IR-resummed power spectrum :math:`P_\mathrm{IR-res}
+        ^\mathrm{LO}(k,\mu)`.
+
+        Parameters
+        ----------
+        k: float or numpy.ndarray
+            Value of the wavemode :math:`k`.
+        mu: float or numpy.ndarray
+            Value of the cosine :math:`\mu` of the angle between
+            the pair separation and the line of sight.
+        params: dict
+            Dictionary containing the list of parameters which are internally
+            used by the emulator. The keywords of the dictionary specify the
+            name of the parameters, while the values specify the values of the
+            parameters.
+        de_model: str, optional
+            String that determines the dark energy equation of state. Can be
+            chosen form the list ['lambda', 'w0', 'w0wa'].
+            Defaults to None.
+        ell_for_recon: list, optional
+            List of :math:`\ell` values used for the reconstruction of the
+            2d leading-order IR-resummed power spectrum. Defaults to None.
+        """
         if ell_for_recon is None:
             ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
         ell_eval_emu = ell_for_recon.copy()
         try:
             ell_eval_emu.remove(6)
-        except:
+        except Exception:
             pass
         self.eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
 
@@ -2038,17 +2271,17 @@ class PTEmu:
         ell_eval_emu = ell.copy()
         try:
             ell_eval_emu.remove(6)
-        except:
+        except Exception:
             pass
         self.eval_emulator(params, ell_eval_emu, de_model=de_model)
 
         bij = self.get_bias_coeff(0)
 
         Pell = np.zeros([self.nk, len(ell)])
-        for i, l in enumerate(ell):
-            if l != 6:
-                bij[3] = self.params['c{}'.format(l)] if self.use_Mpc \
-                     else self.params['c{}'.format(l)]/self.params['h']**2
+        for i, mp in enumerate(ell):
+            if mp != 6:
+                bij[3] = self.params['c{}'.format(mp)] if self.use_Mpc \
+                     else self.params['c{}'.format(mp)]/self.params['h']**2
 
                 Pk_bij = np.zeros([self.nk, self.n_diagrams-2])
                 Pk_bij[:, :7] = np.multiply(
@@ -2061,14 +2294,14 @@ class PTEmu:
                 Pell[:, i] = np.dot(bij, Pk_bij.T)
 
                 # add shot noise
-                if l == 0:
+                if mp == 0:
                     N0 = self.params['N0'] if self.use_Mpc \
                         else self.params['N0']/self.params['h']**3
                     N20 = self.params['N20'] if self.use_Mpc \
                         else self.params['N20']/self.params['h']**5
                     Pell[:, i] += (np.ones_like(self.k_table)*N0/self.nbar +
                                    self.k_table**2*N20/self.nbar)
-                elif l == 2:
+                elif mp == 2:
                     N22 = self.params['N22'] if self.use_Mpc \
                         else self.params['N22']/self.params['h']**5
                     Pell[:, i] += self.k_table**2*N22/self.nbar
@@ -2099,7 +2332,7 @@ class PTEmu:
                 mup = mu/self.params['alpha_lo']/APfac
                 return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
 
-        elif self.RSD_model == 'VIR':
+        elif self.RSD_model == 'VDG_infty':
             if W_damping is None:
                 W_damping = self.W_kurt
 
@@ -2356,7 +2589,7 @@ class PTEmu:
                 mup = mu/self.params['alpha_lo']/APfac
                 return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
 
-        elif self.RSD_model == 'VIR':
+        elif self.RSD_model == 'VDG_infty':
             if W_damping is None:
                 W_damping = self.W_kurt
 
@@ -2504,7 +2737,7 @@ class PTEmu:
                 mup = mu/self.params['alpha_lo']/APfac
                 return np.outer(P_noise_2d(kp, mup), eval_legendre(ell, mu))
 
-        elif self.RSD_model == 'VIR':
+        elif self.RSD_model == 'VDG_infty':
             self.eval_emulator(params, ell=[], de_model=de_model)
             if W_damping is None:
                 W_damping = self.W_kurt
@@ -2660,7 +2893,7 @@ class PTEmu:
                 mup = mu/self.params['alpha_lo']/APfac
                 return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
 
-        elif self.RSD_model == 'VIR':
+        elif self.RSD_model == 'VDG_infty':
             if W_damping is None:
                 W_damping = self.W_kurt
 
@@ -2745,7 +2978,7 @@ class PTEmu:
                 mup = mu/self.params['alpha_lo']/APfac
                 return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
 
-        elif self.RSD_model == 'VIR':
+        elif self.RSD_model == 'VDG_infty':
             self.eval_emulator(params, ell=[], de_model=de_model)
             if W_damping is None:
                 W_damping = self.W_kurt
