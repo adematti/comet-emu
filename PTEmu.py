@@ -1339,7 +1339,7 @@ class PTEmu:
         self.nkloop = sum(self.k_table > hdul['K_TABLE'].header['k1loop'])
         self.RSD_model = hdul['MODEL_FULL'].header['RSD_model']
 
-        if self.RSD_model == 'VIR':
+        if self.RSD_model == 'VDG_infty':
             self.RSD_params_list.append('avir')
             self.params['avir'] = 0
 
@@ -1377,7 +1377,7 @@ class PTEmu:
             ell_train = [0, 2, 4] if not self.real_space else [0]
             self.emu['PL'] = self.training['SHAPE'].GPy_model('PL')
             self.emu['s12'] = self.training['SHAPE'].GPy_model('s12')
-            if self.RSD_model == 'VIR':
+            if self.RSD_model == 'VDG_infty':
                 self.emu['sv'] = self.training['SHAPE'].GPy_model('sv')
             for ell in ell_train:
                 self.emu[ell] = self.training['FULL'].GPy_model(ell)
@@ -1413,7 +1413,7 @@ class PTEmu:
             for dt in ['PL', 's12']:
                 with open('{}_{}.pickle'.format(fname_base, dt), "wb") as f:
                     pickle.dump(self.emu[dt], f)
-            if self.RSD_model == 'VIR':
+            if self.RSD_model == 'VDG_infty':
                 with open('{}_sv.pickle'.format(fname_base), "wb") as f:
                     pickle.dump(self.emu['sv'], f)
             for ell in ell_train:
@@ -1450,7 +1450,7 @@ class PTEmu:
             for dt in ['PL', 's12']:
                 self.emu[dt] = pickle.load(
                     open('{}_{}.pickle'.format(fname_base, dt), "rb"))
-            if self.RSD_model == 'VIR':
+            if self.RSD_model == 'VDG_infty':
                 self.emu['sv'] = pickle.load(
                     open('{}_{}.pickle'.format(fname_base, dt), "rb"))
             for ell in ell_train:
@@ -1817,7 +1817,7 @@ class PTEmu:
                     self.emu['PL'].predict(params_shape[None, :])[0][0], 'PL')
                 self.Pk_lin *= (self.params['s12']/sigma12)**2
 
-                if self.RSD_model == 'VIR':
+                if self.RSD_model == 'VDG_infty':
                     self.params['sv'] = self.training['SHAPE'].transform_inv(
                         self.emu['sv'].predict(params_shape[None, :])[0][0],
                         'sv')[0]
@@ -1861,7 +1861,7 @@ class PTEmu:
                 self.params['s12'] = sigma12[0]*amplitude_scaling
                 self.params['f'] = f
 
-                if self.RSD_model == 'VIR':
+                if self.RSD_model == 'VDG_infty':
                     self.params['sv'] = self.training['SHAPE'].transform_inv(
                         self.emu['sv'].predict(params_shape[None, :])[0][0],
                         'sv')[0]
@@ -2099,7 +2099,7 @@ class PTEmu:
                 mup = mu/self.params['alpha_lo']/APfac
                 return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
 
-        elif self.RSD_model == 'VIR':
+        elif self.RSD_model == 'VDG_infty':
             if W_damping is None:
                 W_damping = self.W_kurt
 
@@ -2356,7 +2356,7 @@ class PTEmu:
                 mup = mu/self.params['alpha_lo']/APfac
                 return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
 
-        elif self.RSD_model == 'VIR':
+        elif self.RSD_model == 'VDG_infty':
             if W_damping is None:
                 W_damping = self.W_kurt
 
@@ -2504,7 +2504,7 @@ class PTEmu:
                 mup = mu/self.params['alpha_lo']/APfac
                 return np.outer(P_noise_2d(kp, mup), eval_legendre(ell, mu))
 
-        elif self.RSD_model == 'VIR':
+        elif self.RSD_model == 'VDG_infty':
             self.eval_emulator(params, ell=[], de_model=de_model)
             if W_damping is None:
                 W_damping = self.W_kurt
@@ -2660,7 +2660,7 @@ class PTEmu:
                 mup = mu/self.params['alpha_lo']/APfac
                 return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
 
-        elif self.RSD_model == 'VIR':
+        elif self.RSD_model == 'VDG_infty':
             if W_damping is None:
                 W_damping = self.W_kurt
 
@@ -2745,7 +2745,7 @@ class PTEmu:
                 mup = mu/self.params['alpha_lo']/APfac
                 return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
 
-        elif self.RSD_model == 'VIR':
+        elif self.RSD_model == 'VDG_infty':
             self.eval_emulator(params, ell=[], de_model=de_model)
             if W_damping is None:
                 W_damping = self.W_kurt
