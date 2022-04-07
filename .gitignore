@@ -61,5 +61,6 @@ env.bak/
 venv.bak/
 
 # Data files
-source/data/*
+source/data/models
+source/data/tables
 testscript.py
