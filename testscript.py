@@ -14,7 +14,7 @@ nbar = nbarsim[zsnap]
 #we create an instantiation of the emulator with the name of the
 #model we want to use
 
-Pell=PTEmu(model="ZS_EFT", use_Mpc=False)
+Pell=PTEmu(model="EFT", use_Mpc=False)
 #Pell.define_units(use_Mpc=False)
 Pell.define_nbar(nbar=nbar)
 
