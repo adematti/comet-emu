@@ -1265,9 +1265,9 @@ class PTEmu:
 
         Returns
         -------
-        Pell: numpy.ndarray
-            Power spectrum multipole of order :math:`\ell` at the specified
-            :math:`k`.
+        Pell_dict: dict
+            Dictionary containing all the requested power spectrum multipoles
+            of order :math:`\ell` at the specified :math:`k`.
         """
         if ell_for_recon is None:
             ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
@@ -1347,6 +1347,57 @@ class PTEmu:
     def Pell_fixed_cosmo_boost(self, k, params, ell, de_model=None,
                                alpha_tr_lo=None, W_damping=None,
                                ell_for_recon=None):
+        r"""Compute the power spectrum multipoles (fast for fixed cosmology).
+
+        Main method to compute the galaxy power spectrum multipoles.
+        Returns the specified multipole at the given wavemodes :math:`k`.
+        Differently from **Pell**, if the cosmology has not been varied from
+        the last call, this method simply reconstruct the final multipoles by
+        multiplying the stored model ingredients (which, at fixed cosmology
+        are the same) by the new bias parameters.
+
+        Parameters
+        ----------
+        k: float or list or numpy.ndarray
+            Wavemodes :math:`k` at which to evaluate the multipoles. If a list
+            is passed, it has to match the size of `ell`, and in that case
+            each wavemode refer to a given multipole.
+        params: dict
+            Dictionary containing the list of parameters which are internally
+            used by the emulator. The keywords of the dictionary specify the
+            name of the parameters, while the values specify the values of the
+            parameters.
+        ell: int or list
+            Specific multipole order :math:`\ell`.
+            Can be chosen from the list [0,2,4].
+        de_model: str, optional
+            String that determines the dark energy equation of state. Can be
+            chosen form the list ['lambda', 'w0', 'w0wa'].
+            Defaults to None.
+        alpha_tr_lo: list or numpy.ndarray, optional
+            List containing the user-provided AP parameters, in the form
+            :math:`(\alpha_\perp, \alpha_\parallel)`. If provided, prevents
+            computation from correct formulas (ratios of expansion factors and
+            angular diameter distance). Defaults to None.
+        W_damping: Callable[[float, float], float], optional
+            Function returning the shape of the pairwise velocity generating
+            function in the large scale limit :math:`r\rightarrow\infty`. The
+            function accepts two floats as arguments, corresponding to the
+            wavemode :math:`k` and the cosinus of the angle between pair
+            separation and line of sight :math:`\mu`, and returns a float. This
+            function is used only with the `VDG_infty` model. If None, it uses
+            the free kurtosis distribution defined by **W_kurt**.
+            Defaults to None.
+        ell_for_recon: list, optional
+            List of :math:`\ell` values used for the reconstruction of the
+            2d leading-order IR-resummed power spectrum. Defaults to None.
+
+        Returns
+        -------
+        Pell_dict: dict
+            Dictionary containing all the requested power spectrum multipoles
+            of order :math:`\ell` at the specified :math:`k`.
+        """
         ell = [ell] if not isinstance(ell, list) else ell
 
         if isinstance(k, list):
@@ -1380,8 +1431,8 @@ class PTEmu:
                                      alpha_tr_lo=alpha_tr_lo,
                                      W_damping=W_damping,
                                      ell_for_recon=ell_for_recon)
-                for l in PX_ell.keys():
-                    self.PX_ell_list[l][:, i] = PX_ell[l]
+                for m in PX_ell.keys():
+                    self.PX_ell_list[m][:, i] = PX_ell[m]
 
         for p in self.bias_params_list:
             if p in params.keys():
@@ -1400,11 +1451,62 @@ class PTEmu:
 
     def Pell_convolved(self, k, params, ell, obs_id, de_model=None,
                        alpha_tr_lo=None, W_damping=None, ell_for_recon=None):
+        r"""Compute the convolved power spectrum multipoles.
+
+        Main method to compute the galaxy power spectrum multipoles convolved
+        with a specific data window function.
+        Returns the specified multipole at the given wavemodes :math:`k`.
+
+        Parameters
+        ----------
+        k: float or list or numpy.ndarray
+            Wavemodes :math:`k` at which to evaluate the multipoles. If a list
+            is passed, it has to match the size of `ell`, and in that case
+            each wavemode refer to a given multipole.
+        params: dict
+            Dictionary containing the list of parameters which are internally
+            used by the emulator. The keywords of the dictionary specify the
+            name of the parameters, while the values specify the values of the
+            parameters.
+        ell: int or list
+            Specific multipole order :math:`\ell`.
+            Can be chosen from the list [0,2,4].
+        obs_id: str
+            Identifier of the data sample. Necessary to obtain access to the
+            particular window function of the sample.
+        de_model: str, optional
+            String that determines the dark energy equation of state. Can be
+            chosen form the list ['lambda', 'w0', 'w0wa'].
+            Defaults to None.
+        alpha_tr_lo: list or numpy.ndarray, optional
+            List containing the user-provided AP parameters, in the form
+            :math:`(\alpha_\perp, \alpha_\parallel)`. If provided, prevents
+            computation from correct formulas (ratios of expansion factors and
+            angular diameter distance). Defaults to None.
+        W_damping: Callable[[float, float], float], optional
+            Function returning the shape of the pairwise velocity generating
+            function in the large scale limit :math:`r\rightarrow\infty`. The
+            function accepts two floats as arguments, corresponding to the
+            wavemode :math:`k` and the cosinus of the angle between pair
+            separation and line of sight :math:`\mu`, and returns a float. This
+            function is used only with the `VDG_infty` model. If None, it uses
+            the free kurtosis distribution defined by **W_kurt**.
+            Defaults to None.
+        ell_for_recon: list, optional
+            List of :math:`\ell` values used for the reconstruction of the
+            2d leading-order IR-resummed power spectrum. Defaults to None.
+
+        Returns
+        -------
+        Pell_dict: dict
+            Dictionary containing all the requested power spectrum multipoles
+            of order :math:`\ell` at the specified :math:`k`.
+        """
         ell_for_mixing_matrix = [0, 2, 4] if not self.real_space else [0]
         Pell = self.Pell(self.data[obs_id].bins_mixing_matrix[:, 1], params,
                          ell_for_mixing_matrix, de_model, alpha_tr_lo,
                          W_damping, ell_for_recon)
-        Pell_list = np.hstack([Pell['ell{}'.format(l)] for l
+        Pell_list = np.hstack([Pell['ell{}'.format(m)] for m
                                in ell_for_mixing_matrix])
         Pell_convolved = np.dot(self.data[obs_id].W_mixing_matrix, Pell_list)
 
@@ -1422,18 +1524,48 @@ class PTEmu:
 
         Pell_dict = {}
         if k != self.data[obs_id].bins_mixing_matrix[:, 0]:
-            for i, l in enumerate(ell):
+            for i, m in enumerate(ell):
                 spline = interp1d(self.data[obs_id].bins_mixing_matrix[:, 0],
                                   Pell_convolved[:, i], kind='cubic')
-                Pell_dict['ell{}'.format(l)] = spline(k_list[i])
+                Pell_dict['ell{}'.format(m)] = spline(k_list[i])
         else:
-            for i, l in enumerate(ell):
+            for i, m in enumerate(ell):
                 ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
-                Pell_dict['ell{}'.format(l)] = Pell_convolved[ids, i]
+                Pell_dict['ell{}'.format(m)] = Pell_convolved[ids, i]
 
         return Pell_dict
 
     def PX(self, k, mu, params, X, de_model=None):
+        r"""Compute the individual contribution X to the galaxy power spectrum.
+
+        Returns the individual contribution X to the galaxy power spectrum
+        :math:`P_\mathrm{gg}(k,\mu)`.
+
+        Parameters
+        ----------
+        k: float or list or numpy.ndarray
+            Wavemodes :math:`k` at which to evaluate the X contribution.
+        mu: float or list or numpy.ndarray
+            Cosinus :math:`\mu` between the pair separation and the line of
+            sight at which to evaluate the X contribution.
+        params: dict
+            Dictionary containing the list of parameters which are internally
+            used by the emulator. The keywords of the dictionary specify the
+            name of the parameters, while the values specify the values of the
+            parameters.
+        X: str
+            Identifier of the contribution to the galaxy power spectrum.
+        de_model: str, optional
+            String that determines the dark energy equation of state. Can be
+            chosen form the list ['lambda', 'w0', 'w0wa'].
+            Defaults to None.
+
+        Returns
+        -------
+        PX_2d: numpy.ndarray
+            2-d array containing the X contribution to the galaxy power
+            spectrum at the specified :math:`k` and :math:`\mu`.
+        """
         ids = None
         for n, diagram in enumerate(self.diagrams_emulated):
             if diagram == X:
@@ -1472,6 +1604,22 @@ class PTEmu:
         return PX_2d
 
     def PX_ell6_novir_noAP(self, X):
+        r"""Compute the individual contribution X to the octopole.
+
+        Returns the individual contribution X to the octopole
+        :math:`P_6(k)` of the training sample, multiplying it by the
+        correspondent bias and growth coefficients.
+
+        Parameters
+        ----------
+        X: str
+            Identifier of the contribution to the octopole.
+
+        Returns
+        -------
+        P6X: numpy.ndarray
+            Array containing the X contribution to the octopole :math:`P_6(k)`.
+        """
         s12ratio = (self.params['s12']/self.s12_for_P6)**2
         s12ratio_sq = s12ratio**2
         f = self.params['f']
@@ -1521,18 +1669,70 @@ class PTEmu:
 
     def PX_ell(self, k, params, ell, X, de_model=None, alpha_tr_lo=None,
                W_damping=None, ell_for_recon=None):
+        r"""Get the individual contribution to the power spectrum multipoles.
+
+        Computes the individual contribution X to the galaxy power spectrum
+        multipoles. Returns the specified multipole at the given wavemodes
+        :math:`k`.
+
+        Parameters
+        ----------
+        k: float or list or numpy.ndarray
+            Wavemodes :math:`k` at which to evaluate the multipoles. If a list
+            is passed, it has to match the size of `ell`, and in that case
+            each wavemode refer to a given multipole.
+        params: dict
+            Dictionary containing the list of parameters which are internally
+            used by the emulator. The keywords of the dictionary specify the
+            name of the parameters, while the values specify the values of the
+            parameters.
+        ell: int or list
+            Specific multipole order :math:`\ell`.
+            Can be chosen from the list [0,2,4].
+        X: str
+            Identifier of the contribution to the galaxy power spectrum
+            multipoles.
+        de_model: str, optional
+            String that determines the dark energy equation of state. Can be
+            chosen form the list ['lambda', 'w0', 'w0wa'].
+            Defaults to None.
+        alpha_tr_lo: list or numpy.ndarray, optional
+            List containing the user-provided AP parameters, in the form
+            :math:`(\alpha_\perp, \alpha_\parallel)`. If provided, prevents
+            computation from correct formulas (ratios of expansion factors and
+            angular diameter distance). Defaults to None.
+        W_damping: Callable[[float, float], float], optional
+            Function returning the shape of the pairwise velocity generating
+            function in the large scale limit :math:`r\rightarrow\infty`. The
+            function accepts two floats as arguments, corresponding to the
+            wavemode :math:`k` and the cosinus of the angle between pair
+            separation and line of sight :math:`\mu`, and returns a float. This
+            function is used only with the `VDG_infty` model. If None, it uses
+            the free kurtosis distribution defined by **W_kurt**.
+            Defaults to None.
+        ell_for_recon: list, optional
+            List of :math:`\ell` values used for the reconstruction of the
+            2d leading-order IR-resummed power spectrum. Defaults to None.
+
+        Returns
+        -------
+        PX_ell_dict: dict
+            Dictionary containing the contributions to all the requested power
+            spectrum multipoles of order :math:`\ell` at the specified
+            :math:`k`.
+        """
         if ell_for_recon is None:
             ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
         ell_eval_emu = ell_for_recon.copy()
         try:
             ell_eval_emu.remove(6)
-        except:
+        except Exception:
             pass
 
         def P2d(q, mu):
             t = 0.
-            for l in ell_for_recon:
-                t += eval_legendre(l, mu) * self.PX_ell_spline[X][l](q)
+            for m in ell_for_recon:
+                t += eval_legendre(m, mu) * self.PX_ell_spline[X][m](q)
             return t
 
         if self.RSD_model == 'EFT':
@@ -1593,10 +1793,10 @@ class PTEmu:
                 PX_ell[self.nk - (ids[1]-ids[0]):, int(ell_clo/2)] = \
                     self.Pk_ratios[ell_clo][ids[0]:ids[1]]
             else:
-                for i, l in enumerate(ell_for_recon):
-                    if l != 6:
+                for i, m in enumerate(ell_for_recon):
+                    if m != 6:
                         PX_ell[self.nk - (ids[1]-ids[0]):, i] = \
-                            self.Pk_ratios[l][ids[0]:ids[1]]
+                            self.Pk_ratios[m][ids[0]:ids[1]]
                     else:
                         PX_ell[:, i] = self.PX_ell6_novir_noAP(X_emu)
             PX_ell[:, :len(ell_eval_emu)] = (PX_ell[:, :len(ell_eval_emu)].T *
@@ -1609,13 +1809,13 @@ class PTEmu:
             elif X_emu == 'Pnoise_N22' and len(ell_for_recon) > 1:
                 PX_ell[:, 1] = self.k_table**2
 
-        for i, l in enumerate(ell_for_recon):
+        for i, m in enumerate(ell_for_recon):
             if self.use_Mpc:
-                self.PX_ell_spline[X][l] = interp1d(self.k_table,
+                self.PX_ell_spline[X][m] = interp1d(self.k_table,
                                                     PX_ell[:, i],
                                                     kind='cubic')
             else:
-                self.PX_ell_spline[X][l] = interp1d(self.k_table /
+                self.PX_ell_spline[X][m] = interp1d(self.k_table /
                                                     self.params['h'],
                                                     PX_ell[:, i] *
                                                     self.params['h']**3,
@@ -1629,9 +1829,9 @@ class PTEmu:
         PX_ell_model *= (2*np.array(ell)+1) / alpha3
 
         PX_ell_dict = {}
-        for i, l in enumerate(ell):
+        for i, m in enumerate(ell):
             ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
-            PX_ell_dict['ell{}'.format(l)] = PX_ell_model[ids, i]
+            PX_ell_dict['ell{}'.format(m)] = PX_ell_model[ids, i]
 
         return PX_ell_dict
 
@@ -1651,15 +1851,15 @@ class PTEmu:
         bij = self.get_bias_coeff_for_table()
         Pell = np.zeros([self.nk, len(ell)])
 
-        for i, l in enumerate(ell):
-            if l != 6:
+        for i, m in enumerate(ell):
+            if m != 6:
                 Pk_bij = np.zeros([self.nk, self.n_diagrams])
                 cnt = 0
                 for n in (np.array([0, 1, 2, 13, 14, 15, 16, 17, 18]) +
-                          self.n_diagrams*int(l/2)):
+                          self.n_diagrams*int(m/2)):
                     Pk_bij[:, cnt] = table[:, 1+n]
                     cnt += 1
-                for n in np.arange(3, 13)+self.n_diagrams*int(l/2):
+                for n in np.arange(3, 13)+self.n_diagrams*int(m/2):
                     Pk_bij[:, cnt] = table[:, 1+n]
                     cnt += 1
 
