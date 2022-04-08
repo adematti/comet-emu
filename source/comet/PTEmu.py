@@ -13,6 +13,7 @@ import os
 
 base_dir = os.path.join(os.path.dirname(__file__), "..")
 
+
 class PTEmu:
     r"""Main class for the emulator of the power spectrum multipoles.
 
@@ -97,12 +98,14 @@ class PTEmu:
         self.chi2_decomposition_from_table = None
 
         try:
-            self.load_emulator_data(fname=base_dir+'/data/tables/{}.fits'.format(model))
+            self.load_emulator_data(
+                fname=base_dir+'/data/tables/{}.fits'.format(model))
         except Exception:
             print('Table file for this model not found. Initialise '
                   'with `load_emulator_data`')
         try:
-            self.load_emulator(fname_base=base_dir+'/data/models/{}'.format(model))
+            self.load_emulator(
+                fname_base=base_dir+'/data/models/{}'.format(model))
         except Exception:
             print('Emulator files for this model not found. Initialise with '
                   '`load_emulator`, or train the emulator first, '
@@ -808,10 +811,10 @@ class PTEmu:
                     if not self.use_Mpc:
                         self.params['sv'] *= self.params['h']
 
-            for mp in ell:
-                if self.Pk_ratios[mp] is None or emu_params_updated:
-                    self.Pk_ratios[mp] = self.training['FULL'].transform_inv(
-                        self.emu[mp].predict(params_all[None, :])[0][0], mp)
+            for m in ell:
+                if self.Pk_ratios[m] is None or emu_params_updated:
+                    self.Pk_ratios[m] = self.training['FULL'].transform_inv(
+                        self.emu[m].predict(params_all[None, :])[0][0], m)
         else:
             if self.Pk_lin is None or emu_params_updated:
                 sigma12 = self.training['SHAPE'].transform_inv(
@@ -854,10 +857,10 @@ class PTEmu:
 
             params_all = np.array([self.params[p] for p in self.params_list])
 
-            for mp in ell:
-                if self.Pk_ratios[mp] is None or emu_params_updated:
-                    self.Pk_ratios[mp] = self.training['FULL'].transform_inv(
-                        self.emu[mp].predict(params_all[None, :])[0][0], mp)
+            for m in ell:
+                if self.Pk_ratios[m] is None or emu_params_updated:
+                    self.Pk_ratios[m] = self.training['FULL'].transform_inv(
+                        self.emu[m].predict(params_all[None, :])[0][0], m)
 
     def W_kurt(self, k, mu):
         r"""Large scale limit of the velocity difference generating function.
@@ -1144,6 +1147,35 @@ class PTEmu:
         return Pdw_2d
 
     def Pell_fid_ktable(self, params, ell, de_model=None):
+        r"""Compute the power spectrum multipoles at the training wavemodes.
+
+        Returns the specified multipole at a fixed :math:`k` grid
+        corresponding to the wavemodes used to train the emulator (without
+        the need to recur to a spline interpolation in :math:`k`). The output
+        power spectrum multipole is not corrected for AP distortions. Used
+        for validation purposes.
+
+        Parameters
+        ----------
+        params: dict
+            Dictionary containing the list of parameters which are internally
+            used by the emulator. The keywords of the dictionary specify the
+            name of the parameters, while the values specify the values of the
+            parameters.
+        ell: int
+            Specific multipole order :math:`\ell`.
+            Can be chosen from the list [0,2,4].
+        de_model: str, optional
+            String that determines the dark energy equation of state. Can be
+            chosen form the list ['lambda', 'w0', 'w0wa'].
+            Defaults to None.
+
+        Returns
+        -------
+        Pell: numpy.ndarray
+            Power spectrum multipole of order :math:`\ell` at the fixed
+            :math:`k` grid used for the training of the emulator.
+        """
         ell = [ell] if not isinstance(ell, list) else ell
         ell_eval_emu = ell.copy()
         try:
@@ -1155,10 +1187,10 @@ class PTEmu:
         bij = self.get_bias_coeff(0)
 
         Pell = np.zeros([self.nk, len(ell)])
-        for i, mp in enumerate(ell):
-            if mp != 6:
-                bij[3] = self.params['c{}'.format(mp)] if self.use_Mpc \
-                     else self.params['c{}'.format(mp)]/self.params['h']**2
+        for i, m in enumerate(ell):
+            if m != 6:
+                bij[3] = self.params['c{}'.format(m)] if self.use_Mpc \
+                     else self.params['c{}'.format(m)]/self.params['h']**2
 
                 Pk_bij = np.zeros([self.nk, self.n_diagrams-2])
                 Pk_bij[:, :7] = np.multiply(
@@ -1171,14 +1203,14 @@ class PTEmu:
                 Pell[:, i] = np.dot(bij, Pk_bij.T)
 
                 # add shot noise
-                if mp == 0:
+                if m == 0:
                     N0 = self.params['N0'] if self.use_Mpc \
                         else self.params['N0']/self.params['h']**3
                     N20 = self.params['N20'] if self.use_Mpc \
                         else self.params['N20']/self.params['h']**5
                     Pell[:, i] += (np.ones_like(self.k_table)*N0/self.nbar +
                                    self.k_table**2*N20/self.nbar)
-                elif mp == 2:
+                elif m == 2:
                     N22 = self.params['N22'] if self.use_Mpc \
                         else self.params['N22']/self.params['h']**5
                     Pell[:, i] += self.k_table**2*N22/self.nbar
@@ -1190,13 +1222,60 @@ class PTEmu:
 
     def Pell(self, k, params, ell, de_model=None, alpha_tr_lo=None,
              W_damping=None, ell_for_recon=None):
+        r"""Compute the power spectrum multipoles.
+
+        Main method to compute the galaxy power spectrum multipoles.
+        Returns the specified multipole at the given wavemodes :math:`k`.
+
+        Parameters
+        ----------
+        k: float or list or numpy.ndarray
+            Wavemodes :math:`k` at which to evaluate the multipoles. If a list
+            is passed, it has to match the size of `ell`, and in that case
+            each wavemode refer to a given multipole.
+        params: dict
+            Dictionary containing the list of parameters which are internally
+            used by the emulator. The keywords of the dictionary specify the
+            name of the parameters, while the values specify the values of the
+            parameters.
+        ell: int or list
+            Specific multipole order :math:`\ell`.
+            Can be chosen from the list [0,2,4].
+        de_model: str, optional
+            String that determines the dark energy equation of state. Can be
+            chosen form the list ['lambda', 'w0', 'w0wa'].
+            Defaults to None.
+        alpha_tr_lo: list or numpy.ndarray, optional
+            List containing the user-provided AP parameters, in the form
+            :math:`(\alpha_\perp, \alpha_\parallel)`. If provided, prevents
+            computation from correct formulas (ratios of expansion factors and
+            angular diameter distance). Defaults to None.
+        W_damping: Callable[[float, float], float], optional
+            Function returning the shape of the pairwise velocity generating
+            function in the large scale limit :math:`r\rightarrow\infty`. The
+            function accepts two floats as arguments, corresponding to the
+            wavemode :math:`k` and the cosinus of the angle between pair
+            separation and line of sight :math:`\mu`, and returns a float. This
+            function is used only with the `VDG_infty` model. If None, it uses
+            the free kurtosis distribution defined by **W_kurt**.
+            Defaults to None.
+        ell_for_recon: list, optional
+            List of :math:`\ell` values used for the reconstruction of the
+            2d leading-order IR-resummed power spectrum. Defaults to None.
+
+        Returns
+        -------
+        Pell: numpy.ndarray
+            Power spectrum multipole of order :math:`\ell` at the specified
+            :math:`k`.
+        """
         if ell_for_recon is None:
             ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
 
         def P2d(q, mu):
             t = 0.
-            for l in ell_for_recon:
-                t += eval_legendre(l, mu) * self.eval_Pell_spline(q, l)
+            for m in ell_for_recon:
+                t += eval_legendre(m, mu) * self.eval_Pell_spline(q, m)
             return t
 
         if self.RSD_model == 'EFT':
@@ -1246,8 +1325,8 @@ class PTEmu:
                 not self.splines_up_to_date):
             Pell = self.Pell_fid_ktable(params, ell=ell_for_recon,
                                         de_model=de_model)
-            for i, l in enumerate(ell_for_recon):
-                self.build_Pell_spline(Pell[:, i], l)
+            for i, m in enumerate(ell_for_recon):
+                self.build_Pell_spline(Pell[:, i], m)
             self.splines_up_to_date = True
             self.chi2_decomposition = None
 
@@ -1259,9 +1338,9 @@ class PTEmu:
         Pell_model *= (2*np.array(ell)+1) / alpha3
 
         Pell_dict = {}
-        for i, l in enumerate(ell):
+        for i, m in enumerate(ell):
             ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
-            Pell_dict['ell{}'.format(l)] = Pell_model[ids, i]
+            Pell_dict['ell{}'.format(m)] = Pell_model[ids, i]
 
         return Pell_dict
 
