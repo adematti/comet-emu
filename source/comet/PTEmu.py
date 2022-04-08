@@ -1194,10 +1194,10 @@ class PTEmu:
 
                 Pk_bij = np.zeros([self.nk, self.n_diagrams-2])
                 Pk_bij[:, :7] = np.multiply(
-                    self.Pk_ratios[mp][:7*self.nk].reshape((7, self.nk)),
+                    self.Pk_ratios[m][:7*self.nk].reshape((7, self.nk)),
                     self.Pk_lin).T
                 Pk_bij[(self.nk-self.nkloop):, 7:17] = np.multiply(
-                    self.Pk_ratios[mp][7*self.nk:].reshape((10, self.nkloop)),
+                    self.Pk_ratios[m][7*self.nk:].reshape((10, self.nkloop)),
                     self.Pk_lin[(self.nk-self.nkloop):]).T
 
                 Pell[:, i] = np.dot(bij, Pk_bij.T)
@@ -1423,9 +1423,9 @@ class PTEmu:
 
         if any(params[p] != self.params[p] for p in check_params):
             self.PX_ell_list = {
-                'ell{}'.format(l): np.zeros(
+                'ell{}'.format(m): np.zeros(
                     [k_list[i].shape[0], len(self.diagrams_all)])
-                for i, l in enumerate(ell)}
+                for i, m in enumerate(ell)}
             for i, X in enumerate(self.diagrams_all):
                 PX_ell = self.PX_ell(k_list, params, ell, X, de_model=de_model,
                                      alpha_tr_lo=alpha_tr_lo,
@@ -1443,9 +1443,9 @@ class PTEmu:
         bX = self.get_bias_coeff_for_chi2_decomposition()
 
         Pell_dict = {}
-        for i, l in enumerate(ell):
-            Pell_dict['ell{}'.format(l)] = np.dot(
-                self.PX_ell_list['ell{}'.format(l)], bX)
+        for i, m in enumerate(ell):
+            Pell_dict['ell{}'.format(m)] = np.dot(
+                self.PX_ell_list['ell{}'.format(m)], bX)
 
         return Pell_dict
 
@@ -1846,6 +1846,33 @@ class PTEmu:
     #     # construct cyclic permutations
 
     def Pell_from_table_fid_ktable(self, table, ell):
+        r"""Compute the power spectrum multipoles from an input table.
+
+        Returns the specified multipole at a fixed :math:`k` grid
+        corresponding to the wavemodes used to train the emulator (without
+        the need to recur to a spline interpolation in :math:`k`). Differently
+        from **Pell_fid_ktable**, the input table is specified as an extra
+        argument to the function.
+
+        Parameters
+        ----------
+        table: numpy.ndarray
+            2d array containing the tables for the individual contributions to
+            the specified multipole :math:`ell`.
+        ell: int
+            Specific multipole order :math:`\ell`.
+            Can be chosen from the list [0,2,4].
+        de_model: str, optional
+            String that determines the dark energy equation of state. Can be
+            chosen form the list ['lambda', 'w0', 'w0wa'].
+            Defaults to None.
+
+        Returns
+        -------
+        Pell: numpy.ndarray
+            Power spectrum multipole of order :math:`\ell` at the fixed
+            :math:`k` grid used for the training of the emulator.
+        """
         ell = [ell] if not isinstance(ell, list) else ell
 
         bij = self.get_bias_coeff_for_table()
@@ -1872,6 +1899,53 @@ class PTEmu:
 
     def Pell_from_table(self, table, k, params, ell, de_model='lambda',
                         alpha_tr_lo=None, W_damping=None):
+        r"""Compute the power spectrum multipoles from an input table.
+
+        Returns the specified multipole. Differently from **Pell**, the input
+        table is specified as an extra argument to the function.
+
+        Parameters
+        ----------
+        table: numpy.ndarray
+            2d array containing the tables for the individual contributions to
+            the specified multipole :math:`ell`.
+        k: float or list or numpy.ndarray
+            Wavemodes :math:`k` at which to evaluate the multipoles. If a list
+            is passed, it has to match the size of `ell`, and in that case
+            each wavemode refer to a given multipole.
+        params: dict
+            Dictionary containing the list of parameters which are internally
+            used by the emulator. The keywords of the dictionary specify the
+            name of the parameters, while the values specify the values of the
+            parameters.
+        ell: int or list
+            Specific multipole order :math:`\ell`.
+            Can be chosen from the list [0,2,4].
+        de_model: str, optional
+            String that determines the dark energy equation of state. Can be
+            chosen form the list ['lambda', 'w0', 'w0wa'].
+            Defaults to None.
+        alpha_tr_lo: list or numpy.ndarray, optional
+            List containing the user-provided AP parameters, in the form
+            :math:`(\alpha_\perp, \alpha_\parallel)`. If provided, prevents
+            computation from correct formulas (ratios of expansion factors and
+            angular diameter distance). Defaults to None.
+        W_damping: Callable[[float, float], float], optional
+            Function returning the shape of the pairwise velocity generating
+            function in the large scale limit :math:`r\rightarrow\infty`. The
+            function accepts two floats as arguments, corresponding to the
+            wavemode :math:`k` and the cosinus of the angle between pair
+            separation and line of sight :math:`\mu`, and returns a float. This
+            function is used only with the `VDG_infty` model. If None, it uses
+            the free kurtosis distribution defined by **W_kurt**.
+            Defaults to None.
+
+        Returns
+        -------
+        Pell_dict: dict
+            Dictionary containing all the requested power spectrum multipoles
+            of order :math:`\ell` at the specified :math:`k`.
+        """
         ell = [ell] if not isinstance(ell, list) else ell
         ell_for_recon = [0, 2, 4] if not self.real_space else [0]
 
@@ -1879,8 +1953,8 @@ class PTEmu:
 
         def P_noise_2d(q, mu):
             t = 0.
-            for l in ell_for_recon:
-                t += eval_legendre(l, mu)*Pell_noise_spline[l](q)
+            for m in ell_for_recon:
+                t += eval_legendre(m, mu)*Pell_noise_spline[m](q)
             return t
 
         if self.RSD_model == 'EFT':
@@ -1923,31 +1997,31 @@ class PTEmu:
         self.update_params(params, de_model=de_model)
         Pell = self.Pell_from_table_fid_ktable(table, ell)
         Pell_noise = np.zeros([self.nk, len(ell_for_recon)])
-        for i, l in enumerate(ell_for_recon):
-            if l == 0:
+        for i, m in enumerate(ell_for_recon):
+            if m == 0:
                 N0 = self.params['N0'] if self.use_Mpc \
                     else self.params['N0']/self.params['h']**3
                 N20 = self.params['N20'] if self.use_Mpc \
                     else self.params['N20']/self.params['h']**5
                 Pell_noise[:, i] = (np.ones_like(self.k_table)*N0/self.nbar +
                                     self.k_table**2*N20/self.nbar)
-            elif l == 2:
+            elif m == 2:
                 N22 = self.params['N22'] if self.use_Mpc \
                     else self.params['N22']/self.params['h']**5
                 Pell_noise[:, i] = self.k_table**2*N22/self.nbar
 
-        for i, l in enumerate(ell):
+        for i, m in enumerate(ell):
             if self.use_Mpc:
-                self.Pell_spline[l] = interp1d(
+                self.Pell_spline[m] = interp1d(
                     self.k_table*self.params['h']/self.emu_LCDM_params['h'],
                     Pell[:, i], kind='cubic')
-                Pell_noise_spline[l] = interp1d(self.k_table, Pell_noise[:, i],
+                Pell_noise_spline[m] = interp1d(self.k_table, Pell_noise[:, i],
                                                 kind='cubic')
             else:
-                self.Pell_spline[l] = interp1d(
+                self.Pell_spline[m] = interp1d(
                     self.k_table/self.emu_LCDM_params['h'],
                     Pell[:, i]*self.params['h']**3, kind='cubic')
-                Pell_noise_spline[l] = interp1d(
+                Pell_noise_spline[m] = interp1d(
                     self.k_table/self.params['h'],
                     Pell_noise[:, i]*self.params['h']**3,
                     kind='cubic')
@@ -1960,9 +2034,9 @@ class PTEmu:
         Pell_noise_model *= (2*np.array(ell)+1) / alpha3
 
         Pell_dict = {}
-        for i, l in enumerate(ell):
+        for i, m in enumerate(ell):
             ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
-            Pell_dict['ell{}'.format(l)] = (self.Pell_spline[l](k_list[i]) +
+            Pell_dict['ell{}'.format(m)] = (self.Pell_spline[m](k_list[i]) +
                                             Pell_noise_model[ids, i])
 
         # this is simply to guarantee that upon the next call of Pell or
@@ -1976,6 +2050,56 @@ class PTEmu:
     def Pell_from_table_fixed_cosmo_boost(self, table, k, params, ell,
                                           de_model='lambda', alpha_tr_lo=None,
                                           W_damping=None):
+        r"""Compute the power spectrum multipoles from an input table.
+
+        Returns the specified multipole. Differently from **Pell_from_table**,
+        if the cosmology has not been varied from the last call, this method
+        simply reconstructs the final multipoles by multiplying the stored
+        model ingredients (which, at fixed cosmology are the same) by the
+        new bias parameters.
+
+        Parameters
+        ----------
+        table: numpy.ndarray
+            2d array containing the tables for the individual contributions to
+            the specified multipole :math:`ell`.
+        k: float or list or numpy.ndarray
+            Wavemodes :math:`k` at which to evaluate the multipoles. If a list
+            is passed, it has to match the size of `ell`, and in that case
+            each wavemode refer to a given multipole.
+        params: dict
+            Dictionary containing the list of parameters which are internally
+            used by the emulator. The keywords of the dictionary specify the
+            name of the parameters, while the values specify the values of the
+            parameters.
+        ell: int or list
+            Specific multipole order :math:`\ell`.
+            Can be chosen from the list [0,2,4].
+        de_model: str, optional
+            String that determines the dark energy equation of state. Can be
+            chosen form the list ['lambda', 'w0', 'w0wa'].
+            Defaults to None.
+        alpha_tr_lo: list or numpy.ndarray, optional
+            List containing the user-provided AP parameters, in the form
+            :math:`(\alpha_\perp, \alpha_\parallel)`. If provided, prevents
+            computation from correct formulas (ratios of expansion factors and
+            angular diameter distance). Defaults to None.
+        W_damping: Callable[[float, float], float], optional
+            Function returning the shape of the pairwise velocity generating
+            function in the large scale limit :math:`r\rightarrow\infty`. The
+            function accepts two floats as arguments, corresponding to the
+            wavemode :math:`k` and the cosinus of the angle between pair
+            separation and line of sight :math:`\mu`, and returns a float. This
+            function is used only with the `VDG_infty` model. If None, it uses
+            the free kurtosis distribution defined by **W_kurt**.
+            Defaults to None.
+
+        Returns
+        -------
+        Pell_dict: dict
+            Dictionary containing all the requested power spectrum multipoles
+            of order :math:`\ell` at the specified :math:`k`.
+        """
         ell = [ell] if not isinstance(ell, list) else ell
 
         if isinstance(k, list):
@@ -2001,16 +2125,16 @@ class PTEmu:
 
         if any(params[p] != self.params[p] for p in check_params):
             self.PX_ell_list = {
-                'ell{}'.format(l): np.zeros(
+                'ell{}'.format(m): np.zeros(
                     [k_list[i].shape[0], len(self.diagrams_all)])
-                for i, l in enumerate(ell)}
+                for i, m in enumerate(ell)}
             for i, X in enumerate(self.diagrams_all):
                 PX_ell = self.PX_ell_from_table(table, k_list, params, ell, X,
                                                 de_model=de_model,
                                                 alpha_tr_lo=alpha_tr_lo,
                                                 W_damping=W_damping)
-                for l in PX_ell.keys():
-                    self.PX_ell_list[l][:, i] = PX_ell[l]
+                for m in PX_ell.keys():
+                    self.PX_ell_list[m][:, i] = PX_ell[m]
 
         for p in self.bias_params_list:
             if p in params.keys():
@@ -2021,9 +2145,9 @@ class PTEmu:
         bX = self.get_bias_coeff_for_chi2_decomposition()
 
         Pell_dict = {}
-        for i, l in enumerate(ell):
-            Pell_dict['ell{}'.format(l)] = np.dot(
-                self.PX_ell_list['ell{}'.format(l)], bX)
+        for i, m in enumerate(ell):
+            Pell_dict['ell{}'.format(m)] = np.dot(
+                self.PX_ell_list['ell{}'.format(m)], bX)
 
         return Pell_dict
 
@@ -2035,8 +2159,8 @@ class PTEmu:
 
         def P2d(q, mu):
             t = 0.
-            for l in ell_for_recon:
-                t += eval_legendre(l, mu) * self.eval_Pell_spline(q, l)
+            for m in ell_for_recon:
+                t += eval_legendre(m, mu) * self.eval_Pell_spline(q, m)
             return t
 
         if self.RSD_model == 'EFT':
@@ -2079,20 +2203,20 @@ class PTEmu:
 
         self.update_params(params, de_model=de_model)
         Pell = self.Pell_from_table_fid_ktable(table, ell_for_recon)
-        for i, l in enumerate(ell_for_recon):
-            if l == 0:
+        for i, m in enumerate(ell_for_recon):
+            if m == 0:
                 N0 = self.params['N0'] if self.use_Mpc \
                     else self.params['N0']/self.params['h']**3
                 N20 = self.params['N20'] if self.use_Mpc \
                     else self.params['N20']/self.params['h']**5
                 Pell[:, i] += (np.ones_like(self.k_table)*N0/self.nbar +
                                self.k_table**2*N20/self.nbar)
-            elif l == 2:
+            elif m == 2:
                 N22 = self.params['N22'] if self.use_Mpc \
                     else self.params['N22']/self.params['h']**5
                 Pell[:, i] += self.k_table**2*N22/self.nbar
 
-            self.build_Pell_spline_from_table(Pell[:, i], l)
+            self.build_Pell_spline_from_table(Pell[:, i], m)
 
         self.update_AP_params(params, de_model=de_model,
                               alpha_tr_lo=alpha_tr_lo)
@@ -2102,9 +2226,9 @@ class PTEmu:
         Pell_model *= (2*np.array(ell)+1) / alpha3
 
         Pell_dict = {}
-        for i, l in enumerate(ell):
+        for i, m in enumerate(ell):
             ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
-            Pell_dict['ell{}'.format(l)] = Pell_model[ids, i]
+            Pell_dict['ell{}'.format(m)] = Pell_model[ids, i]
 
         # this is simply to guarantee that upon the next call of Pell or
         # Pell_LCDM the parameter values will be updated
@@ -2120,8 +2244,8 @@ class PTEmu:
 
         def P2d(q, mu):
             t = 0.
-            for l in ell_for_recon:
-                t += eval_legendre(l, mu) * self.PX_ell_spline[X][l](q)
+            for m in ell_for_recon:
+                t += eval_legendre(m, mu) * self.PX_ell_spline[X][m](q)
             return t
 
         if self.RSD_model == 'EFT':
@@ -2173,21 +2297,21 @@ class PTEmu:
                     break
 
             PX_ell_dict = {}
-            for i, l in enumerate(ell):
+            for i, m in enumerate(ell):
                 if self.use_Mpc:
-                    self.PX_ell_spline[X][l] = interp1d(
+                    self.PX_ell_spline[X][m] = interp1d(
                         self.k_table*self.params['h'] /
                         self.emu_LCDM_params['h'],
-                        table[:, idX+self.n_diagrams*int(l/2)],
+                        table[:, idX+self.n_diagrams*int(m/2)],
                         kind='cubic')
                 else:
-                    self.PX_ell_spline[X][l] = interp1d(
+                    self.PX_ell_spline[X][m] = interp1d(
                         self.k_table/self.emu_LCDM_params['h'],
-                        table[:, idX+self.n_diagrams*int(l/2)] *
+                        table[:, idX+self.n_diagrams*int(m/2)] *
                         self.params['h']**3,
                         kind='cubic')
-                PX_ell_dict['ell{}'.format(l)] = \
-                    self.PX_ell_spline[X][l](k_list[i])
+                PX_ell_dict['ell{}'.format(m)] = \
+                    self.PX_ell_spline[X][m](k_list[i])
         else:
             PX_ell = np.zeros([self.nk, len(ell_for_recon)])
             if X == 'Pnoise_N0':
@@ -2197,13 +2321,13 @@ class PTEmu:
             elif X == 'Pnoise_N22' and len(ell_for_recon) > 1:
                 PX_ell[:, 1] = self.k_table**2
 
-            for i, l in enumerate(ell_for_recon):
+            for i, m in enumerate(ell_for_recon):
                 if self.use_Mpc:
-                    self.PX_ell_spline[X][l] = interp1d(self.k_table,
+                    self.PX_ell_spline[X][m] = interp1d(self.k_table,
                                                         PX_ell[:, i],
                                                         kind='cubic')
                 else:
-                    self.PX_ell_spline[X][l] = interp1d(
+                    self.PX_ell_spline[X][m] = interp1d(
                         self.k_table/self.params['h'],
                         PX_ell[:, i]*self.params['h']**3, kind='cubic')
 
@@ -2215,9 +2339,9 @@ class PTEmu:
             PX_ell_model *= (2*np.array(ell)+1) / alpha3
 
             PX_ell_dict = {}
-            for i, l in enumerate(ell):
+            for i, m in enumerate(ell):
                 ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
-                PX_ell_dict['ell{}'.format(l)] = PX_ell_model[ids, i]
+                PX_ell_dict['ell{}'.format(m)] = PX_ell_model[ids, i]
 
         # this is simply to guarantee that upon the next call of Pell or
         # Pell_LCDM the parameter values will be updated
@@ -2366,14 +2490,14 @@ class PTEmu:
             self.data[obs_id].set_kmax(kmax)
             self.chi2_decomposition = None
 
-        ell = [2*l for l in range(self.data[obs_id].n_ell)
-               if self.data[obs_id].nbins[l] > 0]
+        ell = [2*m for m in range(self.data[obs_id].n_ell)
+               if self.data[obs_id].nbins[m] > 0]
 
         if not chi2_decomposition:
             Pell = self.Pell(self.data[obs_id].bins_kmax, params, ell,
                              de_model=de_model, alpha_tr_lo=alpha_tr_lo,
                              W_damping=W_damping, ell_for_recon=ell_for_recon)
-            Pell_list = np.hstack([Pell[l] for l in Pell.keys()])
+            Pell_list = np.hstack([Pell[m] for m in Pell.keys()])
 
             diff = Pell_list - self.data[obs_id].signal_kmax
             chi2 = diff @ self.data[obs_id].inverse_cov_kmax @ diff.T
@@ -2401,7 +2525,7 @@ class PTEmu:
                                          alpha_tr_lo=alpha_tr_lo,
                                          W_damping=W_damping,
                                          ell_for_recon=ell_for_recon)
-                    PX_ell_list[:, i] = np.hstack([PX_ell[l] for l
+                    PX_ell_list[:, i] = np.hstack([PX_ell[m] for m
                                                    in PX_ell.keys()])
 
                 self.chi2_decomposition = {}
@@ -2436,13 +2560,13 @@ class PTEmu:
             self.data[obs_id].set_kmax(kmax)
             self.chi2_decomposition = None
 
-        ell = [2*l for l in range(self.data[obs_id].n_ell)
-               if self.data[obs_id].nbins[l] > 0]
+        ell = [2*m for m in range(self.data[obs_id].n_ell)
+               if self.data[obs_id].nbins[m] > 0]
         if not chi2_decomposition:
             Pell = self.Pell_from_table(table, self.data[obs_id].bins_kmax,
                                         params, ell, de_model=de_model,
                                         alpha_tr_lo=alpha_tr_lo)
-            Pell_list = np.hstack([Pell[l] for l in Pell.keys()])
+            Pell_list = np.hstack([Pell[m] for m in Pell.keys()])
 
             diff = Pell_list - self.data[obs_id].signal_kmax
             chi2 = diff @ self.data[obs_id].inverse_cov_kmax @ diff.T
@@ -2464,7 +2588,7 @@ class PTEmu:
                                                params, ell, X,
                                                de_model=de_model,
                                                alpha_tr_lo=alpha_tr_lo)
-                    PX_ell_list[:, i] = np.hstack([PX_ell[l] for l
+                    PX_ell_list[:, i] = np.hstack([PX_ell[m] for m
                                                   in PX_ell.keys()])
 
                 self.chi2_decomposition_from_table = {}
