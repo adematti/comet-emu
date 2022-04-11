@@ -12,6 +12,10 @@ class Tables:
 
     It handles both the training and validation sets, in the form of tables
     containing the different contributions to :math:`P_\mathrm{gg}(k,\mu)`.
+    Provides routine to convert the raw tables into their transformed versions,
+    which span a shorter dynamical range (to increase the accuracy of the
+    emulator), to train the emulator, and to transform back the emulator
+    predictions in the original metric.
     """
 
     def __init__(self, params, validation=False):
@@ -23,7 +27,7 @@ class Tables:
             List of parameters used to train the emulator.
         validation: bool, optional
             A flag specifying if the class is meant for the validation of the
-            emulator. Defaults to False.
+            emulator. Defaults to **False**.
         """
         self.params = params
         self.n_params = len(params)
@@ -42,12 +46,15 @@ class Tables:
     def set_param_ranges(self, ranges):
         r"""Set ranges for the parameters of the emulator.
 
+        Sets the internal class attribute defining the prior for the
+        parameters of the emulator.
+
         Parameters
         ----------
         ranges: dict
-            Dictionary containing the parameter ranges. Each of them is a list
-            with two entries, which correspond to the minimum and maximum
-            value of the parameter.
+            Dictionary containing the parameter ranges. Keys correspond to the
+            name of the parameters, while values are list with two entries,
+            which correspond to the minimum and maximum value of the parameter.
         """
         if self.param_ranges is None:
             self.param_ranges = {}
@@ -58,18 +65,19 @@ class Tables:
         r"""Generate parameter sample.
 
         The sample is built inside the specified parameter ranges and with the
-        given size. Depending on the value of the class attribute `validation`,
-        the sample is going to be generated using a Latin HyperCube (training)
-        or randomly across the hypervolume (validation).
+        given size. Depending on the value of the class attribute
+        **validation**, the sample is going to be generated using a Latin
+        HyperCube (training) or randomly across the hypervolume (validation).
 
         Parameters
         ----------
         ranges: dict
-            Dictionary containing the parameter ranges. Each of them is a list
-            with two entries, which correspond to the minimum and maximum
-            value of the parameter.
+            Dictionary containing the parameter ranges. Keys correspond to the
+            name of the parameters, while values are list with two entries,
+            which correspond to the minimum and maximum value of the parameter.
         n_samples: int
-            Size of the sample. `n_samples` points are going to be generated.
+            Size of the sample. **n_samples** points in the hypervolume defined
+            by the parameter ranges are going to be generated.
         n_trials: int, optional
             Number of resamplings of the Latin HyperCube when a training
             sample is requested. This is meant to obtain the best coverture of
@@ -85,12 +93,12 @@ class Tables:
             self.samples = lhs(self.n_params, samples=self.n_samples,
                                criterion='center')
             dist = cdist(self.samples, self.samples, metric='euclidean')
-            min_dist = np.amin(dist[dist > 0])
+            min_dist = np.amin(dist[dist > 0.0])
             for n in range(n_trials):
                 samples_new = lhs(self.n_params, samples=self.n_samples,
                                   criterion='center')
                 dist = cdist(samples_new, samples_new, metric='euclidean')
-                min_dist_new = np.amin(dist[dist > 0])
+                min_dist_new = np.amin(dist[dist > 0.0])
                 if (min_dist_new > min_dist):
                     min_dist = min_dist_new
                     self.samples = samples_new
@@ -104,6 +112,9 @@ class Tables:
     def save_samples(self, fname):
         r"""Save sample to file.
 
+        Saves the parameter sample stored as class attribute into an external
+        data file.
+
         Parameters
         ----------
         fname: str
@@ -114,23 +125,29 @@ class Tables:
     def load_samples(self, fname):
         r"""Load sample from file.
 
+        Loads a parameter sample from an external data file, and stores it
+        as a class attribute.
+
         Parameters
         ----------
         fname: str
-            Name of output file to be read.
+            Name of output file to read from.
         """
         self.samples = np.loadtxt(fname)
         self.n_samples = self.samples.shape[0]
 
     def assign_samples(self, samples_hdu):
-        r"""Read sample from HDU object.
+        r"""Read parameter sample from HDU object.
 
-        Reads sample from Header Data Unit and stores it as class attribute.
+        Reads parameter sample from a Header Data Unit object, and stores it
+        as class attribute. If the sample is meant for validation, determines
+        the parameters from the header of the HDU object, otherwise uses the
+        parameters defined as class attributes.
 
         Parameters
         ----------
         samples_hdu: astropy.io.fits.BinTableHDU
-            Header Data Unit containing the sample.
+            Header Data Unit containing the parameter sample.
         """
         self.n_samples = samples_hdu.header['NAXIS2']
         if self.validation:
@@ -146,14 +163,16 @@ class Tables:
                 self.samples[:, i] = samples_hdu.data[p]
 
     def assign_table(self, table_hdu, nk, nkloop):
-        r"""Read table from HDU object.
+        r"""Read model table from HDU object.
 
-        Reads table from Header Data Unit and stores it as class attribute.
+        Reads a model table from a Header Data Unit object, and stores it as
+        class attribute. If the sample is a training one, additionally calls
+        the routine to convert the model table into its transformed version.
 
         Parameters
         ----------
         table_hdu: astropy.io.fits.BinTableHDU
-            Header Data Unit containing the table.
+            Header Data Unit containing the model table.
         nk: int
             Number of :math:`k` bins of the table.
         nkloop: int
@@ -209,13 +228,13 @@ class Tables:
             raise KeyError('HDU table does not contain valid identifiers.')
 
     def get_flip_and_offset(self, table):
-        r"""Compute flip and offset for the rescaling of a table.
+        r"""Compute flip and offset to rescale an input model table.
 
         Parameters
         ----------
         table: numpy.ndarray
-            Table containing a given term as a function of :math:`k` (first
-            index) and the different parameter sample (second index).
+            Model table containing a given term as a function of :math:`k`
+            (first index) and the different parameter sample (second index).
 
         Returns
         -------
@@ -231,7 +250,7 @@ class Tables:
             flip.append(np.sign(table[i, idmax]))
             offset_list.append(np.abs(np.amin(flip[-1]*table[i, :])))
         if len(offset_list) == 0:
-            max_offset = 0.
+            max_offset = 0.0
         else:
             max_offset = max(offset_list)*1.1
         return flip, max_offset
@@ -239,14 +258,15 @@ class Tables:
     def transform(self, table, data_type):
         r"""Rescale the dynamical range of a table for the emulation.
 
-        Applies flip, offset, and rescales subtracting the mean and dividing
-        by the standard deviation of the considered quantity.
+        Applies flip, offset, and rescales the model table. This step is
+        performed by first taking the logarithm of the model table, and then
+        subtracting its mean and dividing by its standard deviation.
 
         Parameters
         ----------
         table: numpy.ndarray
-            Table containing a given term as a function of :math:`k` (first
-            index) and the different parameter sample (second index).
+            Model table containing a given term as a function of :math:`k`
+            (first index) and the different parameter sample (second index).
         data_type: str
             Type of the table that is passed as input. This is used as a
             keyword for the dictionary where the values of flip, offset,
@@ -262,7 +282,7 @@ class Tables:
                 self.get_flip_and_offset(table.T)
         else:
             self.flip[data_type] = np.ones(table.shape[1])
-            self.offset[data_type] = 0.
+            self.offset[data_type] = 0.0
         temp = np.log10(self.flip[data_type]*table+self.offset[data_type])
         self.mean[data_type] = np.mean(temp, axis=0)
         self.std[data_type] = np.std(temp, axis=0)
@@ -271,8 +291,8 @@ class Tables:
     def transform_inv(self, table, data_type):
         r"""Rescale back the dynamical range of a table.
 
-        Performs the inverse operations of **transform**. Needed to obtain
-        predictions from the emulator in the original metric.
+        Performs the inverse operations defined in the **transform** method.
+        Needed to obtain predictions from the emulator in the original metric.
 
         Parameters
         ----------
@@ -295,10 +315,14 @@ class Tables:
     def transform_emulator_data(self, data_type=None):
         r"""Rescale class attribute tables.
 
+        Transforms the class attribute model tables from the original metric
+        into the emulator one.
+
         Parameters
         ----------
         data_type: str or list, optional
-            Types of the tables which have to be rescaled.
+            Types of the tables which have to be rescaled. If *None*, trasform
+            the full set of model tables. Defaults to **None**.
         """
         if data_type is not None:
             data_type = ([data_type] if not isinstance(data_type, list)
@@ -347,7 +371,11 @@ class Tables:
                                                              data_type=ell)
 
     def convert_dictionary(self):
-        r"""Convert internal table, from dictionary to numpy.ndarray."""
+        r"""Convert format of internal tables.
+
+        Converts the format of the internal model tables, from dictionary
+        to numpy.ndarray.
+        """
         temp = np.zeros([self.n_samples, self.nk, 1+self.n_diagrams*3])
         temp[:, :, 0] = self.model['PL']
         for ell in [0, 2, 4]:
@@ -359,15 +387,24 @@ class Tables:
         self.model = temp
 
     def GPy_model(self, data_type):
-        r"""Run the Gaussian Regression model.
+        r"""Run the Gaussian Regression model to build the emulator.
 
-        Defines a Gaussian kernel for the covariance of the Gaussian process,
-        and train the emulator using the rescaled table as input.
+        Defines a kernel for the covariance of the Gaussian process, that is
+        obtained as a combination of a squared-exponential (i.e. gaussian),
+        Matérn, and white noise kernels (see the `GPy documentation page
+        <https://gpy.readthedocs.io/en/deploy/GPy.kern.html>`_ for more
+        detailed informations), and trains the emulator using the rescaled
+        model tables as input.
 
         Parameters
         ----------
         data_type: str
-            Type of the table that is used to build the emulator.
+            Type of the model table that is used to build the emulator.
+
+        Returns
+        -------
+        GPy_model: GPy.models.GPregression
+            Emulator object.
         """
         kernel = (GPy.kern.RBF(input_dim=self.n_params,
                                variance=np.var(
