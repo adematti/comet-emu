@@ -17,13 +17,40 @@ base_dir = os.path.join(os.path.dirname(__file__), "..")
 class PTEmu:
     r"""Main class for the emulator of the power spectrum multipoles.
 
-    The emulator makes use of evolution mapping (Sanchez 2020,
-    Sanchez et al 2021) to compress the information of evolution parameters
-    (e.g. :math:`h,\,\Omega_\mathrm{K},\,w_0,\,w_\mathrm{a},\,A_\mathrm{s},
-    \ldots`) into the single quantity :math:`\sigma_{12}`.
-    The latter, together with the parameters affecting the shape of the power
-    spectrum (e.g. :math:`\omega_\mathrm{b},\,\omega_\mathrm{c},\,
-    n_\mathrm{s},\ldots`), are used as base of the emulator.
+    The emulator makes use of evolution mapping (`Sanchez 2020
+    <https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511>`_,
+    `Sanchez et al 2021 <https://arxiv.org/abs/2108.12710>`_,) to compress
+    the information of evolution parameters :math:`\mathbf{\Theta_{e}}`
+    (e.g. :math:`h,\,\Omega_\mathrm{K},\,w_0,\,w_\mathrm{a},\,A_\mathrm{s},\,
+    \ldots`) into the single quantity :math:`\sigma_{12}`, defined as the rms
+    fluctuation of the linear density contrast :math:`\delta` within spheres
+    of radius :math:`R=8\,\mathrm{Mpc}`.
+
+    This parameter, together with the parameters affecting the shape of the
+    power spectrum :math:`\mathbf{\Theta_{s}}` (e.g.
+    :math:`\omega_\mathrm{b},\,\omega_\mathrm{c},\,n_\mathrm{s}`), and
+    the linear growth rate :math:`f`, are used as base of the emulator.
+
+    The redshift-dependency of the multipoles can also be treated similarly to
+    the impact that different evolution parameters have on the power spectrum,
+    that is, by a simple rescaling of the amplitude of the power spectrum in
+    order to match the desired value of :math:`\sigma_{12}`.
+
+    Internally to the emulator, the pair :math:`\left[k,P(k)\right]` is
+    expressed in :math:`\left[\mathrm{Mpc}^{-1},\mathrm{Mpc}^3\right]` units,
+    since this is the only set of units for which the evolution parameter
+    degeneracy is present. If the user wishes to use the more conventional
+    unit set :math:`\left[h\,\mathrm{Mpc}^{-1},h^{-3}\,\mathrm{Mpc}^3\right]`, they
+    can do so by specifying it in the proper class attribute flag. In this
+    case, the input/output are converted into :math:`\mathrm{Mpc}` units
+    before being used/returned.
+
+    Geometrical distortions (AP corrections) are included a posteriori without
+    the need of including them in the emulation. This process is carried out
+    by first reconstructing the full anisotropic 2d galaxy power spectrum
+    :math:`P_\mathrm{gg}(k,\mu)`, summing up all the even multipoles up to
+    :math:`\ell=6`, applying distortions to :math:`k` and :math:`\mu`, and then
+    projecting again over the Legendre polynomials.
     """
 
     def __init__(self, model, use_Mpc=True):
@@ -35,8 +62,8 @@ class PTEmu:
             Identifier of the selected model.
         use_Mpc: bool, optional
             Flag that determines if the input and output quantities are
-            specified in :math:`\mathrm{Mpc}` (True) or :math:`\mathrm{Mpc}/h`
-            (False) units. Defaults to True.
+            specified in :math:`\mathrm{Mpc}` (**True**) or
+            :math:`h^{-1}\mathrm{Mpc}` (**False**) units. Defaults to **True**.
         """
         self.bias_params_list = ['b1', 'b2', 'g2', 'g21', 'c0', 'c2', 'c4',
                                  'cnlo', 'N0', 'N20', 'N22']
@@ -61,13 +88,13 @@ class PTEmu:
                              'Pnoise_N22']
 
         self.use_Mpc = use_Mpc
-        self.nbar = 1.  # in units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
+        self.nbar = 1.0  # in units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
 
         self.training = {}
         self.validation = {}
 
         self.emu = {}
-        self.cosmo = Cosmology(0.3, 67)  # Initialise with arbitrary values
+        self.cosmo = Cosmology(0.3, 67.0)  # Initialise with arbitrary values
 
         self.Pk_lin = None
         self.Pk_ratios = {0: None, 2: None, 4: None}
@@ -119,25 +146,34 @@ class PTEmu:
                          validation=False):
         r"""Generate sample for training or validating the emulator.
 
+        Generates a parameter sample (with a Latin Hypercube for the training
+        and a random sample for the validation) within the selected prior and
+        with the given size. If the sample is meant for the training of the
+        emulator, then it is possible to specify how many resampling of the
+        Latin Hypercube are required (in order to find the best possible
+        coverture of the specific hypervolume).
+
         Parameters
         ----------
         type: str
             Type of sample, based on the quantity to emulate. Can be either
-            `SHAPE` or `FULL`.
+            `"SHAPE"` or `"FULL"`.
         ranges: dict
-            Dictionary containing the parameter ranges. Each of them is a list
+            Dictionary containing the parameter priors. Each of them is a list
             with two entries, which correspond to the minimum and maximum
-            value of the parameter.
+            value of the given parameter.
         n_samples: int
-            Size of the sample. `n_samples` points are going to be generated.
+            Size of the sample. **n_samples** points are going to be generated
+            in the specific hypervolume.
         n_trials: int, optional
             Number of resamplings of the Latin HyperCube when a training
             sample is requested. This is meant to obtain the best coverture of
             the hypervolume (with maxed minimum distance among points).
             Defaults to 0.
         validation: bool, optional
-            Flag to determine if the sample is for the training (False)
-            or the validation (True) of the emulator. Defaults to False.
+            Flag to determine if the sample is for the training (**False**)
+            or the validation (**True**) of the emulator.
+            Defaults to **False**.
         """
         if validation:
             self.validation[type].generate_samples(ranges, n_samples, n_trials)
@@ -147,16 +183,19 @@ class PTEmu:
     def save_samples(self, type, fname, validation=False):
         r"""Save a sample to file.
 
+        Saves a parameter sample to an external file.
+
         Parameters
         ----------
         type: str
             Type of sample, based on the quantity to emulate. Can be either
-            `SHAPE` or `FULL`.
+            `"SHAPE"` or `"FULL"`.
         fname: str
             Name of output file.
         validation: bool, optional
-            Flag to determine if the sample is for the training (False)
-            or the validation (True) of the emulator. Defaults to False.
+            Flag to determine if the sample is for the training (**False**)
+            or the validation (**True**) of the emulator.
+            Defaults to **False**.
         """
         if validation:
             self.validation[type].save_samples(fname)
@@ -166,26 +205,31 @@ class PTEmu:
     def init_params_dict(self):
         r"""Initialize params dictionary.
 
-        Sets up the internal class attribute which stores the model
-        parameters.
+        Sets up the internal class attribute which stores the complete list
+        of model parameters. This includes cosmological parameters as well as
+        biases, noises, counterterms, and other nuisance parameters.
         """
-        self.params = {p: 0. for p in self.params_list +
+        self.params = {p: 0.0 for p in self.params_list +
                        self.bias_params_list +
                        self.de_model_params_list['w0wa']}
-        self.params['w0'] = -1
-        self.params['alpha_tr'] = 1
-        self.params['alpha_lo'] = 1
+        self.params['w0'] = -1.0
+        self.params['alpha_tr'] = 1.0
+        self.params['alpha_lo'] = 1.0
 
     def load_emulator_data(self, fname, validation=False):
         r"""Load tables of the emulator.
 
+        Loads a fits file, reads the tables and stores them as class
+        attributes.
+
         Parameters
         ----------
         fname: str
-            Name of the output fits file to read.
+            Name of the output fits file to read from.
         validation: bool, optional
-            Flag to determine if the sample is for the training (False)
-            or the validation (True) of the emulator. Defaults to False.
+            Flag to determine if the sample is for the training (**False**)
+            or the validation (**True**) of the emulator.
+            Defaults to **False**.
         """
         hdul = fits.open(fname)
 
@@ -226,7 +270,7 @@ class PTEmu:
 
         if self.RSD_model == 'VDG_infty':
             self.RSD_params_list.append('avir')
-            self.params['avir'] = 0
+            self.params['avir'] = 0.0
 
         if validation:
             self.validation['FULL'].model = None
