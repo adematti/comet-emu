@@ -4,29 +4,33 @@ import numpy as np
 
 
 class MeasuredData:
-    r"""Class for handling data vectors and covariance matrices."""
+    r"""Class for handling data structures (data vectors and covariances)."""
 
     def __init__(self, **kwargs):
         r"""Class constructor.
 
-        Keywords argument can be specified from the Parameters list.
+        Keywords argument `kwargs` are summarised in the **Parameters** section
+        below. An instance of the class can be created without specifying any
+        of the keyword arguments, and subsequently updated with the **update**
+        method.
 
         Parameters
         ----------
         bins: numpy.ndarray, optional
-            Array containing the sampled :math:`k` positions.
+            Array containing the sampled wavemodes :math:`k`.
         signal: numpy.ndarray, optional
             Array containing the power spectrum multipoles :math:`P_{\ell}(k)`.
             If more than one multipole is provided, the first and second index
             of the array runs over the different :math:`k` and the different
-            multipole, respectively.
+            multipole :math:`\ell`, respectively.
         cov: numpy.ndarray, optional
-            Covariance matrix corresponding to `signal`. This must be a 2-d
-            array, whose blocks correspond to the auto- (along the diagonal)
-            and cross-covariances of the multipoles.
+            Covariance matrix corresponding to **signal**. The covariance is in
+            the form of a 2d array, whose blocks correspond to the auto-
+            (along the diagonal) and cross-covariances of the multipoles.
         theory_cov: bool, optional
             Flag to determine if the provided covariance matrix is theoretical
-            (`True`) or estimated from simulations (`False`). Defaults to True.
+            (**True**) or estimated from simulations (**False**). Defaults to
+            **True**.
         n_realizations: int, optional
             If the provided covariance is estimated from numerical simulations,
             this parameter is required, and specifies the total number of
@@ -60,24 +64,26 @@ class MeasuredData:
     def update(self, **kwargs):
         r"""Update the class with new data.
 
-        Keywords argument can be specified from the Parameters list.
+        Keywords argument `kwargs` are summarised in the **Parameters** section
+        below.
 
         Parameters
         ----------
         bins: numpy.ndarray, optional
-            Array containing the sampled :math:`k` positions.
+            Array containing the sampled wavemodes :math:`k`.
         signal: numpy.ndarray, optional
             Array containing the power spectrum multipoles :math:`P_{\ell}(k)`.
             If more than one multipole is provided, the first and second index
             of the array runs over the different :math:`k` and the different
-            multipole, respectively.
+            multipole :math:`\ell`, respectively.
         cov: numpy.ndarray, optional
-            Covariance matrix corresponding to `signal`. This must be a 2-d
-            array, whose blocks correspond to the auto- (along the diagonal)
-            and cross-covariances of the multipoles.
+            Covariance matrix corresponding to **signal**. The covariance is in
+            the form of a 2d array, whose blocks correspond to the auto-
+            (along the diagonal) and cross-covariances of the multipoles.
         theory_cov: bool, optional
             Flag to determine if the provided covariance matrix is theoretical
-            (`True`) or estimated from simulations (`False`). Defaults to True.
+            (**True**) or estimated from simulations (**False**). Defaults to
+            **True**.
         n_realizations: int, optional
             If the provided covariance is estimated from numerical simulations,
             this parameter is required, and specifies the total number of
@@ -113,7 +119,7 @@ class MeasuredData:
     def clear_data(self):
         r"""Clear the data.
 
-        Sets to `None` the class attributes.
+        Sets to **None** the class attributes.
         """
         self.bins = None
         self.signal = None
@@ -125,16 +131,19 @@ class MeasuredData:
     def set_kmax(self, kmax):
         r"""Set the maximum mode used in the computation of the :math:`\chi^2`.
 
-        In addition, the window function is applied to the data vectors and
-        the covariance matrix.
+        Sets the class attribute corresponding to the maximum wavemode
+        :math:`k_\mathrm{max}` to be used in the calculation of the
+        :math:`\chi^2`. In addition, it applies the corresponding scale cuts
+        to both data vectors and covariance matrix.
 
         Parameters
         ----------
         kmax: float or list
-            Maximum :math:`k` for the individual multipoles. If a `float` is
-            provided, this is used for all the multipolesof the data vector.
-            Otherwise, each entry of the `list` is specific for a given
-            multipole.
+            Maximum wavemode :math:`k_\mathrm{max}` for the individual
+            multipoles. If a **float** is provided, :math:`k_\mathrm{max}` is
+            assumed to be the same for all the multipoles selected by the user.
+            On the contrary, each entry of the **list** object is specific
+            for a given multipole.
         """
         if not isinstance(kmax, list):
             self.kmax = [kmax for i in range(self.n_ell)]
@@ -177,13 +186,23 @@ class MeasuredData:
         self.kmax_is_set = True
 
     def AHfactor(self, nbins):
-        r"""Compute the Anderson-Hartlap correction to the covariance matrix.
+        r"""Compute corrections to the inverse covariance matrix.
 
-        Returns 1 if the class attribute `theory_cov` is set to True.
+        Depending on the value of the **theory_cov** attribute, returns the
+        correction factor to the inverse covariance matrix (to take into
+        account the limited number of independent realizations, in case the
+        covariance is estimated from numerical simulations).
+
+        Returns 1 if the class attribute **theory_cov** is set to **True**.
         Otherwise, returns
 
-        .. math:: \frac{N_\mathrm{sim}-N_\mathrm{bins}-2}{N_\mathrm{sim}-1}
+        .. math:: \frac{N_\mathrm{sim}-N_\mathrm{bins}-2}{N_\mathrm{sim}-1}\,,
 
+        with :math:`N_\mathrm{sim}` and :math:`N_\mathrm{bins}` being the
+        number of independent realizations from which the covariance has been
+        estimated and the total number of bins at which it is sampled,
+        respectively (see `Hartlap 2007
+        <https://www.aanda.org/articles/aa/pdf/2007/10/aa6170-06.pdf>`_).
 
         Parameters
         ----------
@@ -194,13 +213,13 @@ class MeasuredData:
         Returns
         -------
         AHfactor: float
-            Andreson-Hartlap corrceting factor.
+            Correcting factor to the inverse covariance matrix.
         """
         return 1.0 if self.theory_cov else (self.n_realizations-nbins-2.0) \
             * 1.0/(self.n_realizations - 1.0)
 
     def get_signal(self, ell, kmax=None):
-        r"""Get data power spectrum multipole.
+        r"""Get power spectrum multipole from data sample.
 
         Returns the input data power spectrum multipole of order :math:`\ell`
         up to :math:`k_\mathrm{max}`.
@@ -209,10 +228,13 @@ class MeasuredData:
         ----------
         ell: int
             Specific multipole order :math:`\ell`.
-            Can be chosen from the list [0,2,4].
+            Can be chosen from the list [0,2,4], whose entries correspond to
+            monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`) and
+            hexadecapole (:math:`\ell=4`).
         kmax: float, optional
-            :math:`k_\mathrm{max}` up to which the multipole is provided. If
-            `None`, the corresponding class attribute is used instead.
+            Maximum wavemode :math:`k_\mathrm{max}` up to which the multipole
+            is provided. If **None**, the corresponding class attribute is
+            used instead.
 
         Returns
         -------
@@ -231,7 +253,7 @@ class MeasuredData:
         return self.signal_kmax[sum(self.nbins[:n]):sum(self.nbins[:n+1])]
 
     def get_std(self, ell, kmax=None):
-        r"""Get standard deviation of data power spectrum multipole.
+        r"""Get standard deviation of power spectrum multipole from sample.
 
         Returns the standard deviation of the input data power spectrum
         multipole of order :math:`\ell` up to :math:`k_\mathrm{max}`.
@@ -240,11 +262,13 @@ class MeasuredData:
         ----------
         ell: int
             Specific multipole order :math:`\ell`.
-            Can be chosen from the list [0,2,4].
+            Can be chosen from the list [0,2,4], whose entries correspond to
+            monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`) and
+            hexadecapole (:math:`\ell=4`).
         kmax: float, optional
-            :math:`k_\mathrm{max}` up to which the standard deviation
-            is provided. If `None`, the corresponding class attribute
-            is used instead.
+            Maximum wavemode  :math:`k_\mathrm{max}` up to which the standard
+            deviation is provided. If `None`, the corresponding class
+            attribute is used instead.
 
         Returns
         -------

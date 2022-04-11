@@ -459,7 +459,7 @@ class Cosmology:
             if self.flat and not self.relspecies:
                 a3 = 1.0/(1.0+z)**3
                 Dz = (5.0/6.0*betainc(5.0/6.0, 2.0/3.0,
-                                   self.Ode0*a3/(self.Om0+self.Ode0*a3)) *
+                                      self.Ode0*a3/(self.Om0+self.Ode0*a3)) *
                       (self.Om0 / self.Ode0)**(1.0 / 3.0) *
                       np.sqrt(1.0 + self.Om0 / (self.Ode0 * a3)) *
                       beta(5.0/6.0, 2.0/3.0))
