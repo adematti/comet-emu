@@ -40,8 +40,8 @@ class PTEmu:
     expressed in :math:`\left[\mathrm{Mpc}^{-1},\mathrm{Mpc}^3\right]` units,
     since this is the only set of units for which the evolution parameter
     degeneracy is present. If the user wishes to use the more conventional
-    unit set :math:`\left[h\,\mathrm{Mpc}^{-1},h^{-3}\,\mathrm{Mpc}^3\right]`, they
-    can do so by specifying it in the proper class attribute flag. In this
+    unit set :math:`\left[h\,\mathrm{Mpc}^{-1},h^{-3}\,\mathrm{Mpc}^3\right]`,
+    they can do so by specifying it in the proper class attribute flag. In this
     case, the input/output are converted into :math:`\mathrm{Mpc}` units
     before being used/returned.
 
@@ -220,7 +220,11 @@ class PTEmu:
         r"""Load tables of the emulator.
 
         Loads a fits file, reads the tables and stores them as class
-        attributes.
+        attributes, as instances of the **Tables** class. Additionally sets up
+        the internal dictionary that stores the full list of model parameters,
+        by calling **init_params_dict**. Determine if the emulator is for real-
+        or redshift-space, checking if the growth rate :math:`f` is part of the
+        parameter sample or not.
 
         Parameters
         ----------
@@ -291,16 +295,19 @@ class PTEmu:
     def train_emulator(self, max_f_eval=1000, num_restarts=5, data_type=None):
         r"""Train the emulator.
 
+        Calls the training method of the **Tables** objects that are stored as
+        class attributes.
+
         Parameters
         ----------
         max_f_eval: int, optional
-            Maximum number of function evaluation. Defaults to 1000.
+            Maximum number of function evaluations. Defaults to 1000.
         num_restarts: int, optional
-            Number of iterations of the Gaussian process.
+            Number of resamplings of the Gaussian process.
         data_type: str, optional
-            Type of the table that is used to train the emulator. If None,
-            it creates an emulator for all the tables that are stored as
-            class attributes. Defaults to None.
+            Type of the table that is used to train the emulator. If **None**,
+            it creates an emulator for all the tables that are stored as class
+            attributes. Defaults to **None**.
         """
         if data_type is None:
             ell_train = [0, 2, 4] if not self.real_space else [0]
@@ -328,14 +335,16 @@ class PTEmu:
     def save_emulator(self, fname_base, data_type=None):
         r"""Save the emulator to pickle format.
 
+        Saves the emulator objects to external files, in pickle formats.
+
         Parameters
         ----------
         fname_base: str
             Root name of the output pickle file.
         data_type: str, optional
-            Type of the table which refers to the output emulator. If None,
-            it saves the emulator for all the tables that are stored as
-            class attributes. Defaults to None.
+            Type of the table which refers to the output emulator. If **None**,
+            it saves the emulator for all the tables that are stored as class
+            attributes. Defaults to **None**.
         """
         if data_type is None:
             ell_train = [0, 2, 4] if not self.real_space else [0]
@@ -365,14 +374,17 @@ class PTEmu:
     def load_emulator(self, fname_base, data_type=None):
         r"""Load the emulator from pickle file.
 
+        Loads an emulator object from a file (pickle format) and adds it to the
+        internal dictionary containing the emulators.
+
         Parameters
         ----------
         fname_base: str
             Root name of the input pickle file.
         data_type: str, optional
-            Type of the table which refers to the input emulator. If None,
-            it loads the emulators for all the tables that are stored as
-            class attributes. Defaults to None.
+            Type of the table which refers to the input emulator. If **None**,
+            it loads the emulators for all the tables that are stored as class
+            attributes. Defaults to **None**.
         """
         if data_type is None:
             ell_train = [0, 2, 4] if not self.real_space else [0]
@@ -401,21 +413,21 @@ class PTEmu:
     def define_units(self, use_Mpc):
         r"""Define units for the power spectrum and number density.
 
-        Sets the internal class attribute `use_Mpc`, clears all the data
-        objects (if defined), and resets the number density to 1 in the set
-        of units corresponding to the input flag. The number density value
-        can be explicitly changed calling **define_nbar**.
+        Sets the internal class attribute **use_Mpc**, clears all the data
+        objects (if defined), and resets the number density to 1 in the units
+        corresponding to the input flag. The number density value can be
+        subsequently explicitly changed calling **define_nbar**.
 
         Parameters
         ----------
         use_Mpc: bool
             Flag that determines if the input and output quantities are
-            specified in :math:`\mathrm{Mpc}` (True) or :math:`\mathrm{Mpc}/h`
-            (False) units.
+            specified in :math:`\mathrm{Mpc}` (**True**) or
+            :math:`h^{-1}\,\mathrm{Mpc}` (**False**) units.
         """
         if use_Mpc != self.use_Mpc:
             self.use_Mpc = use_Mpc
-            self.nbar = 1.  # units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
+            self.nbar = 1.0  # units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
             for obs_id in self.data.keys():
                 self.data[obs_id].clear_data()
             self.splines_up_to_date = False
@@ -424,17 +436,19 @@ class PTEmu:
                   "defined) cleared.".format(nbar_unit))
 
     def define_nbar(self, nbar):
-        r"""Define number density.
+        r"""Define the number density of the sample.
 
-        Sets the internal class attribute `nbar` to the value provided as
-        input. The latter is intended to be in the current units of the
-        emulator, which can be specified at instanciation, or using the
-        method **define_units**.
+        Sets the internal class attribute **nbar** to the value provided as
+        input. The latter is intended to be in the set of units currently used
+        by the emulator, that can be specified at class instanciation, or using
+        the method **define_units**.
 
         Parameters
         ----------
         nbar: float
-            Number density of the sample.
+            Number density of the sample, in units of
+            :math:`\mathrm{Mpc}^{-3}` or :math:`h^3\,\mathrm{Mpc}^{-3}`,
+            depending on the value of the class attribute **use_Mpc**.
         """
         self.nbar = np.copy(nbar)
         self.splines_up_to_date = False
@@ -443,7 +457,7 @@ class PTEmu:
         r"""Define data sample.
 
         If the identifier of the data sample is not present in the internal
-        data dictionary, it assigns a new `MeasuredData` object to it.
+        data dictionary, it assigns a new **MeasuredData** object to it.
         Otherwise it updates the already existing entry.
 
         Parameters
@@ -451,8 +465,8 @@ class PTEmu:
         obs_id: str
             Identifier of the data sample.
         **kwargs: dict
-            Dictionary of keyword arguments (check doc of `MeasuredData`
-            class).
+            Dictionary of keyword arguments (check docs of **MeasuredData**
+            class for the list of allowed keyword arguments).
         """
         if obs_id not in self.data.keys():
             self.data[obs_id] = MeasuredData(**kwargs)
@@ -464,41 +478,41 @@ class PTEmu:
         r"""Define fiducial cosmology.
 
         Sets the internal attributes of the class to store the parameters of
-        the fiducial cosmology (required for AP corrections).
+        the fiducial cosmology, required for the calculation of the AP
+        corrections.
 
         Parameters
         ----------
         HDm_fid: list or numpy.ndarray, optional
             List containing the fiducial expansion factor :math:`H(z)` and
             angular diameter distance :math:`D_\mathrm{A}(z)`, in the units
-            defined at the class instanciation or with the method
-            **define_units**. If None, the method expects to find a dictionary
-            containing the parameters of the fiducial cosmology. Defaults to
-            None.
+            defined by the class attribute **use_Mpc**. If **None**, this
+            method expects to find a dictionary containing the parameters
+            of the fiducial cosmology (see **params_fid** below). Defaults to
+            **None**.
         params_fid: dict, optional
             Dictionary containing the parameters of the fiducial cosmology,
-            used to compute the expansion factor :math:`H(z)` and
-            angular diameter distance :math:`D_\mathrm{A}(z)`, in the units
-            defined at the class instanciation or with the method
-            **define_units**. Defaults to None.
+            used to compute the expansion factor :math:`H(z)` and angular
+            diameter distance :math:`D_\mathrm{A}(z)`, in the units defined
+            by the class attribute **use_Mpc**. Defaults to **None**.
         de_model: str, optional
             String that determines the dark energy equation of state. Can be
-            chosen form the list ['lambda', 'w0', 'w0wa'].
-            Deafults to 'lambda'.
+            chosen form the list [`"lambda"`, `"w0"`, `"w0wa"`].
+            Defaults to `"lambda"`.
         """
         if HDm_fid is not None:
             self.H_fid = HDm_fid[0]
             self.Dm_fid = HDm_fid[1]
         else:
             Om0 = (params_fid['wc']+params_fid['wb'])/params_fid['h']**2
-            H0 = params_fid['h']*100
-            Ok0 = 0 if 'Ok' not in params_fid else params_fid['Ok']
+            H0 = params_fid['h']*100.0
+            Ok0 = 0.0 if 'Ok' not in params_fid else params_fid['Ok']
             if de_model == 'lambda':
-                w0 = -1
-                wa = 0
+                w0 = -1.0
+                wa = 0.0
             elif de_model == 'w0':
                 w0 = params_fid['w0']
-                wa = 0
+                wa = 0.0
             elif de_model == 'wa':
                 w0 = params_fid['w0']
                 wa = params_fid['wa']
@@ -513,19 +527,21 @@ class PTEmu:
         r"""Update parameters of the emulator.
 
         Sets the internal attributes of the class to store the parameters
-        of the emulator.
+        of the emulator, based on the input argument, and resets to **None**
+        the internal dictionary containing the model ingredients.
 
         Parameters
         ----------
         params: dict
-            Dictionary containing the list of parameters which are internally
-            used by the emulator. The keywords of the dictionary specify the
-            name of the parameters, while the values specify the values of the
-            parameters.
+            Dictionary containing the list of total model parameters which are
+            internally used by the emulator. The keyword/value pairs of the
+            dictionary specify the names and the values of the parameters,
+            respectively.
         de_model: str, optional
             String that determines the dark energy equation of state. Can be
-            chosen form the list ['lambda', 'w0', 'w0wa'].
-            Deafults to None.
+            chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
+            the standard cosmological parameters, or be left undefined to use
+            only :math:`\sigma_{12}`. Defaults to **None**.
         """
         try:
             if de_model is None and self.use_Mpc:
@@ -533,15 +549,15 @@ class PTEmu:
                                           in self.params_list])
                 for p in self.params_list:
                     self.params[p] = params[p]
-                self.params['As'] = 0.
-                self.params['z'] = 0.
+                self.params['As'] = 0.0
+                self.params['z'] = 0.0
             elif de_model is None and not self.use_Mpc:
                 emu_params_updated = any([params[p] != self.params[p] for p
                                           in self.params_list+['h']])
                 for p in self.params_list+['h']:
                     self.params[p] = params[p]
-                self.params['As'] = 0.
-                self.params['z'] = 0.
+                self.params['As'] = 0.0
+                self.params['z'] = 0.0
             else:
                 expected_params = self.params_shape_list \
                                   + self.de_model_params_list[de_model]
@@ -563,7 +579,7 @@ class PTEmu:
             if p in params.keys():
                 self.params[p] = params[p]
             else:
-                self.params[p] = 0.
+                self.params[p] = 0.0
 
         return emu_params_updated
 
@@ -575,23 +591,24 @@ class PTEmu:
         Parameters
         ----------
         params: dict
-            Dictionary containing the list of parameters which are internally
-            used by the emulator. The keywords of the dictionary specify the
-            name of the parameters, while the values specify the values of the
-            parameters.
+            Dictionary containing the list of total model parameters which are
+            internally used by the emulator. The keyword/value pairs of the
+            dictionary specify the names and the values of the parameters,
+            respectively.
         de_model: str, optional
             String that determines the dark energy equation of state. Can be
-            chosen form the list ['lambda', 'w0', 'w0wa'].
-            Defaults to None.
+            chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
+            the standard cosmological parameters, or be left undefined to use
+            only :math:`\sigma_{12}`. Defaults to **None**.
         alpha_tr_lo: list or numpy.ndarray, optional
             List containing the user-provided AP parameters, in the form
             :math:`(\alpha_\perp, \alpha_\parallel)`. If provided, prevents
             computation from correct formulas (ratios of expansion factors and
-            angular diameter distance). Defaults to None.
+            angular diameter distance). Defaults to **None**.
         """
         if de_model is not None and alpha_tr_lo is None:
             Om0 = (self.params['wc']+self.params['wb'])/self.params['h']**2
-            H0 = 100*self.params['h']
+            H0 = 100.0*self.params['h']
             self.cosmo.update_cosmology(
                 Om0=Om0, H0=H0, Ok0=self.params['Ok'],
                 de_model=de_model, w0=self.params['w0'], wa=self.params['wa'])
@@ -612,7 +629,7 @@ class PTEmu:
             self.params['alpha_tr'] = params['alpha_tr']
 
     def get_bias_coeff(self, ell):
-        r"""Get bias coefficients for the emulated terms of given multipole.
+        r"""Get bias coefficients for the emulated terms of a given multipole.
 
         Each term of the :math:`P_{\ell}` expansion is multiplied by a
         combination of bias parameters. This method returns such
@@ -621,8 +638,10 @@ class PTEmu:
         Parameters
         ----------
         ell: int
-            Order :math:`\ell` of the selected multipole.
-            Can be chosen from the list [0,2,4].
+            Specific multipole order :math:`\ell`.
+            Can be chosen from the list [0,2,4], whose entries correspond to
+            monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`) and
+            hexadecapole (:math:`\ell=4`).
 
         Returns
         -------
@@ -634,12 +653,23 @@ class PTEmu:
             .. math::
                 :nowrap:
 
-                    \begin{gather*}
-                    [b_1^2, b_1, 1, c_\ell, b_1^2c_\mathrm{nlo},
-                    b_1c_\mathrm{nlo}, c_\mathrm{nlo}, b_1^2, \\
-                    b_1b_2, b_1\gamma_2, b_1\gamma_{21}, b_2^2, b_2\gamma_2,
-                    \gamma_2^2, b_2, \gamma_2, \gamma_{21}]
-                    \end{gather*}
+                    \begin{flalign*}
+                        & P_{\delta\delta}^\mathrm{tree} \rightarrow b_1^2 \\
+                        & [P_{\delta\theta}^\mathrm{tree+1\mbox{-}loop},\: \
+                        P_{\theta\theta}^\mathrm{tree+1\mbox{-}loop}] \
+                        \rightarrow [b_1,\: 1] \\
+                        & P_{\mathrm{ctr},k^2} \rightarrow c_\ell \\
+                        & P_{\mathrm{ctr},k^4} \rightarrow \
+                        [b_1^2\,c_\mathrm{nlo},\: b_1\,c_\mathrm{nlo},\: \
+                        c_\mathrm{nlo}] \\
+                        & P_{\delta\delta}^\mathrm{1\mbox{-}loop} \
+                        \rightarrow b_1^2 \\
+                        & P_{b_\mathrm{X}b_\mathrm{Y}} \rightarrow [b_1\,\: \
+                        b_2,\: b_1\,\gamma_2,\: b_1\,\gamma_{21},\: \
+                        b_2^2,\: b_2\,\gamma_2,\: \gamma_2^2,\: b_2,\: \
+                        \gamma_2,\: \gamma_{21}]
+                    \end{flalign*}
+
         """
         b1 = self.params['b1']
         b2 = self.params['b2']
@@ -656,36 +686,39 @@ class PTEmu:
                          b2*g2, g2**2, b2, g2, g21])
 
     def get_bias_coeff_for_P6(self):
-        r"""Get bias coefficients for the emulated terms of octopole.
+        r"""Get bias coefficients for the emulated terms of the octopole.
 
         Differently from the lower-order multipoles :math:`P_{0,2,4}`, the
         shape parameters of :math:`P_6` are kept fixed to the best values
         from Planck 2018 (TT+TE+EE), while each of the terms is rescaled by
-        the current value of the growth rate and :math:`\sigma_{12}`.
-        Each term of the :math:`P_6` expansion is multiplied by a
-        combination of growth rate and bias parameters. This method
-        returns such combinations in an array format.
+        the current value of the growth rate :math:`f` and :math:`\sigma_{12}`.
+        Each term of the :math:`P_6` expansion is therefore multiplied by a
+        combination of growth rate and bias parameters. This method returns
+        such combinations in an array format.
 
         Returns
         -------
         params_comb: numpy.ndarray
             Combinations of bias parameters that multiply each term of the
-            expansion of the multipole of order :math:`\ell`. The output
-            corresponds to
+            expansion of the multipole of order 6. The output corresponds to
 
             .. math::
                 :nowrap:
 
-                    \begin{gather*}
-                    [b_1^2, b_1f, f^2, b_1^2, b_1^2f, b_1^2f^2, b_1f,
-                    b_1f^2, \\
-                    b_1f^3, f^2, f^3, f^4, b_1b_2, b_1b_2f, b_1\gamma_2,
-                    b_1\gamma_2f, \\
-                    b_1\gamma_{21}, b_2^2, b_2\gamma_2, \gamma_2^2, b_2f,
-                    b_2f^2, \gamma_2f, \gamma_2f^2, \\
-                    \gamma_{21}f, b_1^2c_\mathrm{nlo}f^4, b_1c_\mathrm{nlo}f^5,
-                    c_\mathrm{nlo}f^6]
-                    \end{gather*}
+                    \begin{flalign*}
+                    &P^\mathrm{tree}\rightarrow[b_1^2,\: f\,b_1,\: f^2] \\
+                    &P^\mathrm{1\mbox{-}loop}\rightarrow[b_1^2,\: f\,b_1^2,\
+                    \: f^2\,b_1^2,\: f\,b_1,\: f^2\,b_1,\: f^3\,b_1,\: f^2,\: \
+                    f^3,\: f^4, \\
+                    &\hspace{2.3cm} b_1\,b_2,\: f\,b_1\,b_2,\: b_1\,\gamma_2, \
+                    \: f\,b_1\,\gamma_2,\: b_1\,\gamma_{21},\: b_2^2,\: \
+                    b_2\,\gamma_2, \\
+                    &\hspace{2.3cm} \gamma_2^2,\: f\,b_2,\: f^2\,b_2,\: \
+                    f\,\gamma_2,\: f^2\,\gamma_2,\: f\,\gamma_{21}] \\
+                    &P_{\mathrm{ctr},k^4}\rightarrow[f^4\,b_1^2\, \
+                    c_\mathrm{nlo},\: f^5\,b_1\,c_\mathrm{nlo},\: \
+                    f^6\,c_\mathrm{nlo}]
+                    \end{flalign*}
         """
         b1 = self.params['b1']
         b2 = self.params['b2']
