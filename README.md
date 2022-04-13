@@ -2,11 +2,12 @@
 
 | | |
 | ---      | ---      |
-| Author:  |  [Source code at GitLab](https://gitlab.com/aegge/pt-emulator)  |
-| Documentation: | [Documentation at Readthedocs](https://gitlab.com/aegge/pt-emulator)  |
-| Installation:  |  `pip install comet`       |
+| **Author**:  |  Alex E. et al. |
+| **Source**  |  [Source code at GitLab](https://gitlab.com/aegge/pt-emulator)  |
+| **Documentation**: | [Documentation at Readthedocs](https://gitlab.com/aegge/pt-emulator)  |
+| **Installation**:  |  `pip install comet`       |
 
-**COMET** - Cosmological Observables Modelled with/by/from Emulated Theory.
+:dizzy: **COMET** - Cosmological Observables Modelled with/by/from Emulated Theory.
 
 ## Getting started
 
