@@ -61,6 +61,7 @@ env.bak/
 venv.bak/
 
 # Data files
-source/data/models
-source/data/tables
+comet/data_dir/models
+comet/data_dir/tables
 testscript.py
+.DS_Store
