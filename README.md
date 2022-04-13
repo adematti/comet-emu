@@ -1,11 +1,13 @@
-Give a Welcome to the *COMET*
-===================================================
-:Author: Alex E. et al.
+# Give a Welcome to the *COMET*
 
-:Source: `Source code at GitHub <https://gitlab.com/aegge/pt-emulator>`_
+| | |
+| ---      | ---      |
+| **Author**:  |  Alex E. et al. |
+| **Source**  |  [Source code at GitLab](https://gitlab.com/aegge/pt-emulator)  |
+| **Documentation**: | [Documentation at Readthedocs](https://gitlab.com/aegge/pt-emulator)  |
+| **Installation**:  |  `pip install comet`       |
 
-:Documentation: `Documentation at Readthedocs <https://cobaya.readthedocs.org>`_
-
+:dizzy: **COMET** - Cosmological Observables Modelled with/by/from Emulated Theory.
 
 ## Getting started
 
