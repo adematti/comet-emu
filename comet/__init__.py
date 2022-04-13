@@ -54,3 +54,6 @@ def download_data(download_dir):
 
 
 download_data(base_dir)
+
+if __name__ == '__main__':
+    comet=comet()
