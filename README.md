@@ -1,5 +1,6 @@
 # Give a Welcome to the *COMET*
 
+| | |
 | ---      | ---      |
 | Author:  |  [Source code at GitLab](https://gitlab.com/aegge/pt-emulator)  |
 | Documentation: | [Documentation at Readthedocs](https://gitlab.com/aegge/pt-emulator)  |
