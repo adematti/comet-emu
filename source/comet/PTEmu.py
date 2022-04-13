@@ -655,18 +655,19 @@ class PTEmu:
 
                     \begin{flalign*}
                         & P_{\delta\delta}^\mathrm{tree} \rightarrow b_1^2 \\
-                        & [P_{\delta\theta}^\mathrm{tree+1\mbox{-}loop},\: \
-                        P_{\theta\theta}^\mathrm{tree+1\mbox{-}loop}] \
-                        \rightarrow [b_1,\: 1] \\
+                        & P_{\delta\theta}^\mathrm{tree+1\mbox{-}loop} \
+                        \rightarrow b_1 \\
+                        & P_{\theta\theta}^\mathrm{tree+1\mbox{-}loop} \
+                        \rightarrow 1 \\
                         & P_{\mathrm{ctr},k^2} \rightarrow c_\ell \\
                         & P_{\mathrm{ctr},k^4} \rightarrow \
-                        [b_1^2\,c_\mathrm{nlo},\: b_1\,c_\mathrm{nlo},\: \
+                        [b_1^2c_\mathrm{nlo},\: b_1c_\mathrm{nlo},\: \
                         c_\mathrm{nlo}] \\
                         & P_{\delta\delta}^\mathrm{1\mbox{-}loop} \
                         \rightarrow b_1^2 \\
-                        & P_{b_\mathrm{X}b_\mathrm{Y}} \rightarrow [b_1\,\: \
-                        b_2,\: b_1\,\gamma_2,\: b_1\,\gamma_{21},\: \
-                        b_2^2,\: b_2\,\gamma_2,\: \gamma_2^2,\: b_2,\: \
+                        & P_{b_\mathrm{X}b_\mathrm{Y}} \rightarrow [b_1b_2, \
+                        \: b_1\gamma_2,\: b_1\gamma_{21},\: \
+                        b_2^2,\: b_2\gamma_2,\: \gamma_2^2,\: b_2,\: \
                         \gamma_2,\: \gamma_{21}]
                     \end{flalign*}
 
@@ -690,11 +691,11 @@ class PTEmu:
 
         Differently from the lower-order multipoles :math:`P_{0,2,4}`, the
         shape parameters of :math:`P_6` are kept fixed to the best values
-        from Planck 2018 (TT+TE+EE), while each of the terms is rescaled by
-        the current value of the growth rate :math:`f` and :math:`\sigma_{12}`.
-        Each term of the :math:`P_6` expansion is therefore multiplied by a
-        combination of growth rate and bias parameters. This method returns
-        such combinations in an array format.
+        from Planck 2018 (TT+TE+EE+lowE+lensing), while each of the terms is
+        rescaled by the current value of the growth rate :math:`f` and
+        :math:`\sigma_{12}`. Each term of the :math:`P_6` expansion is
+        therefore multiplied by a combination of growth rate and bias
+        parameters. This method returns such combinations in an array format.
 
         Returns
         -------
@@ -706,18 +707,18 @@ class PTEmu:
                 :nowrap:
 
                     \begin{flalign*}
-                    &P^\mathrm{tree}\rightarrow[b_1^2,\: f\,b_1,\: f^2] \\
-                    &P^\mathrm{1\mbox{-}loop}\rightarrow[b_1^2,\: f\,b_1^2,\
-                    \: f^2\,b_1^2,\: f\,b_1,\: f^2\,b_1,\: f^3\,b_1,\: f^2,\: \
+                    &P^\mathrm{tree}\rightarrow[b_1^2,\: fb_1,\: f^2] \\
+                    &P^\mathrm{1\mbox{-}loop}\rightarrow[b_1^2,\: fb_1^2,\
+                    \: f^2b_1^2,\: fb_1,\: f^2b_1,\: f^3b_1,\: f^2,\: \
                     f^3,\: f^4, \\
-                    &\hspace{2.3cm} b_1\,b_2,\: f\,b_1\,b_2,\: b_1\,\gamma_2, \
-                    \: f\,b_1\,\gamma_2,\: b_1\,\gamma_{21},\: b_2^2,\: \
-                    b_2\,\gamma_2, \\
-                    &\hspace{2.3cm} \gamma_2^2,\: f\,b_2,\: f^2\,b_2,\: \
-                    f\,\gamma_2,\: f^2\,\gamma_2,\: f\,\gamma_{21}] \\
-                    &P_{\mathrm{ctr},k^4}\rightarrow[f^4\,b_1^2\, \
-                    c_\mathrm{nlo},\: f^5\,b_1\,c_\mathrm{nlo},\: \
-                    f^6\,c_\mathrm{nlo}]
+                    &\hspace{2.3cm} b_1b_2,\: fb_1b_2,\: b_1\gamma_2, \
+                    \: fb_1\gamma_2,\: b_1\gamma_{21},\: b_2^2,\: \
+                    b_2\gamma_2, \\
+                    &\hspace{2.3cm} \gamma_2^2,\: fb_2,\: f^2b_2,\: \
+                    f\gamma_2,\: f^2\gamma_2,\: f\gamma_{21}] \\
+                    &P_{\mathrm{ctr},k^4}\rightarrow[f^4b_1^2 \
+                    c_\mathrm{nlo},\: f^5b_1c_\mathrm{nlo},\: \
+                    f^6c_\mathrm{nlo}]
                     \end{flalign*}
         """
         b1 = self.params['b1']
@@ -753,27 +754,41 @@ class PTEmu:
 
         In order to speed up the evaluation of the likelihood, the total
         :math:`\chi^2` is factorised into separate contributions scaling with
-        different combinations of the bias and shot-noise parameters. This
-        method returns such combinations in an array format.
+        different combinations of the bias and shot-noise parameters (the
+        latter are expressed in units of the sample mean number density
+        :math:`\bar{n}`). This method returns such combinations in an array
+        format.
 
         Returns
         -------
         params_comb: numpy.ndarray
-            Combinations of bias parameters that multiply each term of the
-            expansion of the multipole of order :math:`\ell`. The output
-            corresponds to
+            Combinations of bias and noise parameters that multiply each term
+            of the factorisation of the total :math:`\chi^2` into individual
+            terms. The output correpsonds to
 
             .. math::
                 :nowrap:
 
-                    \begin{gather*}
-                    [b_1^2, b_1, 1, c_0, c_2, c_4, b_1^2c_\mathrm{nlo},
-                    b_1c_\mathrm{nlo}, \\
-                    c_\mathrm{nlo}, b_1^2, b_1b_2, b_1\gamma_2, b_1\gamma_{21},
-                    b_2^2, b_2\gamma_2, \gamma_2^2, \\
-                    b_2, \gamma_2, \gamma_{21}, N_0/\bar{n},
-                    N_{20}/\bar{n}, N_{22}/\bar{n}].
-                    \end{gather*}
+                    \begin{flalign*}
+                        & P_{\delta\delta}^\mathrm{tree} \rightarrow b_1^2 \\
+                        & P_{\delta\theta}^\mathrm{tree+1\mbox{-}loop} \
+                        \rightarrow b_1 \\
+                        & P_{\theta\theta}^\mathrm{tree+1\mbox{-}loop} \
+                        \rightarrow 1 \\
+                        & P_{\mathrm{ctr},k^2} \rightarrow [c_0,\: c_2,\: \
+                        c_4] \\
+                        & P_{\mathrm{ctr},k^4} \rightarrow \
+                        [b_1^2c_\mathrm{nlo},\: b_1c_\mathrm{nlo},\: \
+                        c_\mathrm{nlo}] \\
+                        & P_{\delta\delta}^\mathrm{1\mbox{-}loop} \
+                        \rightarrow b_1^2 \\
+                        & P_{b_\mathrm{X}b_\mathrm{Y}} \rightarrow [b_1b_2, \
+                        \: b_1\gamma_2,\: b_1\gamma_{21},\: \
+                        b_2^2,\: b_2\gamma_2,\: \gamma_2^2,\: b_2,\: \
+                        \gamma_2,\: \gamma_{21}] \\
+                        & P_\mathrm{noise} \rightarrow [N_0/\bar{n},\: \
+                        N_{20}/\bar{n},\: N_{22}/\bar{n}]
+                    \end{flalign*}
         """
         b1 = self.params['b1']
         b2 = self.params['b2']
@@ -805,8 +820,8 @@ class PTEmu:
         Each term of the :math:`P_{\ell}` expansion is multiplied by a
         combination of bias parameters. This method returns such
         combinations in an array format. Differently from **get_bias_coeff**,
-        this method returns all the counterterms. Meant for validation
-        purposes.
+        this method does not require the order of the multipole as input, and
+        returns all the counterterms. Meant for validation purposes.
 
         Returns
         -------
@@ -817,13 +832,24 @@ class PTEmu:
             .. math::
                 :nowrap:
 
-                    \begin{gather*}
-                    [b_1^2, b_1, 1, c_0, c_2, c_4, b_1^2c_\mathrm{nlo},
-                    b_1c_\mathrm{nlo}, \\
-                    c_\mathrm{nlo}, b_1^2, b_1b_2, b_1\gamma_2, b_1\gamma_{21},
-                    b_2^2, b_2\gamma_2, \gamma_2^2, \\
-                    b_2, \gamma_2, \gamma_{21}]
-                    \end{gather*}
+                    \begin{flalign*}
+                        & P_{\delta\delta}^\mathrm{tree} \rightarrow b_1^2 \\
+                        & P_{\delta\theta}^\mathrm{tree+1\mbox{-}loop} \
+                        \rightarrow b_1 \\
+                        & P_{\theta\theta}^\mathrm{tree+1\mbox{-}loop} \
+                        \rightarrow 1 \\
+                        & P_{\mathrm{ctr},k^2} \rightarrow [c_0,\: c_2\, \
+                        \: c_4] \\
+                        & P_{\mathrm{ctr},k^4} \rightarrow \
+                        [b_1^2c_\mathrm{nlo},\: b_1c_\mathrm{nlo},\: \
+                        c_\mathrm{nlo}] \\
+                        & P_{\delta\delta}^\mathrm{1\mbox{-}loop} \
+                        \rightarrow b_1^2 \\
+                        & P_{b_\mathrm{X}b_\mathrm{Y}} \rightarrow [b_1b_2, \
+                        \: b_1\gamma_2,\: b_1\gamma_{21},\: \
+                        b_2^2,\: b_2\gamma_2,\: \gamma_2^2,\: b_2,\: \
+                        \gamma_2,\: \gamma_{21}]
+                    \end{flalign*}
         """
         b1 = self.params['b1']
         b2 = self.params['b2']
@@ -847,23 +873,37 @@ class PTEmu:
         r"""Evaluate the emulators for the different terms.
 
         Sets up the internal parameters of the class, and evaluate the
-        emulators for the various ingredients of the model. The latters are
+        emulators for the various ingredients of the model, that are then
         stored as class attributes.
+
+        The list of emulated quantities comprises the linear power spectrum
+        :math:`P_\mathrm{L}(k)` (function of the shape parameters
+        :math:`\mathbf{\Theta_{s}}`), the value of :math:`\sigma_{12}`
+        (function of the shape parameters :math:`\mathbf{\Theta_{s}}`), and all
+        the integral tables consisting of ratios between individual
+        contributions to the one-loop galaxy power spectrum and the linear one
+        (function of shape parameters :math:`\mathbf{\Theta_{s}}`, the growth
+        rate :math:`f`, and :math:`\sigma_{12}`). For the `VDG_infty` model, an
+        additional emulator is evaluated to obtain the value of the pairwise
+        velocity dispersion, i.e. :math:`\sigma_\mathrm{v}`.
 
         Parameters
         ----------
         params: dict
-            Dictionary containing the list of parameters which are internally
-            used by the emulator. The keywords of the dictionary specify the
-            name of the parameters, while the values specify the values of the
-            parameters.
+            Dictionary containing the list of total model parameters which are
+            internally used by the emulator. The keyword/value pairs of the
+            dictionary specify the names and the values of the parameters,
+            respectively.
         ell: list or numpy.ndarray
             Specific multipole order :math:`\ell`.
-            Can be chosen from the list [0,2,4].
+            Can be chosen from the list [0,2,4], whose entries correspond to
+            monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`) and
+            hexadecapole (:math:`\ell=4`).
         de_model: str, optional
             String that determines the dark energy equation of state. Can be
-            chosen form the list ['lambda', 'w0', 'w0wa'].
-            Deafults to None.
+            chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
+            the standard cosmological parameters, or be left undefined to use
+            only :math:`\sigma_{12}`. Defaults to **None**.
         """
         emu_params_updated = self.update_params(params, de_model=de_model)
         params_shape = np.array(
@@ -904,12 +944,12 @@ class PTEmu:
                 # parameters + growth rate
                 Om0_fid = (self.params['wc']+self.params['wb']) \
                     / self.emu_LCDM_params['h']**2
-                H0_fid = 100*self.emu_LCDM_params['h']
+                H0_fid = 100.0*self.emu_LCDM_params['h']
                 self.cosmo.update_cosmology(Om0=Om0_fid, H0=H0_fid)
                 Dfid = self.cosmo.growth_factor(self.emu_LCDM_params['z'])
 
                 Om0 = (self.params['wc']+self.params['wb'])/self.params['h']**2
-                H0 = 100*self.params['h']
+                H0 = 100.0*self.params['h']
                 self.cosmo.update_cosmology(
                     Om0=Om0, H0=H0, Ok0=self.params['Ok'],
                     de_model=de_model, w0=self.params['w0'],
@@ -942,14 +982,16 @@ class PTEmu:
     def W_kurt(self, k, mu):
         r"""Large scale limit of the velocity difference generating function.
 
+        Method used exclusively if the `VDG_infty` model is specified.
+
         In the large scale limit, :math:`r\rightarrow\infty`, the velocity
         difference generating function :math:`W_\mathrm{G}` becomes
-        scale-indepentent, with a gaussian limit given by
+        scale-independent, with a gaussian limit given by
 
         .. math::
             W_\infty(\lambda)=e^{-\lambda^2\sigma_\mathrm{v}^2},
 
-        with :math:`\lambda=fk\mu`, and :math:`\sigma_\mathrm{v}` is the
+        where :math:`\lambda=fk\mu`, and :math:`\sigma_\mathrm{v}` is the
         pairwise velocity dispersion. This method returns a modified version
         of the gaussian limit, which also allows for non-zero kurtosis of the
         pairwise velocity distribution,
@@ -959,7 +1001,9 @@ class PTEmu:
             e^{-\frac{\lambda^2\sigma_\mathrm{v}^2}
             {1+a_\mathrm{vir}^2\lambda^2}},
 
-        where :math:`a_\mathrm{vir}` is a free parameter of the model.
+        where :math:`a_\mathrm{vir}` is a free parameter of the model, that can
+        be specified in the list of model parameters when instantiating or
+        updating the class.
 
         Parameters
         ----------
@@ -976,24 +1020,28 @@ class PTEmu:
             scale limit.
         """
         t1 = (self.params['f']*k*mu)**2
-        t2 = 1. + t1*self.params['avir']**2
-        return 1./np.sqrt(t2)*np.exp(-t1*self.params['sv']**2/t2)
+        t2 = 1.0 + t1*self.params['avir']**2
+        return 1.0/np.sqrt(t2)*np.exp(-t1*self.params['sv']**2/t2)
 
     def build_Pell_spline(self, Pell, ell):
         r"""Build spline object for power spectrum multipoles.
 
         Generates a cubic spline object for the specified power spectrum
-        multipole, and stores it as class attribute.
+        multipole, including the computation of effective indexes for the low-
+        and high-:math:`k` tails of the multipole, and stores it as class
+        attribute.
 
         Parameters
         ----------
         Pell: list or numpy.ndarray
             Array containing the power spectrum multipole of order
             :math:`\ell`, evaluated at the wavemodes defined by the class
-            attribute `k_table`.
+            attribute **k_table**.
         ell: int
             Specific multipole order :math:`\ell`.
-            Can be chosen from the list [0,2,4].
+            Can be chosen from the list [0,2,4,6], whose entries correspond to
+            monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`),
+            hexadecapole (:math:`\ell=4`) and octopole (:math:`\ell=6`).
         """
         id_min = 0 if not ell == 6 else self.nk-self.nkloop
         if self.use_Mpc:
@@ -1065,10 +1113,12 @@ class PTEmu:
         Pell: list or numpy.ndarray
             Array containing the power spectrum multipole of order
             :math:`\ell`, evaluated at the wavemodes defined by the class
-            attribute `k_table`.
+            attribute **k_table**.
         ell: int
             Specific multipole order :math:`\ell`.
-            Can be chosen from the list [0,2,4].
+            Can be chosen from the list [0,2,4,6], whose entries correspond to
+            monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`),
+            hexadecapole (:math:`\ell=4`) and octopole (:math:`\ell=6`).
         """
         id_min = 0 if not ell == 6 else self.nk-self.nkloop
         if self.use_Mpc:
@@ -1088,8 +1138,8 @@ class PTEmu:
             self.neff_max[ell] = dlP_max/dlk_max
         else:
             Pell *= self.params['h']**3
-            hfac = 1./self.emu_LCDM_params['h'] if ell != 6 \
-                else 1./self.params['h']
+            hfac = 1.0/self.emu_LCDM_params['h'] if ell != 6 \
+                else 1.0/self.params['h']
             self.Pell_spline[ell] = interp1d(
                 self.k_table*hfac, Pell, kind='cubic')
             self.Pell_min[ell] = Pell[id_min]
@@ -1106,13 +1156,27 @@ class PTEmu:
     def eval_Pell_spline(self, k, ell):
         r"""Evaluate the spline of the specified power spectrum multipole.
 
+        Calls the spline object stored as class attribute for the power
+        spectrum multipole of given order :math:`\ell` on the input wavemodes
+        :math:`k`. The called interpolator results in a cubic spline or in a
+        power-law extrapolation, depending if the value of :math:`k` is within
+        or outside the original boundary spcified by the training table.
+
         Parameters
         ----------
-        k: float
-            Value of the warningavemode :math:`k`.
+        k: numpy.ndarray
+            Values of the requested wavemodes :math:`k`.
         ell: int
             Specific multipole order :math:`\ell`.
-            Can be chosen from the list [0,2,4].
+            Can be chosen from the list [0,2,4,6], whose entries correspond to
+            monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`),
+            hexadecapole (:math:`\ell=4`) and octopole (:math:`\ell=6`).
+
+        Returns
+        -------
+        spline: numpy.ndarray
+            Interpolated power spectrum multipole of order :math:`\ell` at the
+            requested wavemodes :math:`k`.
         """
         mask_low = k < self.k_table_min[ell]
         mask_high = k > self.k_table_max[ell]
@@ -1130,21 +1194,23 @@ class PTEmu:
         r"""Compute the linear power spectrum predictions.
 
         Evaluates the emulator calling **eval_emulator**, and returns the
-        linear power spectrum :math:`P_\mathrm{L}(k)`.
+        linear power spectrum :math:`P_\mathrm{L}(k)` at the specified
+        wavemodes.
 
         Parameters
         ----------
         k: float or numpy.ndarray
-            Value of the wavemode :math:`k`.
+            Value of the requested wavemodes :math:`k`.
         params: dict
-            Dictionary containing the list of parameters which are internally
-            used by the emulator. The keywords of the dictionary specify the
-            name of the parameters, while the values specify the values of the
-            parameters.
+            Dictionary containing the list of total model parameters which are
+            internally used by the emulator. The keyword/value pairs of the
+            dictionary specify the names and the values of the parameters,
+            respectively.
         de_model: str, optional
             String that determines the dark energy equation of state. Can be
-            chosen form the list ['lambda', 'w0', 'w0wa'].
-            Defaults to None.
+            chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
+            the standard cosmological parameters, or be left undefined to use
+            only :math:`\sigma_{12}`. Defaults to **None**.
 
         Returns
         -------
@@ -1163,11 +1229,20 @@ class PTEmu:
         return PL_spline(k)
 
     def Pdw(self, k, mu, params, de_model=None, ell_for_recon=None):
-        r"""Compute the leading order IR-resummed power spectrum.
+        r"""Compute the anisotropic leading order IR-resummed power spectrum.
 
         Evaluates the emulator calling **eval_emulator**, and returns the
-        leading order IR-resummed power spectrum :math:`P_\mathrm{IR-res}
-        ^\mathrm{LO}(k,\mu)`.
+        anisotropic leading order IR-resummed power spectrum
+        :math:`P_\mathrm{IR-res}^\mathrm{LO}(k,\mu)`, defined as
+
+        .. math::
+            P_\mathrm{IR-res}^\mathrm{LO}(k,\mu) = P_\mathrm{nw}(k) + \
+            e^{-k^2\Sigma^2(f,\mu)}P_\mathrm{w}(k),
+
+        where :math:`P_\mathrm{nw}` and :math:`P_\mathrm{w}` are the no-wiggle
+        and wiggle-only component of the linear matter power spectrum, and
+        :math:`\Sigma(f,\mu)` is the anisotropic BAO damping factor due to
+        infrared modes.
 
         Parameters
         ----------
