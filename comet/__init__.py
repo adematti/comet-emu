@@ -1,5 +1,6 @@
 import os
-base_dir = os.path.join(os.path.dirname(__file__), "..")
+from comet.PTEmu import PTEmu
+base_dir = os.path.join(os.path.dirname(__file__))
 
 def download_data(download_dir):
     """
@@ -25,8 +26,8 @@ def download_data(download_dir):
 
         # the download path
         #filename = url.split('/')[-1]
-        file_path = os.path.join(download_dir+"/data", filenames[i])
-        final_path = os.path.join(download_dir+"/data", out_filenames[i])
+        file_path = os.path.join(download_dir+"/data_dir", filenames[i])
+        final_path = os.path.join(download_dir+"/data_dir", out_filenames[i])
 
         # do not re-download
 
@@ -44,7 +45,7 @@ def download_data(download_dir):
 
             # unzip the file
             shutil.unpack_archive(
-            filename=file_path, extract_dir=download_dir+"/data"
+            filename=file_path, extract_dir=download_dir+"/data_dir"
             )
             os.remove(file_path)
             print("Done.\n")
@@ -53,3 +54,6 @@ def download_data(download_dir):
 
 
 download_data(base_dir)
+
+if __name__ == '__main__':
+    comet=PTEmu()
