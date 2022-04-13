@@ -1,5 +1,5 @@
 import os
-from comet.PTEmu import PTEmu
+from comet.PTEmu import PTEmu as comet
 base_dir = os.path.join(os.path.dirname(__file__))
 
 def download_data(download_dir):
@@ -54,6 +54,3 @@ def download_data(download_dir):
 
 
 download_data(base_dir)
-
-if __name__ == '__main__':
-    comet=PTEmu()
