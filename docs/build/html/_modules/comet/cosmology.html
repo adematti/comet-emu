@@ -1,0 +1,637 @@
+
+
+<!doctype html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>comet.cosmology &#8212; PTEmu 0.1 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../../_static/bizstyle.css" />
+    
+    <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+    <script src="../../_static/jquery.js"></script>
+    <script src="../../_static/underscore.js"></script>
+    <script src="../../_static/doctools.js"></script>
+    <script src="../../_static/bizstyle.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <!--[if lt IE 9]>
+    <script src="_static/css3-mediaqueries.js"></script>
+    <![endif]-->
+  </head><body>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../index.html">PTEmu 0.1 documentation</a> &#187;</li>
+          <li class="nav-item nav-item-1"><a href="../index.html" >Module code</a> &#187;</li>
+          <li class="nav-item nav-item-2"><a href="../comet.html" accesskey="U">comet</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">comet.cosmology</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for comet.cosmology</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Cosmology module.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">scipy.integrate</span> <span class="kn">import</span> <span class="n">quad</span><span class="p">,</span> <span class="n">solve_ivp</span>
+<span class="kn">from</span> <span class="nn">scipy.special</span> <span class="kn">import</span> <span class="n">beta</span><span class="p">,</span> <span class="n">betainc</span>
+
+
+<div class="viewcode-block" id="Cosmology"><a class="viewcode-back" href="../../comet.html#comet.cosmology.Cosmology">[docs]</a><span class="k">class</span> <span class="nc">Cosmology</span><span class="p">:</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Class containing cosmological parameters and background quantities.</span>
+
+<span class="sd">    This object is used to compute background quantities (expansion, growth)</span>
+<span class="sd">    of the specific cosmology passed as input.</span>
+
+<span class="sd">    In all cases including an evolving dark energy density, its equation of</span>
+<span class="sd">    state is parametrized as :math:`w(a)=w_0+w_a(1-a)`</span>
+<span class="sd">    (`Chevalier &amp; Polansky 2001</span>
+<span class="sd">    &lt;https://www.worldscientific.com/doi/abs/10.1142/S0218271801000822&gt;`_,</span>
+<span class="sd">    `Linder 2003</span>
+<span class="sd">    &lt;https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.90.091301&gt;`_).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">Om0</span><span class="p">,</span> <span class="n">H0</span><span class="p">,</span> <span class="n">Ok0</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">Or0</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">de_model</span><span class="o">=</span><span class="s1">&#39;lambda&#39;</span><span class="p">,</span>
+                 <span class="n">w0</span><span class="o">=-</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">wa</span><span class="o">=</span><span class="mf">0.0</span><span class="p">):</span>
+        <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Class constructor.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        Om0: float</span>
+<span class="sd">            Fractional total matter density at present time,</span>
+<span class="sd">            :math:`\Omega_\mathrm{m,0}`.</span>
+<span class="sd">        H0: float</span>
+<span class="sd">            Hubble constant at present time, :math:`H_0`.</span>
+<span class="sd">        Ok0: float, optional</span>
+<span class="sd">            Fractional curvature density at present time,</span>
+<span class="sd">            :math:`\Omega_\mathrm{k,0}`. Defaults to 0.0.</span>
+<span class="sd">        Or0: float, optional</span>
+<span class="sd">            Fractional radiation density at present time,</span>
+<span class="sd">            :math:`\Omega_\mathrm{r,0}`, Defaults to 0.0.</span>
+<span class="sd">        de_model: str, optional</span>
+<span class="sd">            Selected dark energy model. It can be chosen from the list</span>
+<span class="sd">            [`&quot;lambda&quot;`, `&quot;w0&quot;`, `&quot;w0wa&quot;`], whose entries correspond to a LCDM,</span>
+<span class="sd">            :math:`w` CDM, and quintessence model, respectively.</span>
+<span class="sd">            Defaults to `&quot;lambda&quot;`.</span>
+<span class="sd">        w0: float, optional</span>
+<span class="sd">            Dark energy equation of state at present time, :math:`w_0`.</span>
+<span class="sd">            Only used if **de_model** is not `&quot;lambda&quot;`. Defaults to -1.0.</span>
+<span class="sd">        wa: float, optional</span>
+<span class="sd">            Negative derivative of the dark energy equation of state with</span>
+<span class="sd">            respect to the scale factor, :math:`w_a`. Only used if</span>
+<span class="sd">            **de_model** is `&quot;w0wa&quot;`. Defaults to 0.0.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Om0</span> <span class="o">=</span> <span class="n">Om0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Ok0</span> <span class="o">=</span> <span class="n">Ok0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Or0</span> <span class="o">=</span> <span class="n">Or0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">H0</span> <span class="o">=</span> <span class="n">H0</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">Ode0</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">Om0</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">Ok0</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">Or0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">hubble_distance</span> <span class="o">=</span> <span class="mf">2.998E5</span><span class="o">/</span><span class="bp">self</span><span class="o">.</span><span class="n">H0</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">de_model</span> <span class="o">=</span> <span class="n">de_model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">w0</span> <span class="o">=</span> <span class="n">w0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wa</span> <span class="o">=</span> <span class="n">wa</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">flat</span> <span class="o">=</span> <span class="kc">True</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">Ok0</span> <span class="o">==</span> <span class="mf">0.0</span> <span class="k">else</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">relspecies</span> <span class="o">=</span> <span class="kc">False</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">Or0</span> <span class="o">==</span> <span class="mf">0.0</span> <span class="k">else</span> <span class="kc">True</span>
+
+<div class="viewcode-block" id="Cosmology.update_cosmology"><a class="viewcode-back" href="../../comet.html#comet.cosmology.Cosmology.update_cosmology">[docs]</a>    <span class="k">def</span> <span class="nf">update_cosmology</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">Om0</span><span class="p">,</span> <span class="n">H0</span><span class="p">,</span> <span class="n">Ok0</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">Or0</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">de_model</span><span class="o">=</span><span class="s1">&#39;lambda&#39;</span><span class="p">,</span>
+                         <span class="n">w0</span><span class="o">=-</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">wa</span><span class="o">=</span><span class="mf">0.0</span><span class="p">):</span>
+        <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Update the class to a new cosmology.</span>
+
+<span class="sd">        Overwrites the current class attributes to assign the new cosmological</span>
+<span class="sd">        parameters passed as input.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        Om0: float</span>
+<span class="sd">            Fractional total matter density at present time,</span>
+<span class="sd">            :math:`\Omega_\mathrm{m,0}`.</span>
+<span class="sd">        H0: float</span>
+<span class="sd">            Hubble constant at present time, :math:`H_0`.</span>
+<span class="sd">        Ok0: float, optional</span>
+<span class="sd">            Fractional curvature density at present time,</span>
+<span class="sd">            :math:`\Omega_\mathrm{k,0}`. Defaults to 0.0.</span>
+<span class="sd">        Or0: float, optional</span>
+<span class="sd">            Fractional radiation density at present time,</span>
+<span class="sd">            :math:`\Omega_\mathrm{r,0}`, Defaults to 0.0.</span>
+<span class="sd">        de_model: str, optional</span>
+<span class="sd">            Selected dark energy model. It can be chosen from the list</span>
+<span class="sd">            [`&quot;lambda&quot;`, `&quot;w0&quot;`, `&quot;w0wa&quot;`], whose entries correspond to a LCDM,</span>
+<span class="sd">            :math:`w` CDM, and quintessence model, respectively.</span>
+<span class="sd">            Defaults to `&quot;lambda&quot;`.</span>
+<span class="sd">        w0: float, optional</span>
+<span class="sd">            Dark energy equation of state at present time, :math:`w_0`.</span>
+<span class="sd">            Only used if **de_model** is not `&quot;lambda&quot;`. Defaults to -1.0.</span>
+<span class="sd">        wa: float, optional</span>
+<span class="sd">            Negative derivative of the dark energy equation of state with</span>
+<span class="sd">            respect to the scale factor, :math:`w_a`. Only used if</span>
+<span class="sd">            **de_model** is `&quot;w0wa&quot;`. Defaults to 0.0.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Om0</span> <span class="o">=</span> <span class="n">Om0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Ok0</span> <span class="o">=</span> <span class="n">Ok0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Or0</span> <span class="o">=</span> <span class="n">Or0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">H0</span> <span class="o">=</span> <span class="n">H0</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">Ode0</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">Om0</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">Ok0</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">Or0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">hubble_distance</span> <span class="o">=</span> <span class="mf">2.998E5</span><span class="o">/</span><span class="bp">self</span><span class="o">.</span><span class="n">H0</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">de_model</span> <span class="o">=</span> <span class="n">de_model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">w0</span> <span class="o">=</span> <span class="n">w0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wa</span> <span class="o">=</span> <span class="n">wa</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">flat</span> <span class="o">=</span> <span class="kc">True</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">Ok0</span> <span class="o">==</span> <span class="mf">0.0</span> <span class="k">else</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">relspecies</span> <span class="o">=</span> <span class="kc">False</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">Or0</span> <span class="o">==</span> <span class="mf">0.0</span> <span class="k">else</span> <span class="kc">True</span></div>
+
+<div class="viewcode-block" id="Cosmology.DE_z"><a class="viewcode-back" href="../../comet.html#comet.cosmology.Cosmology.DE_z">[docs]</a>    <span class="k">def</span> <span class="nf">DE_z</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">z</span><span class="p">):</span>
+        <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Dark energy density as a function of redshift.</span>
+
+<span class="sd">        Returns the energy density of the specified dark energy component,</span>
+<span class="sd">        normalised to the value at present time,</span>
+
+<span class="sd">        .. math::</span>
+<span class="sd">             \frac{\rho_\mathrm{DE}(z)}{\rho_\mathrm{DE}(0)} = \</span>
+<span class="sd">             \exp\left[-\int_0^z \frac{dz&#39;}{1+z&#39;}\left(1+w\left(z&#39;\right)\</span>
+<span class="sd">             \right) \right]\,.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        z: float or numpy.ndarray</span>
+<span class="sd">            Redshifts at which to evaluate the dark energy density.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        de_z: float or numpy.ndarray</span>
+<span class="sd">            Energy density of the dark energy component at the specified</span>
+<span class="sd">            redshifts.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">de_model</span> <span class="o">==</span> <span class="s1">&#39;lambda&#39;</span><span class="p">:</span>
+            <span class="n">de_z</span> <span class="o">=</span> <span class="mf">1.0</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">de_model</span> <span class="o">==</span> <span class="s1">&#39;w0&#39;</span><span class="p">:</span>
+            <span class="n">de_z</span> <span class="o">=</span> <span class="p">(</span><span class="mf">1.0</span><span class="o">+</span><span class="n">z</span><span class="p">)</span><span class="o">**</span><span class="p">(</span><span class="mf">3.0</span><span class="o">*</span><span class="p">(</span><span class="mf">1.0</span><span class="o">+</span><span class="bp">self</span><span class="o">.</span><span class="n">w0</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">de_model</span> <span class="o">==</span> <span class="s1">&#39;w0wa&#39;</span><span class="p">:</span>
+            <span class="n">a</span> <span class="o">=</span> <span class="mf">1.0</span><span class="o">/</span><span class="p">(</span><span class="mf">1.0</span><span class="o">+</span><span class="n">z</span><span class="p">)</span>
+            <span class="n">de_z</span> <span class="o">=</span> <span class="n">a</span><span class="o">**</span><span class="p">(</span><span class="o">-</span><span class="mf">3.0</span><span class="o">*</span><span class="p">(</span><span class="mf">1.0</span><span class="o">+</span><span class="bp">self</span><span class="o">.</span><span class="n">w0</span><span class="o">+</span><span class="bp">self</span><span class="o">.</span><span class="n">wa</span><span class="p">))</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="mf">3.0</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">wa</span><span class="o">*</span><span class="p">(</span><span class="mf">1.0</span><span class="o">-</span><span class="n">a</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">de_z</span></div>
+
+<div class="viewcode-block" id="Cosmology.wz"><a class="viewcode-back" href="../../comet.html#comet.cosmology.Cosmology.wz">[docs]</a>    <span class="k">def</span> <span class="nf">wz</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">z</span><span class="p">):</span>
+        <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Dark energy equation of state as a function of redshift.</span>
+
+<span class="sd">        Returns the equation of state of the dark energy component,</span>
+
+<span class="sd">        .. math::</span>
+<span class="sd">             w(z) = w_0+w_a\frac{z}{1+z}\,.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        z: float or numpy.ndarray</span>
+<span class="sd">            Redshifts at which to evaluate the dark energy equation of state.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        w: float or numpy.ndarray</span>
+<span class="sd">            Dark energy equation of state at the specified redshifts.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">de_model</span> <span class="o">==</span> <span class="s1">&#39;lambda&#39;</span><span class="p">:</span>
+            <span class="n">w</span> <span class="o">=</span> <span class="o">-</span><span class="mf">1.0</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">de_model</span> <span class="o">==</span> <span class="s1">&#39;w0&#39;</span><span class="p">:</span>
+            <span class="n">w</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">w0</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">de_model</span> <span class="o">==</span> <span class="s1">&#39;w0wa&#39;</span><span class="p">:</span>
+            <span class="n">w</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">w0</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">wa</span><span class="o">*</span><span class="n">z</span><span class="o">/</span><span class="p">(</span><span class="mf">1.0</span><span class="o">+</span><span class="n">z</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">w</span></div>
+
+<div class="viewcode-block" id="Cosmology.Ez"><a class="viewcode-back" href="../../comet.html#comet.cosmology.Cosmology.Ez">[docs]</a>    <span class="k">def</span> <span class="nf">Ez</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">z</span><span class="p">):</span>
+        <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Normalised expansion factor as a function of redshift.</span>
+
+<span class="sd">        Returns the value of the Hubble factor at the specified redshift,</span>
+<span class="sd">        normalised to the value at present time,</span>
+
+<span class="sd">        .. math::</span>
+<span class="sd">            :nowrap:</span>
+
+<span class="sd">                \begin{split}</span>
+<span class="sd">                    E(z) = \frac{H(z)}{H_0} = \bigg[ \</span>
+<span class="sd">                    &amp;\Omega_\mathrm{m,0}(1+z)^3 \</span>
+<span class="sd">                    + \Omega_\mathrm{r,0}(1+z)^4 \</span>
+<span class="sd">                    + \Omega_\mathrm{k,0}(1+z)^2 \\</span>
+<span class="sd">                    &amp;+ \Omega_\mathrm{DE,0}\exp\Big[-\int_0^z \</span>
+<span class="sd">                    \frac{dz&#39;}{1+z&#39;} \left(1+w\left(z&#39;\right)\right) \Big]</span>
+<span class="sd">                    \bigg]^\frac{1}{2}\,.</span>
+<span class="sd">                \end{split}</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        z: float or numpy.ndarray</span>
+<span class="sd">            Redshifts at which to evaluate the normalised expansion factor.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Ez: float or numpy.ndarray</span>
+<span class="sd">            Normalised expansion factor at the specified redshifts.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">ainv</span> <span class="o">=</span> <span class="mf">1.0</span><span class="o">+</span><span class="n">z</span>
+        <span class="n">Ez2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Om0</span><span class="o">*</span><span class="n">ainv</span><span class="o">**</span><span class="mi">3</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">Ode0</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">DE_z</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">flat</span><span class="p">:</span>
+            <span class="n">Ez2</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Ok0</span><span class="o">*</span><span class="n">ainv</span><span class="o">**</span><span class="mi">2</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">relspecies</span><span class="p">:</span>
+            <span class="n">Ez2</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Or0</span><span class="o">*</span><span class="n">ainv</span><span class="o">**</span><span class="mi">4</span>
+        <span class="n">Ez</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">Ez2</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">Ez</span></div>
+
+<div class="viewcode-block" id="Cosmology.one_over_Ez"><a class="viewcode-back" href="../../comet.html#comet.cosmology.Cosmology.one_over_Ez">[docs]</a>    <span class="k">def</span> <span class="nf">one_over_Ez</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">z</span><span class="p">):</span>
+        <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Inverse normalised expansion factor as a function of redshift.</span>
+
+<span class="sd">        Return the inverse of the normalised expansion factor defined in</span>
+<span class="sd">        **Ez**.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        z: float or numpy.ndarray</span>
+<span class="sd">            Redshifts at which to evaluate the inverse expansion factor.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        inv_Ez: float or numpy.ndarray</span>
+<span class="sd">            Inverse normalised expansion factor at the specified redshifts.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">inv_Ez</span> <span class="o">=</span> <span class="mf">1.0</span><span class="o">/</span><span class="bp">self</span><span class="o">.</span><span class="n">Ez</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">inv_Ez</span></div>
+
+<div class="viewcode-block" id="Cosmology.Hz"><a class="viewcode-back" href="../../comet.html#comet.cosmology.Cosmology.Hz">[docs]</a>    <span class="k">def</span> <span class="nf">Hz</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">z</span><span class="p">):</span>
+        <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Hubble expansion factor.</span>
+
+<span class="sd">        Returns the Hubble parameter :math:`H(z)`, defined as</span>
+
+<span class="sd">        .. math::</span>
+<span class="sd">             H(z) = H_0\, E(z) \, .</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        z: float or numpy.ndarray</span>
+<span class="sd">            Redshifts at which to evaluate the Hubble factor.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Hz: float or numpy.ndarray</span>
+<span class="sd">            Hubble expansion factor at the specified redshifts.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">Hz</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">H0</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">Ez</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">Hz</span></div>
+
+<div class="viewcode-block" id="Cosmology.Om"><a class="viewcode-back" href="../../comet.html#comet.cosmology.Cosmology.Om">[docs]</a>    <span class="k">def</span> <span class="nf">Om</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">z</span><span class="p">):</span>
+        <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Fractional total matter density as a function of redshift.</span>
+
+<span class="sd">        Returns the total matter density at the specified redshifts in units</span>
+<span class="sd">        of the critical density</span>
+<span class="sd">        :math:`\rho_\mathrm{crit}(z)=\frac{3H^2(z)}{8\pi G}`, as</span>
+
+<span class="sd">        .. math::</span>
+<span class="sd">             \Omega_\mathrm{m}(z) = \</span>
+<span class="sd">             \frac{\rho_\mathrm{m}(z)}{\rho_\mathrm{crit}(z)} = \</span>
+<span class="sd">             \frac{\Omega_\mathrm{m,0}\,(1+z)^3}{E^2(z)} \, .</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        z: float or numpy.ndarray</span>
+<span class="sd">            Redshifts at which to evaluate the fractional matter density.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Om: float or numpy.ndarray</span>
+<span class="sd">            Fractional matter density at the specified redshifts.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">Om</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Om0</span><span class="o">*</span><span class="p">(</span><span class="mf">1.0</span><span class="o">+</span><span class="n">z</span><span class="p">)</span><span class="o">**</span><span class="mi">3</span><span class="o">/</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Ez</span><span class="p">(</span><span class="n">z</span><span class="p">))</span><span class="o">**</span><span class="mi">2</span>
+        <span class="k">return</span> <span class="n">Om</span></div>
+
+<div class="viewcode-block" id="Cosmology.Ode"><a class="viewcode-back" href="../../comet.html#comet.cosmology.Cosmology.Ode">[docs]</a>    <span class="k">def</span> <span class="nf">Ode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">z</span><span class="p">):</span>
+        <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Fractional dark energy density as a function of redshift.</span>
+
+<span class="sd">        Returns the dark energy density at the specified redshifts in units</span>
+<span class="sd">        of the critical density</span>
+<span class="sd">        :math:`\rho_\mathrm{crit}(z)=\frac{3H^2(z)}{8\pi G}`, as</span>
+
+<span class="sd">        .. math::</span>
+<span class="sd">             \Omega_\mathrm{DE}(z) = \</span>
+<span class="sd">             \frac{\rho_\mathrm{DE}(z)}{\rho_\mathrm{crit}(z)} = \</span>
+<span class="sd">             \frac{\Omega_\mathrm{DE,0}\exp\left[ \</span>
+<span class="sd">             -\int_0^z \frac{dz&#39;}{1+z&#39;}\left(1+w\left(z&#39;\right)\right) \</span>
+<span class="sd">             \right]}{E^2(z)} \, .</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        z: float or numpy.ndarray</span>
+<span class="sd">            Redshifts at which to evaluate the fractional dark energy density.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Ode: float or numpy.ndarray</span>
+<span class="sd">            Fractional dark energy density at the specified redshifts.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">Ode</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Ode0</span><span class="o">/</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Ez</span><span class="p">(</span><span class="n">z</span><span class="p">))</span><span class="o">**</span><span class="mi">2</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">DE_z</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">Ode</span></div>
+
+<div class="viewcode-block" id="Cosmology.comoving_transverse_distance"><a class="viewcode-back" href="../../comet.html#comet.cosmology.Cosmology.comoving_transverse_distance">[docs]</a>    <span class="k">def</span> <span class="nf">comoving_transverse_distance</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">z</span><span class="p">):</span>
+        <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Transverse comoving distance as a function of redshift.</span>
+
+<span class="sd">        Returns the transverse comoving distance defined as</span>
+
+<span class="sd">        .. math::</span>
+<span class="sd">            :nowrap:</span>
+
+<span class="sd">            \begin{gather*}</span>
+<span class="sd">                D_\mathrm{M}(z) =</span>
+<span class="sd">                \begin{cases}</span>
+<span class="sd">                   \frac{D_H}{\sqrt{-\Omega_\mathrm{k,0}}}\sin \left(\</span>
+<span class="sd">                   \frac{\sqrt{-\Omega_\mathrm{k,0}}D_\mathrm{C}(z)}{D_H}\</span>
+<span class="sd">                   \right), &amp; \text{if}\ \Omega_\mathrm{k,0}&lt;0 \\</span>
+<span class="sd">                   D_\mathrm{C}(z), &amp; \text{if}\ \Omega_\mathrm{k,0}=0 \, ,\\</span>
+<span class="sd">                   \frac{D_H}{\sqrt{\Omega_\mathrm{k,0}}}\sinh \left(\</span>
+<span class="sd">                   \frac{\sqrt{\Omega_\mathrm{k,0}}D_\mathrm{C}(z)}{D_H}\</span>
+<span class="sd">                   \right), &amp; \text{if}\ \Omega_\mathrm{k,0}&gt;0</span>
+<span class="sd">               \end{cases}</span>
+<span class="sd">            \end{gather*}</span>
+
+<span class="sd">        where</span>
+
+<span class="sd">        .. math::</span>
+<span class="sd">            D_\mathrm{C}(z) = D_H \int_0^z \frac{dz&#39;}{E(z&#39;)}</span>
+
+<span class="sd">        is the comoving distance, and</span>
+
+<span class="sd">        .. math::</span>
+
+<span class="sd">            D_H = \frac{c}{H_0}</span>
+
+<span class="sd">        is the Hubble distance.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        z: float</span>
+<span class="sd">            Redshift at which to evaluate the transverse comoving distance.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        dm: float</span>
+<span class="sd">            Transverse comoving distance at the specified redshift.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="n">quad</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">one_over_Ez</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="n">z</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">flat</span><span class="p">:</span>
+            <span class="n">dm</span> <span class="o">=</span> <span class="n">r</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">Ok0</span> <span class="o">&gt;</span> <span class="mf">0.0</span><span class="p">:</span>
+            <span class="n">sqrt_Ok0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Ok0</span><span class="p">)</span>
+            <span class="n">dm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sinh</span><span class="p">(</span><span class="n">sqrt_Ok0</span><span class="o">*</span><span class="n">r</span><span class="p">)</span><span class="o">/</span><span class="n">sqrt_Ok0</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">sqrt_Ok0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">Ok0</span><span class="p">)</span>
+            <span class="n">dm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">sqrt_Ok0</span><span class="o">*</span><span class="n">r</span><span class="p">)</span><span class="o">/</span><span class="n">sqrt_Ok0</span>
+        <span class="n">dm</span> <span class="o">*=</span> <span class="bp">self</span><span class="o">.</span><span class="n">hubble_distance</span>
+        <span class="k">return</span> <span class="n">dm</span></div>
+
+<div class="viewcode-block" id="Cosmology.angular_diameter_distance"><a class="viewcode-back" href="../../comet.html#comet.cosmology.Cosmology.angular_diameter_distance">[docs]</a>    <span class="k">def</span> <span class="nf">angular_diameter_distance</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">z</span><span class="p">):</span>
+        <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Angular diameter distance as a function of redshift.</span>
+
+<span class="sd">        Returns the angular diameter distance defined as</span>
+
+<span class="sd">        .. math::</span>
+<span class="sd">            D_\mathrm{A}(z) = \frac{1}{1+z}D_\mathrm{M}(z) \, .</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        z: float</span>
+<span class="sd">            Redshift at which to evaluate the angular diameter distance.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        da: float</span>
+<span class="sd">            Angular diameter distance at the specified redshift.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">da</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">comoving_transverse_distance</span><span class="p">(</span><span class="n">z</span><span class="p">)</span><span class="o">/</span><span class="p">(</span><span class="mf">1.0</span><span class="o">+</span><span class="n">z</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">da</span></div>
+
+<div class="viewcode-block" id="Cosmology.growth_factor"><a class="viewcode-back" href="../../comet.html#comet.cosmology.Cosmology.growth_factor">[docs]</a>    <span class="k">def</span> <span class="nf">growth_factor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">get_growth_rate</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Linear growth factor as a function of redshift.</span>
+
+<span class="sd">        Returns the linear growth factor :math:`D(z)` (and the linear growth</span>
+<span class="sd">        rate :math:`f(z)` at user request).</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        z: float</span>
+<span class="sd">            Redshift at which to evaluate the growth factor.</span>
+<span class="sd">        get_growth_rate: bool, optional</span>
+<span class="sd">            Flag specifying whether to return only the linear growth factor</span>
+<span class="sd">            (if **False**) or also the linear growth rate (if **True**).</span>
+<span class="sd">            Defaults to **False**.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Dz: float or list</span>
+<span class="sd">            Linear growth factor, or list containing both the linear growth</span>
+<span class="sd">            factor and growth rate, at the specified redshift.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">def</span> <span class="nf">Ez_for_D</span><span class="p">(</span><span class="n">z</span><span class="p">):</span>
+            <span class="n">ainv</span> <span class="o">=</span> <span class="mf">1.0</span><span class="o">+</span><span class="n">z</span>
+            <span class="n">Ez2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Om0</span><span class="o">*</span><span class="n">ainv</span><span class="o">**</span><span class="mi">3</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">Ode0</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">DE_z</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">flat</span><span class="p">:</span>
+                <span class="n">Ez2</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Ok0</span><span class="o">*</span><span class="n">ainv</span><span class="o">**</span><span class="mi">2</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">relspecies</span><span class="p">:</span>
+                <span class="n">Ez2</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Or0</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">Ez2</span><span class="p">)</span>
+
+        <span class="k">def</span> <span class="nf">integrand</span><span class="p">(</span><span class="n">z</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">(</span><span class="mf">1.0</span><span class="o">+</span><span class="n">z</span><span class="p">)</span><span class="o">/</span><span class="p">(</span><span class="n">Ez_for_D</span><span class="p">(</span><span class="n">z</span><span class="p">))</span><span class="o">**</span><span class="mi">3</span>
+
+        <span class="k">def</span> <span class="nf">growth_factor_from_ODE</span><span class="p">(</span><span class="n">z_eval</span><span class="p">):</span>
+
+            <span class="k">def</span> <span class="nf">derivatives_D</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+                <span class="n">z</span> <span class="o">=</span> <span class="mf">1.0</span><span class="o">/</span><span class="n">a</span> <span class="o">-</span> <span class="mf">1.0</span>
+                <span class="n">D</span> <span class="o">=</span> <span class="n">y</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">Dp</span> <span class="o">=</span> <span class="n">y</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+                <span class="n">wa</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">wz</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+                <span class="n">Oma</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Om</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+                <span class="n">Odea</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Ode</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+
+                <span class="n">u1</span> <span class="o">=</span> <span class="o">-</span><span class="p">(</span><span class="mf">2.0</span> <span class="o">-</span> <span class="mf">0.5</span><span class="o">*</span><span class="p">(</span><span class="n">Oma</span> <span class="o">+</span> <span class="p">(</span><span class="mf">3.0</span><span class="o">*</span><span class="n">wa</span><span class="o">+</span><span class="mf">1.0</span><span class="p">)</span><span class="o">*</span><span class="n">Odea</span><span class="p">))</span><span class="o">/</span><span class="n">a</span>
+                <span class="n">u2</span> <span class="o">=</span> <span class="mf">1.5</span><span class="o">*</span><span class="n">Oma</span><span class="o">/</span><span class="n">a</span><span class="o">**</span><span class="mi">2</span>
+
+                <span class="k">return</span> <span class="p">[</span><span class="n">Dp</span><span class="p">,</span> <span class="n">u1</span><span class="o">*</span><span class="n">Dp</span> <span class="o">+</span> <span class="n">u2</span><span class="o">*</span><span class="n">D</span><span class="p">]</span>
+
+            <span class="n">a_eval</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="o">/</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">+</span> <span class="n">z_eval</span><span class="p">)])</span>
+            <span class="n">a_min</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">fmin</span><span class="p">(</span><span class="n">a_eval</span><span class="p">,</span> <span class="mf">1E-4</span><span class="p">)</span><span class="o">*</span><span class="mf">0.99</span>
+            <span class="n">a_max</span> <span class="o">=</span> <span class="n">a_eval</span><span class="o">*</span><span class="mf">1.01</span>
+
+            <span class="n">dic</span> <span class="o">=</span> <span class="n">solve_ivp</span><span class="p">(</span><span class="n">derivatives_D</span><span class="p">,</span> <span class="p">(</span><span class="n">a_min</span><span class="p">,</span> <span class="n">a_max</span><span class="p">),</span> <span class="p">[</span><span class="n">a_min</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">],</span>
+                            <span class="n">t_eval</span><span class="o">=</span><span class="n">a_eval</span><span class="p">,</span> <span class="n">atol</span><span class="o">=</span><span class="mf">1E-6</span><span class="p">,</span> <span class="n">rtol</span><span class="o">=</span><span class="mf">1E-6</span><span class="p">,</span>
+                            <span class="n">vectorized</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="n">D</span> <span class="o">=</span> <span class="n">dic</span><span class="p">[</span><span class="s1">&#39;y&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">,</span> <span class="p">:]</span>
+
+            <span class="k">if</span> <span class="p">(</span><span class="n">dic</span><span class="p">[</span><span class="s1">&#39;status&#39;</span><span class="p">]</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">D</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">a_eval</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]):</span>
+                <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s1">&#39;The calculation of the growth factor failed.&#39;</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">get_growth_rate</span><span class="p">:</span>
+                <span class="n">Dp</span> <span class="o">=</span> <span class="n">dic</span><span class="p">[</span><span class="s1">&#39;y&#39;</span><span class="p">][</span><span class="mi">1</span><span class="p">,</span> <span class="p">:]</span>
+                <span class="n">f</span> <span class="o">=</span> <span class="n">a_eval</span><span class="o">*</span><span class="n">Dp</span><span class="o">/</span><span class="n">D</span>
+                <span class="k">return</span> <span class="p">[</span><span class="n">D</span><span class="p">,</span> <span class="n">f</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">D</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">de_model</span> <span class="o">==</span> <span class="s1">&#39;lambda&#39;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">flat</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">relspecies</span><span class="p">:</span>
+                <span class="n">a3</span> <span class="o">=</span> <span class="mf">1.0</span><span class="o">/</span><span class="p">(</span><span class="mf">1.0</span><span class="o">+</span><span class="n">z</span><span class="p">)</span><span class="o">**</span><span class="mi">3</span>
+                <span class="n">Dz</span> <span class="o">=</span> <span class="p">(</span><span class="mf">5.0</span><span class="o">/</span><span class="mf">6.0</span><span class="o">*</span><span class="n">betainc</span><span class="p">(</span><span class="mf">5.0</span><span class="o">/</span><span class="mf">6.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="o">/</span><span class="mf">3.0</span><span class="p">,</span>
+                                      <span class="bp">self</span><span class="o">.</span><span class="n">Ode0</span><span class="o">*</span><span class="n">a3</span><span class="o">/</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Om0</span><span class="o">+</span><span class="bp">self</span><span class="o">.</span><span class="n">Ode0</span><span class="o">*</span><span class="n">a3</span><span class="p">))</span> <span class="o">*</span>
+                      <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Om0</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">Ode0</span><span class="p">)</span><span class="o">**</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="mf">3.0</span><span class="p">)</span> <span class="o">*</span>
+                      <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">Om0</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Ode0</span> <span class="o">*</span> <span class="n">a3</span><span class="p">))</span> <span class="o">*</span>
+                      <span class="n">beta</span><span class="p">(</span><span class="mf">5.0</span><span class="o">/</span><span class="mf">6.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="o">/</span><span class="mf">3.0</span><span class="p">))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># integrate integral expression</span>
+                <span class="n">Dz</span> <span class="o">=</span> <span class="mf">2.5</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">Om0</span><span class="o">*</span><span class="n">Ez_for_D</span><span class="p">(</span><span class="n">z</span><span class="p">)</span><span class="o">*</span><span class="n">quad</span><span class="p">(</span><span class="n">integrand</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">get_growth_rate</span><span class="p">:</span>
+                <span class="n">Omz</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Om</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+                <span class="n">f</span> <span class="o">=</span> <span class="o">-</span><span class="mf">1.0</span> <span class="o">-</span> <span class="n">Omz</span><span class="o">/</span><span class="mf">2.0</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">Ode</span><span class="p">(</span><span class="n">z</span><span class="p">)</span> <span class="o">+</span> <span class="mf">2.5</span><span class="o">*</span><span class="n">Omz</span><span class="o">/</span><span class="n">Dz</span><span class="o">/</span><span class="p">(</span><span class="mf">1.0</span><span class="o">+</span><span class="n">z</span><span class="p">)</span>
+                <span class="n">Dz</span> <span class="o">=</span> <span class="p">[</span><span class="n">Dz</span><span class="p">,</span> <span class="n">f</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># do full differential equation integration</span>
+            <span class="n">Dz</span> <span class="o">=</span> <span class="n">growth_factor_from_ODE</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">Dz</span></div>
+
+<div class="viewcode-block" id="Cosmology.growth_rate"><a class="viewcode-back" href="../../comet.html#comet.cosmology.Cosmology.growth_rate">[docs]</a>    <span class="k">def</span> <span class="nf">growth_rate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">z</span><span class="p">):</span>
+        <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Linear growth rate as a function of redshift.</span>
+
+<span class="sd">        Returns the linear growth rate :math:`f(z)`.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        z: float</span>
+<span class="sd">            Redshift at which to evaluate the linear growth rate.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        f: float</span>
+<span class="sd">            Linear growth rate at the specified redshift.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">def</span> <span class="nf">Ez_for_D</span><span class="p">(</span><span class="n">z</span><span class="p">):</span>
+            <span class="n">ainv</span> <span class="o">=</span> <span class="mf">1.0</span><span class="o">+</span><span class="n">z</span>
+            <span class="n">Ez2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Om0</span><span class="o">*</span><span class="n">ainv</span><span class="o">**</span><span class="mi">3</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">Ode0</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">DE_z</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">flat</span><span class="p">:</span>
+                <span class="n">Ez2</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Ok0</span><span class="o">*</span><span class="n">ainv</span><span class="o">**</span><span class="mi">2</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">relspecies</span><span class="p">:</span>
+                <span class="n">Ez2</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Or0</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">Ez2</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">de_model</span> <span class="o">==</span> <span class="s1">&#39;lambda&#39;</span><span class="p">:</span>
+            <span class="n">Omz</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Om</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+            <span class="n">f</span> <span class="o">=</span> <span class="o">-</span><span class="mf">1.0</span> <span class="o">-</span> <span class="n">Omz</span><span class="o">/</span><span class="mf">2.0</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">Ode</span><span class="p">(</span><span class="n">z</span><span class="p">)</span> \
+                <span class="o">+</span> <span class="mf">2.5</span><span class="o">*</span><span class="n">Omz</span><span class="o">/</span><span class="bp">self</span><span class="o">.</span><span class="n">growth_factor</span><span class="p">(</span><span class="n">z</span><span class="p">)</span><span class="o">/</span><span class="p">(</span><span class="mf">1.0</span><span class="o">+</span><span class="n">z</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">f</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">growth_factor</span><span class="p">(</span><span class="n">z</span><span class="p">,</span> <span class="n">get_growth_rate</span><span class="o">=</span><span class="kc">True</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">f</span></div>
+
+<div class="viewcode-block" id="Cosmology.comoving_volume"><a class="viewcode-back" href="../../comet.html#comet.cosmology.Cosmology.comoving_volume">[docs]</a>    <span class="k">def</span> <span class="nf">comoving_volume</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">zmin</span><span class="p">,</span> <span class="n">zmax</span><span class="p">,</span> <span class="n">fsky</span><span class="p">):</span>
+        <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Comoving volume as a function of redshift and sky fraction.</span>
+
+<span class="sd">        Computes the transverse comoving volume between :math:`z_\mathrm{min}`</span>
+<span class="sd">        and :math:`z_\mathrm{max}` for a given sky fraction</span>
+<span class="sd">        :math:`f_\mathrm{sky}`, as</span>
+
+<span class="sd">        .. math::</span>
+<span class="sd">            V_\mathrm{M}(z_\mathrm{min}, z_\mathrm{max}, f_\mathrm{sky}) = \</span>
+<span class="sd">            \frac{4\pi f_\mathrm{sky}}{3} \left[D_\mathrm{M}^3 \</span>
+<span class="sd">            (z_\mathrm{max}) - D_\mathrm{M}^3(z_\mathrm{min})\right]</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        zmin: float</span>
+<span class="sd">            Lower redshift limit :math:`z_\mathrm{min}`.</span>
+<span class="sd">        zmax: float</span>
+<span class="sd">            Upper redshift limit :math:`z_\mathrm{max}`.</span>
+<span class="sd">        fsky: float</span>
+<span class="sd">            Sky fraction :math:`f_\mathrm{sky}`.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        vol: float</span>
+<span class="sd">            Transverse comoving volume between the specified minimum and</span>
+<span class="sd">            maximum redshifts, and for the given sky fraction.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">def</span> <span class="nf">differential_comoving_volume</span><span class="p">(</span><span class="n">z</span><span class="p">):</span>
+            <span class="n">dm</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">comoving_transverse_distance</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">hubble_distance</span><span class="o">*</span><span class="n">dm</span><span class="o">**</span><span class="mi">2</span><span class="o">/</span><span class="bp">self</span><span class="o">.</span><span class="n">Ez</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+
+        <span class="n">vol</span> <span class="o">=</span> <span class="n">fsky</span><span class="o">*</span><span class="mi">4</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="o">*</span><span class="n">quad</span><span class="p">(</span><span class="n">differential_comoving_volume</span><span class="p">,</span> <span class="n">zmin</span><span class="p">,</span> <span class="n">zmax</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="k">return</span> <span class="n">vol</span></div></div>
+</pre></div>
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h3><a href="../../index.html">Table of Contents</a></h3>
+
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../index.html">PTEmu 0.1 documentation</a> &#187;</li>
+          <li class="nav-item nav-item-1"><a href="../index.html" >Module code</a> &#187;</li>
+          <li class="nav-item nav-item-2"><a href="../comet.html" >comet</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">comet.cosmology</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2022, A. Eggemeier, B. Camacho, A. Pezzotta, M. Crocce, R. Scoccimarro, A. Sanchez.
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 4.5.0.
+    </div>
+  </body>
+</html>
