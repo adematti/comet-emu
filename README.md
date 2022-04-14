@@ -7,7 +7,43 @@
 | **Documentation**: | [Documentation at Readthedocs](https://gitlab.com/aegge/pt-emulator)  |
 | **Installation**:  |  `pip install comet`       |
 
-:dizzy: **COMET** - Cosmological Observables Modelled with/by/from Emulated Theory.
+---
+## :dizzy: **COMET** - Cosmological Observables Modelled with/by/from Emulated Theory.
+
+ The emulator makes use of evolution mapping [Sanchez 2020](https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511),
+ [Sanchez et al 2021](https://arxiv.org/abs/2108.12710) to compress
+ the information of evolution parameters $`\mathbf{\Theta_{e}}`$
+ (e.g. $`h,\,\Omega_\mathrm{K},\,w_0,\,w_\mathrm{a},\,A_\mathrm{s},\,
+ \ldots`$) into the single quantity $`\sigma_{12}`$, defined as the rms
+ fluctuation of the linear density contrast $`\delta`$ within spheres
+ of radius $`R=12\,\mathrm{Mpc}`$.
+
+ This parameter, together with the parameters affecting the shape of the
+ power spectrum $`\mathbf{\Theta_{s}}`$ (e.g.
+ $`\omega_\mathrm{b},\,\omega_\mathrm{c},\,n_\mathrm{s}`$), and
+ the linear growth rate $`f`$, are used as base of the emulator.
+
+ The redshift-dependency of the multipoles can also be treated similarly to
+ the impact that different evolution parameters have on the power spectrum,
+ that is, by a simple rescaling of the amplitude of the power spectrum in
+ order to match the desired value of $`\sigma_{12}`$.
+
+ Internally to the emulator, the pair $`\left[k,P(k)\right]`$ is
+ expressed in $`\left[\mathrm{Mpc}^{-1},\mathrm{Mpc}^3\right]`$ units,
+ since this is the only set of units for which the evolution parameter
+ degeneracy is present. If the user wishes to use the more conventional
+ unit set $`\left[h\,\mathrm{Mpc}^{-1},h^{-3}\,\mathrm{Mpc}^3\right]`$,
+ they can do so by specifying it in the proper class attribute flag. In this
+ case, the input/output are converted into $`\mathrm{Mpc}`$ units
+ before being used/returned.
+
+ Geometrical distortions (AP corrections) are included a posteriori without
+ the need of including them in the emulation. This process is carried out
+ by first reconstructing the full anisotropic 2d galaxy power spectrum
+ $`P_\mathrm{gg}(k,\mu)`$, summing up all the even multipoles up to
+ $`\ell=6`$, applying distortions to $`k`$ and $`\mu`$, and then
+ projecting again over the Legendre polynomials.
+
 
 ## Getting started
 
