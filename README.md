@@ -9,8 +9,7 @@
 
 :dizzy: **COMET** - Cosmological Observables Modelled with/by/from Emulated Theory.
 
- The emulator makes use of evolution mapping [Sanchez 2020]
- (https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511),
+ The emulator makes use of evolution mapping [Sanchez 2020](https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511),
  [Sanchez et al 2021](https://arxiv.org/abs/2108.12710) to compress
  the information of evolution parameters $`\mathbf{\Theta_{e}}`$
  (e.g. $`h,\,\Omega_\mathrm{K},\,w_0,\,w_\mathrm{a},\,A_\mathrm{s},\,
