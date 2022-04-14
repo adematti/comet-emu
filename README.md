@@ -44,6 +44,32 @@
  $`\ell=6`$, applying distortions to $`k`$ and $`\mu`$, and then
  projecting again over the Legendre polynomials.
 
+## Getting started
+
+Install the code is as easy as
+
+```
+pip install comet.
+```
+
+Then you can follow the [Jupyter Notebook](https://gitlab.com/aegge/pt-emulator/-/tree/main/notebooks)
+for a small example in how to make predictions, compare with data and estimate
+$\chi^2$ of you model.
+
+## Developer version
+
+AS could be possible that you have your own theoretical predictions and you wish
+to train the emulator with your own computation. You can install the developer
+version as follow.
+
+```
+git clone git@gitlab.com:aegge/pt-emulator.git
+cd pt-emulator
+pip install -e .
+```
+
+Then you can follow the [Jupyter Notebook](https://gitlab.com/aegge/pt-emulator/-/tree/main/notebooks)
+to learn how to train the *COMET* and make predictions.
 
 ## Getting started
 
