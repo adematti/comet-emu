@@ -3,9 +3,11 @@
 | | |
 | ---      | ---      |
 | **Author**:  |  Alex E. et al. |
-| **Source**  |  [Source code at GitLab](https://gitlab.com/aegge/pt-emulator)  |
+| **Source:**  |  [Source code at GitLab](https://gitlab.com/aegge/pt-emulator)  |
 | **Documentation**: | [Documentation at Readthedocs](https://gitlab.com/aegge/pt-emulator)  |
-| **Installation**:  |  `pip install comet`       |
+| **Installation**:  |  `pip install comet`|
+| **References**:  |  [Sanchez 2020](https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511),
+[Sanchez et al 2021](https://arxiv.org/abs/2108.12710) |
 
 ---
 ## :dizzy: **COMET** - Cosmological Observables Modelled with/by/from Emulated Theory.
@@ -49,17 +51,19 @@
 Install the code is as easy as
 
 ```
-pip install comet.
+pip install comet
 ```
 
 Then you can follow the [Jupyter Notebook](https://gitlab.com/aegge/pt-emulator/-/tree/main/notebooks)
 for a small example in how to make predictions, compare with data and estimate
-$\chi^2$ of you model.
+the $`\chi^2`$ of you model.
 
 ## Developer version
 
-AS could be possible that you have your own theoretical predictions and you wish
-to train the emulator with your own computation. You can install the developer
+If you want to modify the code and play around with it, we provide a developer
+version so that you can make it and test it. Also, could be possible that you
+have your own theoretical predictions and you wish to train the emulator
+with your own computations. You can install the developer
 version as follow.
 
 ```
