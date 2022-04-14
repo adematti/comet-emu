@@ -6,8 +6,7 @@
 | **Source:**  |  [Source code at GitLab](https://gitlab.com/aegge/pt-emulator)  |
 | **Documentation**: | [Documentation at Readthedocs](https://gitlab.com/aegge/pt-emulator)  |
 | **Installation**:  |  `pip install comet`|
-| **References**:  |  [Sanchez 2020](https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511),
-[Sanchez et al 2021](https://arxiv.org/abs/2108.12710) |
+| **References**:  |[Sanchez 2020](https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511), [Sanchez et al 2021](https://arxiv.org/abs/2108.12710) |
 
 ---
 ## :dizzy: **COMET** - Cosmological Observables Modelled with/by/from Emulated Theory.
