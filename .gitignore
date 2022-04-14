@@ -65,3 +65,6 @@ comet/data_dir/models
 comet/data_dir/tables
 testscript.py
 .DS_Store
+
+# Docs
+docs/
