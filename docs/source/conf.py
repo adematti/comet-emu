@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.abspath('../..'))
 
 # -- Project information -----------------------------------------------------
 
-project = 'PTEmu'
+project = 'Comet'
 copyright = '2022, A. Eggemeier, B. Camacho, A. Pezzotta, M. Crocce, R. Scoccimarro, A. Sanchez'
 author = 'A. Eggemeier, B. Camacho, A. Pezzotta, M. Crocce, R. Scoccimarro, A. Sanchez'
 
