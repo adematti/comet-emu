@@ -8,44 +8,43 @@
 | **Installation**:  |  `pip install comet`       |
 
 :dizzy: **COMET** - Cosmological Observables Modelled with/by/from Emulated Theory.
-<dl>
-  <span class="sd">    The emulator makes use of evolution mapping (`Sanchez 2020</span>
-  <span class="sd">    &lt;https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511&gt;`_,</span>
-  <span class="sd">    `Sanchez et al 2021 &lt;https://arxiv.org/abs/2108.12710&gt;`_,) to compress</span>
-  <span class="sd">    the information of evolution parameters :math:`\mathbf{\Theta_{e}}`</span>
-  <span class="sd">    (e.g. :math:`h,\,\Omega_\mathrm{K},\,w_0,\,w_\mathrm{a},\,A_\mathrm{s},\,</span>
-  <span class="sd">    \ldots`) into the single quantity :math:`\sigma_{12}`, defined as the rms</span>
-  <span class="sd">    fluctuation of the linear density contrast :math:`\delta` within spheres</span>
-  <span class="sd">    of radius :math:`R=8\,\mathrm{Mpc}`.</span>
 
-  <span class="sd">    This parameter, together with the parameters affecting the shape of the</span>
-  <span class="sd">    power spectrum :math:`\mathbf{\Theta_{s}}` (e.g.</span>
-  <span class="sd">    :math:`\omega_\mathrm{b},\,\omega_\mathrm{c},\,n_\mathrm{s}`), and</span>
-  <span class="sd">    the linear growth rate :math:`f`, are used as base of the emulator.</span>
+ The emulator makes use of evolution mapping [Sanchez 2020]
+ (https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511),
+ [Sanchez et al 2021](https://arxiv.org/abs/2108.12710) to compress
+ the information of evolution parameters $`\mathbf{\Theta_{e}}`$
+ (e.g. $`h,\,\Omega_\mathrm{K},\,w_0,\,w_\mathrm{a},\,A_\mathrm{s},\,
+ \ldots`$) into the single quantity $`\sigma_{12}`$, defined as the rms
+ fluctuation of the linear density contrast $`\delta`$ within spheres
+ of radius $`R=12\,\mathrm{Mpc}`$.
 
-  <span class="sd">    The redshift-dependency of the multipoles can also be treated similarly to</span>
-  <span class="sd">    the impact that different evolution parameters have on the power spectrum,</span>
-  <span class="sd">    that is, by a simple rescaling of the amplitude of the power spectrum in</span>
-  <span class="sd">    order to match the desired value of :math:`\sigma_{12}`.</span>
+ This parameter, together with the parameters affecting the shape of the
+ power spectrum $`\mathbf{\Theta_{s}}`$ (e.g.
+ $`\omega_\mathrm{b},\,\omega_\mathrm{c},\,n_\mathrm{s}`$), and
+ the linear growth rate $`f`$, are used as base of the emulator.
 
-  <span class="sd">    Internally to the emulator, the pair :math:`\left[k,P(k)\right]` is</span>
-  <span class="sd">    expressed in :math:`\left[\mathrm{Mpc}^{-1},\mathrm{Mpc}^3\right]` units,</span>
-  <span class="sd">    since this is the only set of units for which the evolution parameter</span>
-  <span class="sd">    degeneracy is present. If the user wishes to use the more conventional</span>
-  <span class="sd">    unit set :math:`\left[h\,\mathrm{Mpc}^{-1},h^{-3}\,\mathrm{Mpc}^3\right]`,</span>
-  <span class="sd">    they can do so by specifying it in the proper class attribute flag. In this</span>
-  <span class="sd">    case, the input/output are converted into :math:`\mathrm{Mpc}` units</span>
-  <span class="sd">    before being used/returned.</span>
+ The redshift-dependency of the multipoles can also be treated similarly to
+ the impact that different evolution parameters have on the power spectrum,
+ that is, by a simple rescaling of the amplitude of the power spectrum in
+ order to match the desired value of $`\sigma_{12}`$.
 
-  <span class="sd">    Geometrical distortions (AP corrections) are included a posteriori without</span>
-  <span class="sd">    the need of including them in the emulation. This process is carried out</span>
-  <span class="sd">    by first reconstructing the full anisotropic 2d galaxy power spectrum</span>
-  <span class="sd">    :math:`P_\mathrm{gg}(k,\mu)`, summing up all the even multipoles up to</span>
-  <span class="sd">    :math:`\ell=6`, applying distortions to :math:`k` and :math:`\mu`, and then</span>
-  <span class="sd">    projecting again over the Legendre polynomials.</span>
-  <span class="sd">    &quot;&quot;&quot;</span>
+ Internally to the emulator, the pair $`\left[k,P(k)\right]`$ is
+ expressed in $`\left[\mathrm{Mpc}^{-1},\mathrm{Mpc}^3\right]`$ units,
+ since this is the only set of units for which the evolution parameter
+ degeneracy is present. If the user wishes to use the more conventional
+ unit set $`\left[h\,\mathrm{Mpc}^{-1},h^{-3}\,\mathrm{Mpc}^3\right]`$,
+ they can do so by specifying it in the proper class attribute flag. In this
+ case, the input/output are converted into $`\mathrm{Mpc}`$ units
+ before being used/returned.
 
-</dl>
+ Geometrical distortions (AP corrections) are included a posteriori without
+ the need of including them in the emulation. This process is carried out
+ by first reconstructing the full anisotropic 2d galaxy power spectrum
+ $`P_\mathrm{gg}(k,\mu)`$, summing up all the even multipoles up to
+ $`\ell=6`$, applying distortions to $`k`$ and $`\mu`$, and then
+ projecting again over the Legendre polynomials.
+
+
 ## Getting started
 
 To make it easy for you to get started with GitLab, here's a list of recommended next steps.
