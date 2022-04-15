@@ -1,14 +1,6 @@
 comet package
 =============
 
-Subpackages
------------
-
-.. toctree::
-   :maxdepth: 4
-
-   comet.data_dir
-
 Submodules
 ----------
 
