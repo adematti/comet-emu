@@ -6,9 +6,14 @@
 Welcome to COMET's documentation!
 =================================
 
-.. toctree::
-   :maxdepth: 2
-   :caption: Contents:
+
+====================  =====
+**Author**:           Alex E. et al.
+**Source**:           `Source code at GitLab <https://gitlab.com/aegge/pt-emulator/-/tree/main/notebooks>`_
+**Documentation**:    `Documentation at Readthedocs <https://gitlab.com/aegge/pt-emulator/-/tree/main/notebooks>`_
+**Installation**:     `pip install comet`
+**References**:       `Sanchez 2020 <https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511>`_, `Sanchez et al 2021 <https://arxiv.org/abs/2108.12710>`_,
+====================  =====
 
 **COMET** - Cosmological Observables Modelled with/by/from Emulated Theory.
      The emulator makes use of evolution mapping (`Sanchez 2020
@@ -56,48 +61,12 @@ Welcome to COMET's documentation!
   <https://gitlab.com/aegge/pt-emulator>`_ to make sure you are always up to
   date with our latest release.
 
+.. toctree::
+   :maxdepth: 2
+   :caption: Quick start:
 
-Installation
-============
+   installation
 
-Install the code is as easy as
-
-::
-
-  pip install comet
-
-
-Then you can follow the `Jupyter Notebook <https://gitlab.com/aegge/pt-emulator/-/tree/main/notebooks>`_
-for a small example in how to make predictions, compare with data and estimate
-the :math:`\chi^2` of you model.
-
-**Developer version**
-
-If you want to modify the code and play around with it, we provide a developer
-version so that you can make it and test it. Also, could be possible that you
-have your own theoretical predictions and you wish to train the emulator
-with your own computations. You can install the developer
-version as follow.
-
-::
-
-  git clone git@gitlab.com:aegge/pt-emulator.git
-  cd pt-emulator
-  pip install -e .
-
-
-Then you can follow the `Jupyter Notebook <https://gitlab.com/aegge/pt-emulator/-/tree/main/notebooks>`_
-to learn how to train the *COMET* and make predictions.
-
-.. warning::
-   the comet emulator only works in a
-   Python 3 environment; the data file at its core cannot
-   be unpickled by Python 2.x; in case your ``pip``
-   command doesn't link to a Python 3 pip executable, please
-   modify the line above accordingly (e.g. with ``pip3`` instead of ``pip``)
-
-Quick start example
-===================
 
 
 Indices and tables

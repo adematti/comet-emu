@@ -18,7 +18,8 @@
         <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
-    <link rel="search" title="Search" href="search.html" /> 
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Installation" href="installation.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -36,14 +37,12 @@
   </form>
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
-              <!-- Local TOC -->
-              <div class="local-toc"><ul>
-<li><a class="reference internal" href="#">Welcome to COMET’s documentation!</a></li>
-<li><a class="reference internal" href="#installation">Installation</a></li>
-<li><a class="reference internal" href="#quick-start-example">Quick start example</a></li>
-<li><a class="reference internal" href="#indices-and-tables">Indices and tables</a></li>
+              <p class="caption" role="heading"><span class="caption-text">Quick start:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html#example">Example</a></li>
 </ul>
-</div>
+
         </div>
       </div>
     </nav>
@@ -70,8 +69,29 @@
              
   <section id="welcome-to-comet-s-documentation">
 <h1>Welcome to COMET’s documentation!<a class="headerlink" href="#welcome-to-comet-s-documentation" title="Permalink to this headline"></a></h1>
-<div class="toctree-wrapper compound">
-</div>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 12%" />
+<col style="width: 88%" />
+</colgroup>
+<tbody>
+<tr class="row-odd"><td><p><strong>Author</strong>:</p></td>
+<td><p>Alex E. et al.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Source</strong>:</p></td>
+<td><p><a class="reference external" href="https://gitlab.com/aegge/pt-emulator/-/tree/main/notebooks">Source code at GitLab</a></p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Documentation</strong>:</p></td>
+<td><p><a class="reference external" href="https://gitlab.com/aegge/pt-emulator/-/tree/main/notebooks">Documentation at Readthedocs</a></p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Installation</strong>:</p></td>
+<td><p><cite>pip install comet</cite></p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>References</strong>:</p></td>
+<td><p><a class="reference external" href="https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511">Sanchez 2020</a>, <a class="reference external" href="https://arxiv.org/abs/2108.12710">Sanchez et al 2021</a>,</p></td>
+</tr>
+</tbody>
+</table>
 <dl>
 <dt><strong>COMET</strong> - Cosmological Observables Modelled with/by/from Emulated Theory.</dt><dd><p>The emulator makes use of evolution mapping (<a class="reference external" href="https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511">Sanchez 2020</a>,
 <a class="reference external" href="https://arxiv.org/abs/2108.12710">Sanchez et al 2021</a>,) to compress
@@ -113,40 +133,13 @@ you can find all the references to credit our work.</p>
 emulator become available as we improve them. Follow our <a class="reference external" href="https://gitlab.com/aegge/pt-emulator">public repository</a> to make sure you are always up to
 date with our latest release.</p>
 </div>
-</section>
-<section id="installation">
-<h1>Installation<a class="headerlink" href="#installation" title="Permalink to this headline"></a></h1>
-<p>Install the code is as easy as</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">install</span> <span class="n">comet</span>
-</pre></div>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">Quick start:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html#example">Example</a></li>
+</ul>
 </div>
-<p>Then you can follow the <a class="reference external" href="https://gitlab.com/aegge/pt-emulator/-/tree/main/notebooks">Jupyter Notebook</a>
-for a small example in how to make predictions, compare with data and estimate
-the <span class="math notranslate nohighlight">\(\chi^2\)</span> of you model.</p>
-<p><strong>Developer version</strong></p>
-<p>If you want to modify the code and play around with it, we provide a developer
-version so that you can make it and test it. Also, could be possible that you
-have your own theoretical predictions and you wish to train the emulator
-with your own computations. You can install the developer
-version as follow.</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">git</span> <span class="n">clone</span> <span class="n">git</span><span class="nd">@gitlab</span><span class="o">.</span><span class="n">com</span><span class="p">:</span><span class="n">aegge</span><span class="o">/</span><span class="n">pt</span><span class="o">-</span><span class="n">emulator</span><span class="o">.</span><span class="n">git</span>
-<span class="n">cd</span> <span class="n">pt</span><span class="o">-</span><span class="n">emulator</span>
-<span class="n">pip</span> <span class="n">install</span> <span class="o">-</span><span class="n">e</span> <span class="o">.</span>
-</pre></div>
-</div>
-<p>Then you can follow the <a class="reference external" href="https://gitlab.com/aegge/pt-emulator/-/tree/main/notebooks">Jupyter Notebook</a>
-to learn how to train the <em>COMET</em> and make predictions.</p>
-<div class="admonition warning">
-<p class="admonition-title">Warning</p>
-<p>the comet emulator only works in a
-Python 3 environment; the data file at its core cannot
-be unpickled by Python 2.x; in case your <code class="docutils literal notranslate"><span class="pre">pip</span></code>
-command doesn’t link to a Python 3 pip executable, please
-modify the line above accordingly (e.g. with <code class="docutils literal notranslate"><span class="pre">pip3</span></code> instead of <code class="docutils literal notranslate"><span class="pre">pip</span></code>)</p>
-</div>
-</section>
-<section id="quick-start-example">
-<h1>Quick start example<a class="headerlink" href="#quick-start-example" title="Permalink to this headline"></a></h1>
 </section>
 <section id="indices-and-tables">
 <h1>Indices and tables<a class="headerlink" href="#indices-and-tables" title="Permalink to this headline"></a></h1>
@@ -160,7 +153,9 @@ modify the line above accordingly (e.g. with <code class="docutils literal notra
 
            </div>
           </div>
-          <footer>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="installation.html" class="btn btn-neutral float-right" title="Installation" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
 
   <hr/>
 
