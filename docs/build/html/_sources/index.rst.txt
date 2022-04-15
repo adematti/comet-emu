@@ -63,11 +63,15 @@ Welcome to COMET's documentation!
 
 .. toctree::
    :maxdepth: 2
-   :caption: Quick start:
+   :caption: Contents:
 
    installation
 
+.. toctree::
+   :maxdepth: 2
+   :caption: Complete API:
 
+   modules
 
 Indices and tables
 ==================
