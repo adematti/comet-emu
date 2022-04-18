@@ -47,9 +47,11 @@ The functions returning the multipoles take generally three arguments:
 array all specified multipoles will be computed for those scales, if given as
 a list, the length must match the number of specified multipoles (ell) and the f
 irst entry of the list is evaluated for the first multipole etc.
+
 2. A parameter dictionary, specifying shape + RSD parameters, as well as bias
 parameters.
-3. The multipole number, i.e. ell = 0, 2, 4, or a list of multipole numbers
+
+3. The multipole number, i.e. ell = 0, 2, 4, or a list of multipole numbers.
 
 ::
 
