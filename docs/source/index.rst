@@ -66,6 +66,7 @@ Welcome to COMET's documentation!
    :caption: Contents:
 
    installation
+   examples
 
 .. toctree::
    :maxdepth: 2

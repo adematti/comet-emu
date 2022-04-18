@@ -4,7 +4,7 @@ base_dir = os.path.join(os.path.dirname(__file__))
 
 def download_data(download_dir):
     """
-    Download the data needed for this notebook to the specified directory.
+    Download the data needed for the emulators to the specified directory.
 
     Parameters
     ----------

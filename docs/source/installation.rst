@@ -37,5 +37,14 @@ to learn how to train the *COMET* and make predictions.
    command doesn't link to a Python 3 pip executable, please
    modify the line above accordingly (e.g. with ``pip3`` instead of ``pip``)
 
-Example
-============
+.. note::
+  The comet emulator depends on the following external packages:
+
+  * numpy
+  * matplotlib
+  * scipy
+  * astropy
+  * GPy
+  * pyDOE
+
+  The installation process will automatically try to install them if they are not already present.

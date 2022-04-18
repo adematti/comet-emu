@@ -1,10 +1,4 @@
-comet package
-=============
-
-Submodules
-----------
-
-comet.PTEmu module
+PTEmu
 ------------------
 
 .. automodule:: comet.PTEmu
@@ -12,7 +6,7 @@ comet.PTEmu module
    :undoc-members:
    :show-inheritance:
 
-comet.cosmology module
+cosmology
 ----------------------
 
 .. automodule:: comet.cosmology
@@ -20,7 +14,7 @@ comet.cosmology module
    :undoc-members:
    :show-inheritance:
 
-comet.data module
+data
 -----------------
 
 .. automodule:: comet.data
@@ -28,18 +22,10 @@ comet.data module
    :undoc-members:
    :show-inheritance:
 
-comet.tables module
+tables
 -------------------
 
 .. automodule:: comet.tables
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Module contents
----------------
-
-.. automodule:: comet
    :members:
    :undoc-members:
    :show-inheritance:
