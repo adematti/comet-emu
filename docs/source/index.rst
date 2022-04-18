@@ -69,6 +69,7 @@ Welcome to COMET's documentation!
 
    installation
    examples
+   spaceparams
 
 .. toctree::
    :maxdepth: 2
