@@ -24,10 +24,10 @@ params['f']        = 0.7
 params['b1'] = 2.
 params['b2'] = -0.5
 
-print(EFT.Pell(0.1, params, ell=2))
-print(EFT.Pell(np.array([0.1,0.2,0.3]), params, ell=[0,2,4]))
+EFT.Pell(0.1, params, ell=2)
+EFT.Pell(np.array([0.1,0.2,0.3]), params, ell=[0,2,4])
 
-print(EFT.Pell([np.array([0.1,0.2]),0.3], params, ell=[0,4]))
+EFT.Pell([np.array([0.1,0.2]),0.3], params, ell=[0,4])
 
 # Define range of scales (remember: in 1/Mpc)
 k_Mpc = np.logspace(-3,np.log10(0.3),100)
@@ -59,4 +59,29 @@ ax.semilogx(k_Mpc, k_Mpc**0.5*Pell_Mpc_2['ell4'],c='C2',ls='--')
 ax.set_xlabel('$k$ [1/Mpc]',fontsize=12)
 ax.set_ylabel(r'$k^{1/2}\,P_{\ell}(k)$ [$(\mathrm{Mpc})^{5/2}$]',fontsize=12)
 ax.legend(fontsize=12)
-plt.savefig("docs/imgs/EFT_Multipoles.png")
+plt.savefig("docs/source/imgs/EFT_Multipoles.png")
+
+EFT.define_units(use_Mpc=False)
+EFT.define_nbar(nbar=3.95898e-4)
+params['h'] = 0.695
+
+k_hMpc = np.logspace(-3,np.log10(0.3),100)
+Pell_hMpc_2 = EFT.Pell(k_hMpc,params,ell=[0,2,4])
+
+f = plt.figure()
+ax = f.add_subplot(111)
+
+ax.semilogx(k_Mpc/params['h'], (k_Mpc/params['h'])**0.5*Pell_Mpc_2['ell0']*params['h']**3,c='C0',ls='-',label='P0')
+ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_hMpc_2['ell0'],c='C0',ls='--')
+
+ax.semilogx(k_Mpc/params['h'], (k_Mpc/params['h'])**0.5*Pell_Mpc_2['ell2']*params['h']**3,c='C1',ls='-',label='P2')
+ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_hMpc_2['ell2'],c='C1',ls='--')
+
+ax.semilogx(k_Mpc/params['h'], (k_Mpc/params['h'])**0.5*Pell_Mpc_2['ell4']*params['h']**3,c='C2',ls='-',label='P4')
+ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_hMpc_2['ell4'],c='C2',ls='--')
+
+ax.set_xlabel('$k$ [h/Mpc]',fontsize=12)
+ax.set_ylabel(r'$k^{1/2}\,P_{\ell}(k)$ [$(\mathrm{Mpc}/h)^{5/2}$]',fontsize=12)
+ax.legend(fontsize=12)
+
+plt.savefig("docs/source/imgs/EFT_Multipoles_hMpc.png")

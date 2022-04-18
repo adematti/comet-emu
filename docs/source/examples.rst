@@ -131,3 +131,55 @@ Let's generate two different sets of predicitons for different parameter values 
 
 .. image:: ./imgs/EFT_Multipoles.png
   :width: 600
+
+**Using Mpc/h units**
+
+Now we switch to Mpc/h units, by calling define_units again and providing
+the number density in units of (h/Mpc)^3:
+
+::
+
+  EFT.define_units(use_Mpc=False)
+  EFT.define_nbar(nbar=3.95898e-4)
+
+When computing the multipoles using the :math:`\sigma_{12}`​ parameter space we
+now additionally need to specify a fiducial value for the Hubble rate. This is
+required to convert the native emulator output from Mpc to Mpc/h units. So
+let's add this to the parameter dictionary:
+
+::
+
+  params['h'] = 0.695
+
+Now, we can compute the multipoles for the same range of scales, but in Mpc/h
+units:
+
+::
+
+  k_hMpc = np.logspace(-3,np.log10(0.3),100)
+  Pell_hMpc_2 = EFT.Pell(k_hMpc,params,ell=[0,2,4])
+
+After scaling k_Mpc and Pell_Mpc_2 from above the results should be not
+identical but quite close (apart from a different overall range of scales).
+Let's check this is really the case:
+
+::
+
+  f = plt.figure()
+  ax = f.add_subplot(111)
+
+  ax.semilogx(k_Mpc/params['h'], (k_Mpc/params['h'])**0.5*Pell_Mpc_2['ell0']*params['h']**3,c='C0',ls='-',label='P0')
+  ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_hMpc_2['ell0'],c='C0',ls='--')
+
+  ax.semilogx(k_Mpc/params['h'], (k_Mpc/params['h'])**0.5*Pell_Mpc_2['ell2']*params['h']**3,c='C1',ls='-',label='P2')
+  ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_hMpc_2['ell2'],c='C1',ls='--')
+
+  ax.semilogx(k_Mpc/params['h'], (k_Mpc/params['h'])**0.5*Pell_Mpc_2['ell4']*params['h']**3,c='C2',ls='-',label='P4')
+  ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_hMpc_2['ell4'],c='C2',ls='--')
+
+  ax.set_xlabel('$k$ [h/Mpc]',fontsize=12)
+  ax.set_ylabel(r'$k^{1/2}\,P_{\ell}(k)$ [$(\mathrm{Mpc}/h)^{5/2}$]',fontsize=12)
+  ax.legend(fontsize=12)
+
+.. image:: ./imgs/EFT_Multipoles_hMpc.png
+  :width: 600
