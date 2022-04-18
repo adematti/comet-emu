@@ -85,3 +85,36 @@ ax.set_ylabel(r'$k^{1/2}\,P_{\ell}(k)$ [$(\mathrm{Mpc}/h)^{5/2}$]',fontsize=12)
 ax.legend(fontsize=12)
 
 plt.savefig("docs/source/imgs/EFT_Multipoles_hMpc.png")
+
+params_fid_Minerva = {'h':0.695, 'wc':0.11544, 'wb':0.0222191, 'z':0.57}
+
+EFT.define_fiducial_cosmology(params_fid=params_fid_Minerva, de_model='lambda')
+
+params['h']  = 0.8
+params['As'] = 2.3
+params['z']  = 0.6
+
+Pell_LCDM_hMpc_1 = EFT.Pell(k_hMpc, params, ell=[0,2,4], de_model='lambda') # E.g., this is for a flat LCDM cosmology
+# s12, alpha_tr, alpha_lo and f are different now!
+print(EFT.params)
+
+Pell_LCDM_hMpc_2 = EFT.Pell(k_hMpc, params, ell=[0,2,4], de_model='lambda', alpha_tr_lo=[1,1])
+
+ # The results differ accordingly!
+f = plt.figure()
+ax = f.add_subplot(111)
+
+ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM_hMpc_1["ell0"],c='C0',ls='-',label='P0')
+ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM_hMpc_2["ell0"],c='C0',ls='--')
+
+ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM_hMpc_1["ell2"],c='C1',ls='-',label='P2')
+ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM_hMpc_2["ell2"],c='C1',ls='--')
+
+ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM_hMpc_1["ell4"],c='C2',ls='-',label='P4')
+ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM_hMpc_2["ell4"],c='C2',ls='--')
+
+ax.set_xlabel('$k$ [h/Mpc]',fontsize=12)
+ax.set_ylabel(r'$k^{1/2}\,P_{\ell}(k)$ [$(\mathrm{Mpc}/h)^{5/2}$]',fontsize=12)
+ax.legend(fontsize=12)
+
+plt.savefig("docs/source/imgs/EFT_Multipoles_LCDM.png")
