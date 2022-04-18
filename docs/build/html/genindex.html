@@ -37,20 +37,20 @@
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="installation.html#example">Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#the-real-space-emulator">The Real space emulator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#the-vdg-infty-emulator">The VDG_infty emulator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#the-eft-emulator">The EFT emulator</a></li>
+</ul>
+</li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Complete API:</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="modules.html">comet</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="comet.html">comet package</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="comet.html#submodules">Submodules</a></li>
-<li class="toctree-l3"><a class="reference internal" href="comet.html#module-comet.PTEmu">comet.PTEmu module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="comet.html#module-comet.cosmology">comet.cosmology module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="comet.html#module-comet.data">comet.data module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="comet.html#module-comet.tables">comet.tables module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="comet.html#module-comet">Module contents</a></li>
-</ul>
-</li>
+<li class="toctree-l2"><a class="reference internal" href="comet.html">PTEmu</a></li>
+<li class="toctree-l2"><a class="reference internal" href="comet.html#module-comet.cosmology">cosmology</a></li>
+<li class="toctree-l2"><a class="reference internal" href="comet.html#module-comet.data">data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="comet.html#module-comet.tables">tables</a></li>
 </ul>
 </li>
 </ul>
@@ -138,13 +138,6 @@
       <li><a href="comet.html#comet.data.MeasuredData.clear_data">clear_data() (comet.data.MeasuredData method)</a>
 </li>
       <li>
-    comet
-
-      <ul>
-        <li><a href="comet.html#module-comet">module</a>
-</li>
-      </ul></li>
-      <li>
     comet.cosmology
 
       <ul>
@@ -158,8 +151,6 @@
         <li><a href="comet.html#module-comet.data">module</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     comet.data_dir
 
@@ -167,6 +158,8 @@
         <li><a href="comet.data_dir.html#module-comet.data_dir">module</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     comet.PTEmu
 
@@ -199,15 +192,13 @@
 </li>
       <li><a href="comet.html#comet.PTEmu.PTEmu.define_data_set">define_data_set() (comet.PTEmu.PTEmu method)</a>
 </li>
-      <li><a href="comet.html#comet.PTEmu.PTEmu.define_fiducial_cosmology">define_fiducial_cosmology() (comet.PTEmu.PTEmu method)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="comet.html#comet.PTEmu.PTEmu.define_fiducial_cosmology">define_fiducial_cosmology() (comet.PTEmu.PTEmu method)</a>
+</li>
       <li><a href="comet.html#comet.PTEmu.PTEmu.define_nbar">define_nbar() (comet.PTEmu.PTEmu method)</a>
 </li>
       <li><a href="comet.html#comet.PTEmu.PTEmu.define_units">define_units() (comet.PTEmu.PTEmu method)</a>
-</li>
-      <li><a href="comet.html#comet.download_data">download_data() (in module comet)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -301,8 +292,6 @@
     module
 
       <ul>
-        <li><a href="comet.html#module-comet">comet</a>
-</li>
         <li><a href="comet.html#module-comet.cosmology">comet.cosmology</a>
 </li>
         <li><a href="comet.html#module-comet.data">comet.data</a>
