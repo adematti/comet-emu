@@ -1244,25 +1244,39 @@ class PTEmu:
         :math:`\Sigma(f,\mu)` is the anisotropic BAO damping factor due to
         infrared modes.
 
+        Notice how this function does not include the leading order Kaiser
+        effect due to the impact of the velocity field on the amplitude of
+        the power spectrum.
+
         Parameters
         ----------
         k: float or numpy.ndarray
-            Value of the wavemode :math:`k`.
+            Value of the requested wavemodes :math:`k`.
         mu: float or numpy.ndarray
             Value of the cosine :math:`\mu` of the angle between
             the pair separation and the line of sight.
         params: dict
-            Dictionary containing the list of parameters which are internally
-            used by the emulator. The keywords of the dictionary specify the
-            name of the parameters, while the values specify the values of the
-            parameters.
+            Dictionary containing the list of total model parameters which are
+            internally used by the emulator. The keyword/value pairs of the
+            dictionary specify the names and the values of the parameters,
+            respectively.
         de_model: str, optional
             String that determines the dark energy equation of state. Can be
-            chosen form the list ['lambda', 'w0', 'w0wa'].
-            Defaults to None.
+            chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
+            the standard cosmological parameters, or be left undefined to use
+            only :math:`\sigma_{12}`. Defaults to **None**.
         ell_for_recon: list, optional
             List of :math:`\ell` values used for the reconstruction of the
-            2d leading-order IR-resummed power spectrum. Defaults to None.
+            2d leading-order IR-resummed power spectrum. If **None**, all the
+            even multipoles up to :math:`\ell=6` are used in the
+            reconstruction. Defaults to **None**.
+
+        Returns
+        -------
+        Pdw_2d: numpy.ndarray
+            Leading-order infrared resummed power spectrum
+            :math:`P_\mathrm{IR-res}^\mathrm{LO}(k,\mu)` evaluated at the
+            input wavemodes :math:`k` and angles :math:`\mu`.
         """
         if ell_for_recon is None:
             ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
@@ -1292,7 +1306,7 @@ class PTEmu:
                                            Pdw_ell[:, i]*self.params['h']**3,
                                            kind='cubic')
 
-        Pdw_2d = 0.
+        Pdw_2d = 0.0
         for ell in ell_for_recon:
             Pdw_2d += np.outer(Pdw_spline[ell](k), eval_legendre(ell, mu))
 

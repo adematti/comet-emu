@@ -1,6 +1,9 @@
+"""Init module."""
+
 import os
 from comet.PTEmu import PTEmu as comet
 base_dir = os.path.join(os.path.dirname(__file__))
+
 
 def download_data(download_dir):
     """
@@ -25,15 +28,17 @@ def download_data(download_dir):
     for i, url in enumerate(urls):
 
         # the download path
-        #filename = url.split('/')[-1]
+        # filename = url.split('/')[-1]
         file_path = os.path.join(download_dir+"/data_dir", filenames[i])
         final_path = os.path.join(download_dir+"/data_dir", out_filenames[i])
 
         # do not re-download
 
         if not os.path.exists(final_path):
-            if i==0:
-                print("\n As it is the first instance of the emulator, we need to download some data, it can take a few seconds...\n")
+            if i == 0:
+                print("\n As it is the first instance of the emulator, "
+                      "we need to download some data, it can take a few "
+                      "seconds...\n")
 
             print("Downloading %s...\n" % out_filenames[i])
 
@@ -45,8 +50,7 @@ def download_data(download_dir):
 
             # unzip the file
             shutil.unpack_archive(
-            filename=file_path, extract_dir=download_dir+"/data_dir"
-            )
+                filename=file_path, extract_dir=download_dir+"/data_dir")
             os.remove(file_path)
             print("Done.\n")
         else:
@@ -56,4 +60,4 @@ def download_data(download_dir):
 download_data(base_dir)
 
 if __name__ == '__main__':
-    comet=comet()
+    comet = comet()
