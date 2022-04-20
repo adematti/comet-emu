@@ -18,7 +18,8 @@ Welcome to COMET's documentation!
 **References**:       `Sanchez 2020 <https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511>`_, `Sanchez et al 2021 <https://arxiv.org/abs/2108.12710>`_,
 ====================  =====
 
-|:dizzy:| **COMET** - Cosmological Observables Modelled with/by/from Emulated Theory.
+|:dizzy:| **COMET** - Cosmological Observables Modelled by Emulated perturbation
+                      Theory.
      The emulator makes use of evolution mapping (`Sanchez 2020
      <https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511>`_,
      `Sanchez et al 2021 <https://arxiv.org/abs/2108.12710>`_,) to compress
