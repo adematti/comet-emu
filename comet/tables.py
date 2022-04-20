@@ -18,21 +18,17 @@ class Tables:
     predictions in the original metric.
     """
 
-    def __init__(self, params, validation=False):
+    def __init__(self, params):
         r"""Class constructor.
 
         Parameters
         ----------
         params: list
             List of parameters used to train the emulator.
-        validation: bool, optional
-            A flag specifying if the class is meant for the validation of the
-            emulator. Defaults to **False**.
         """
         self.params = params
         self.n_params = len(params)
         self.param_ranges = None
-        self.validation = validation
         self.model = None
         self.model_transformed = None
 
@@ -61,81 +57,6 @@ class Tables:
         for p in self.params:
             self.param_ranges[p] = ranges[p]
 
-    def generate_samples(self, ranges, n_samples, n_trials=0):
-        r"""Generate parameter sample.
-
-        The sample is built inside the specified parameter ranges and with the
-        given size. Depending on the value of the class attribute
-        **validation**, the sample is going to be generated using a Latin
-        HyperCube (training) or randomly across the hypervolume (validation).
-
-        Parameters
-        ----------
-        ranges: dict
-            Dictionary containing the parameter ranges. Keys correspond to the
-            name of the parameters, while values are list with two entries,
-            which correspond to the minimum and maximum value of the parameter.
-        n_samples: int
-            Size of the sample. **n_samples** points in the hypervolume defined
-            by the parameter ranges are going to be generated.
-        n_trials: int, optional
-            Number of resamplings of the Latin HyperCube when a training
-            sample is requested. This is meant to obtain the best coverture of
-            the hypervolume (with maxed minimum distance among points).
-            Defaults to 0.
-        """
-        self.set_param_ranges(ranges)
-        self.n_samples = n_samples
-
-        if self.validation:
-            self.samples = np.random.rand(self.n_samples, self.n_params)
-        else:
-            self.samples = lhs(self.n_params, samples=self.n_samples,
-                               criterion='center')
-            dist = cdist(self.samples, self.samples, metric='euclidean')
-            min_dist = np.amin(dist[dist > 0.0])
-            for n in range(n_trials):
-                samples_new = lhs(self.n_params, samples=self.n_samples,
-                                  criterion='center')
-                dist = cdist(samples_new, samples_new, metric='euclidean')
-                min_dist_new = np.amin(dist[dist > 0.0])
-                if (min_dist_new > min_dist):
-                    min_dist = min_dist_new
-                    self.samples = samples_new
-
-        for n, p in enumerate(self.params):
-            self.samples[:, n] = (self.samples[:, n] *
-                                  (self.param_ranges[p][1] -
-                                   self.param_ranges[p][0]) +
-                                  self.param_ranges[p][0])
-
-    def save_samples(self, fname):
-        r"""Save sample to file.
-
-        Saves the parameter sample stored as class attribute into an external
-        data file.
-
-        Parameters
-        ----------
-        fname: str
-            Name of output file.
-        """
-        np.savetxt(fname, self.samples)
-
-    def load_samples(self, fname):
-        r"""Load sample from file.
-
-        Loads a parameter sample from an external data file, and stores it
-        as a class attribute.
-
-        Parameters
-        ----------
-        fname: str
-            Name of output file to read from.
-        """
-        self.samples = np.loadtxt(fname)
-        self.n_samples = self.samples.shape[0]
-
     def assign_samples(self, samples_hdu):
         r"""Read parameter sample from HDU object.
 
@@ -150,17 +71,9 @@ class Tables:
             Header Data Unit containing the parameter sample.
         """
         self.n_samples = samples_hdu.header['NAXIS2']
-        if self.validation:
-            self.samples = np.zeros([self.n_samples,
-                                     samples_hdu.header['TFIELDS']])
-            for i, p in enumerate([samples_hdu.header['TTYPE{}'.format(n+1)]
-                                  for n in range(
-                                    samples_hdu.header['TFIELDS'])]):
-                self.samples[:, i] = samples_hdu.data[p]
-        else:
-            self.samples = np.zeros([self.n_samples, self.n_params])
-            for i, p in enumerate(self.params):
-                self.samples[:, i] = samples_hdu.data[p]
+        self.samples = np.zeros([self.n_samples, self.n_params])
+        for i, p in enumerate(self.params):
+            self.samples[:, i] = samples_hdu.data[p]
 
     def assign_table(self, table_hdu, nk, nkloop):
         r"""Read model table from HDU object.
@@ -190,8 +103,7 @@ class Tables:
                 self.model[TYPE] = table_hdu.data[TYPE]
                 if self.model[TYPE].ndim == 1:
                     self.model[TYPE] = self.model[TYPE][:, None]
-            if not self.validation:
-                self.transform_emulator_data(data_type=list(self.model.keys()))
+            self.transform_emulator_data(data_type=list(self.model.keys()))
         elif 'MODEL_FULL' == table_hdu.header['EXTNAME']:
             if self.model is None:
                 self.model = {}
@@ -220,10 +132,7 @@ class Tables:
                             table_hdu.data['Pk2corr_b1b1_ell{}'.format(ell)])
                     else:
                         self.model[diagram_full] = table_hdu.data[diagram_full]
-            if not self.validation:
-                self.transform_emulator_data()
-            else:
-                self.convert_dictionary()
+            self.transform_emulator_data()
         else:
             raise KeyError('HDU table does not contain valid identifiers.')
 
@@ -369,65 +278,3 @@ class Tables:
 
                 self.model_transformed[ell] = self.transform(temp,
                                                              data_type=ell)
-
-    def convert_dictionary(self):
-        r"""Convert format of internal tables.
-
-        Converts the format of the internal model tables, from dictionary
-        to numpy.ndarray.
-        """
-        temp = np.zeros([self.n_samples, self.nk, 1+self.n_diagrams*3])
-        temp[:, :, 0] = self.model['PL']
-        for ell in [0, 2, 4]:
-            for cnt, diagram in enumerate(self.names_diagrams):
-                diagram_full = '{}_ell{}'.format(diagram, ell)
-                temp[:, :, 1+cnt+self.n_diagrams*int(ell/2)] = \
-                    self.model[diagram_full]
-                cnt += 1
-        self.model = temp
-
-    def GPy_model(self, data_type):
-        r"""Run the Gaussian Regression model to build the emulator.
-
-        Defines a kernel for the covariance of the Gaussian process, that is
-        obtained as a combination of a squared-exponential (i.e. gaussian),
-        Matérn, and white noise kernels (see the `GPy documentation page
-        <https://gpy.readthedocs.io/en/deploy/GPy.kern.html>`_ for more
-        detailed informations), and trains the emulator using the rescaled
-        model tables as input.
-
-        Parameters
-        ----------
-        data_type: str
-            Type of the model table that is used to build the emulator.
-
-        Returns
-        -------
-        GPy_model: GPy.models.GPregression
-            Emulator object.
-        """
-        kernel = (GPy.kern.RBF(input_dim=self.n_params,
-                               variance=np.var(
-                                self.model_transformed[data_type]),
-                               lengthscale=np.ones(self.n_params),
-                               ARD=True) +
-                  GPy.kern.Matern32(input_dim=self.n_params,
-                                    variance=np.var(
-                                        self.model_transformed[data_type]),
-                                    lengthscale=np.ones(self.n_params),
-                                    ARD=True) +
-                  GPy.kern.White(input_dim=self.n_params,
-                                 variance=np.var(
-                                    self.model_transformed[data_type])))
-        # + GPy.kern.Matern32(input_dim=self.n_params,
-        #                     variance=np.var(
-        #                      self.model_transformed[data_type]),
-        #                     lengthscale=np.ones(self.n_params),
-        #                     ARD=True)
-        # + GPy.kern.RatQuad(input_dim=self.n_params,
-        #                    variance=np.var(
-        #                      self.model_transformed[data_type]),
-        #                    lengthscale=np.ones(self.n_params),
-        #                    power=1., ARD=True) \
-        return GPy.models.GPRegression(
-            self.samples, self.model_transformed[data_type], kernel)
