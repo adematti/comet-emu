@@ -1,10 +1,8 @@
 """Tables module."""
 
 import numpy as np
-from scipy.spatial.distance import cdist
 from astropy.io import fits
 import GPy
-from pyDOE import *
 
 
 class Tables:
