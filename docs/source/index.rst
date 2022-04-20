@@ -13,7 +13,7 @@ Welcome to COMET's documentation!
 **Author**:           Alex E. et al.
 **Source**:           `Source code at GitLab <https://gitlab.com/aegge/pt-emulator/-/tree/main/notebooks>`_
 **Documentation**:    `Documentation at Readthedocs <https://gitlab.com/aegge/pt-emulator/-/tree/main/notebooks>`_
-**Installation**:     `pip install comet`
+**Installation**:     ``pip install comet``
 **References**:       `Sanchez 2020 <https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511>`_, `Sanchez et al 2021 <https://arxiv.org/abs/2108.12710>`_,
 ====================  =====
 

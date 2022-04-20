@@ -118,3 +118,7 @@ ax.set_ylabel(r'$k^{1/2}\,P_{\ell}(k)$ [$(\mathrm{Mpc}/h)^{5/2}$]',fontsize=12)
 ax.legend(fontsize=12)
 
 plt.savefig("docs/source/imgs/EFT_Multipoles_LCDM.png")
+
+print(EFT.params_ranges)
+
+print(min(EFT.k_table), max(EFT.k_table))
