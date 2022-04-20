@@ -64,6 +64,7 @@ venv.bak/
 comet/data_dir/models
 comet/data_dir/tables
 testscript.py
+testsTutorial.py
 .DS_Store
 
 # Docs

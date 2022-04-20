@@ -44,8 +44,11 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.napoleon',
     'sphinx.ext.intersphinx',
-    'numpydoc'
+    'numpydoc',
+    'sphinxemoji.sphinxemoji',
 ]
+
+sphinxemoji_style = 'twemoji'
 
 napoleon_google_docstring = False
 
