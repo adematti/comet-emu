@@ -101,8 +101,9 @@
 <col style="width: 88%" />
 </colgroup>
 <tbody>
-<tr class="row-odd"><td><p><strong>Author</strong>:</p></td>
-<td><p>Alex E. et al.</p></td>
+<tr class="row-odd"><td><p><strong>Contributors</strong>:</p></td>
+<td><p>Alex Eggemeier, Benjamin Camacho-Quevedo, Andrea Pezzotta,
+Martin Crocce, Román Scoccimarro, Ariel Sánchez</p></td>
 </tr>
 <tr class="row-even"><td><p><strong>Source</strong>:</p></td>
 <td><p><a class="reference external" href="https://gitlab.com/aegge/pt-emulator/-/tree/main/notebooks">Source code at GitLab</a></p></td>
@@ -114,48 +115,76 @@
 <td><p><code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">comet</span></code></p></td>
 </tr>
 <tr class="row-odd"><td><p><strong>References</strong>:</p></td>
-<td><p><a class="reference external" href="https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511">Sanchez 2020</a>, <a class="reference external" href="https://arxiv.org/abs/2108.12710">Sanchez et al 2021</a>,</p></td>
+<td><p><a class="reference external" href="https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511">Sanchez 2020</a>, <a class="reference external" href="https://arxiv.org/abs/2108.12710">Sanchez et al. 2021</a>,</p></td>
 </tr>
 </tbody>
 </table>
 <dl>
-<dt>💫 <strong>COMET</strong> - Cosmological Observables Modelled with/by/from Emulated Theory.</dt><dd><p>The emulator makes use of evolution mapping (<a class="reference external" href="https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511">Sanchez 2020</a>,
-<a class="reference external" href="https://arxiv.org/abs/2108.12710">Sanchez et al 2021</a>,) to compress
-the information of evolution parameters <span class="math notranslate nohighlight">\(\mathbf{\Theta_{e}}\)</span>
-(e.g. <span class="math notranslate nohighlight">\(h,\,\Omega_\mathrm{K},\,w_0,\,w_\mathrm{a},\,A_\mathrm{s},\,
-\ldots\)</span>) into the single quantity <span class="math notranslate nohighlight">\(\sigma_{12}\)</span>, defined as the rms
-fluctuation of the linear density contrast <span class="math notranslate nohighlight">\(\delta\)</span> within spheres
-of radius <span class="math notranslate nohighlight">\(R=8\,\mathrm{Mpc}\)</span>.</p>
-<p>This parameter, together with the parameters affecting the shape of the
-power spectrum <span class="math notranslate nohighlight">\(\mathbf{\Theta_{s}}\)</span> (e.g.
-<span class="math notranslate nohighlight">\(\omega_\mathrm{b},\,\omega_\mathrm{c},\,n_\mathrm{s}\)</span>), and
-the linear growth rate <span class="math notranslate nohighlight">\(f\)</span>, are used as base of the emulator.</p>
-<p>The redshift-dependency of the multipoles can also be treated similarly to
-the impact that different evolution parameters have on the power spectrum,
-that is, by a simple rescaling of the amplitude of the power spectrum in
-order to match the desired value of <span class="math notranslate nohighlight">\(\sigma_{12}\)</span>.</p>
-<p>Internally to the emulator, the pair <span class="math notranslate nohighlight">\(\left[k,P(k)\right]\)</span> is
-expressed in <span class="math notranslate nohighlight">\(\left[\mathrm{Mpc}^{-1},\mathrm{Mpc}^3\right]\)</span> units,
-since this is the only set of units for which the evolution parameter
-degeneracy is present. If the user wishes to use the more conventional
-unit set <span class="math notranslate nohighlight">\(\left[h\,\mathrm{Mpc}^{-1},h^{-3}\,\mathrm{Mpc}^3\right]\)</span>,
-they can do so by specifying it in the proper class attribute flag. In this
-case, the input/output are converted into <span class="math notranslate nohighlight">\(\mathrm{Mpc}\)</span> units
-before being used/returned.</p>
-<p>Geometrical distortions (AP corrections) are included a posteriori without
-the need of including them in the emulation. This process is carried out
-by first reconstructing the full anisotropic 2d galaxy power spectrum
-<span class="math notranslate nohighlight">\(P_\mathrm{gg}(k,\mu)\)</span>, summing up all the even multipoles up to
-<span class="math notranslate nohighlight">\(\ell=6\)</span>, applying distortions to <span class="math notranslate nohighlight">\(k\)</span> and <span class="math notranslate nohighlight">\(\mu\)</span>, and then
-projecting again over the Legendre polynomials.</p>
-<p>Our emulators are publicly available under MIT licence; please, follow the
-links above to be see te corresponding papers on the arXiv website, where
-you can find all the references to credit our work.</p>
+<dt>💫 <strong>COMET</strong> - Cosmological Observables Modelled by Emulated perturbation Theory</dt><dd><p>COMET is a Python package that provides emulated predictions of large-scale
+structure observables from models that are based on perturbation theory.
+COMET substantially speeds up these analytic computations without any
+relevant sacrifice in accuracy, enabling an extremely efficient
+exploration of large-scale structure likelihoods.</p>
+<p>At its core, COMET exploits the evolution mapping approach of
+<a class="reference external" href="https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511">Sanchez 2020</a>
+and <a class="reference external" href="https://arxiv.org/abs/2108.12710">Sanchez et al. 2021</a>, which
+gives it a high degree of flexibility and allows it to cover a wide
+cosmology parameter space at continuous redshifts up to <span class="math notranslate nohighlight">\(z \sim 3\)</span>.
+Specifically, the  current release of COMET supports the following
+parameters (for more details, see <a class="reference internal" href="spaceparams.html#spaceparams"><span class="std std-ref">here</span></a>):</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 75%" />
+<col style="width: 25%" />
+</colgroup>
+<tbody>
+<tr class="row-odd"><td><p>Phys. cold dark matter density</p></td>
+<td><p><span class="math notranslate nohighlight">\(\omega_c\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p>Phys. baryon density</p></td>
+<td><p><span class="math notranslate nohighlight">\(\omega_b\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p>Scalar spectral index</p></td>
+<td><p><span class="math notranslate nohighlight">\(n_s\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p>Hubble expansion rate</p></td>
+<td><p><span class="math notranslate nohighlight">\(h\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p>Amplitude of scalar fluctuations</p></td>
+<td><p><span class="math notranslate nohighlight">\(A_s\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p>Constant dark energy equation of state parameter</p></td>
+<td><p><span class="math notranslate nohighlight">\(w_0\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p>Time-evolving equation of state parameter</p></td>
+<td><p><span class="math notranslate nohighlight">\(w_a\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p>Curvature density parameter</p></td>
+<td><p><span class="math notranslate nohighlight">\(\Omega_K\)</span></p></td>
+</tr>
+</tbody>
+</table>
+<p>Currently, COMET can be used to obtain the following quantities (the
+perturbation theory models are described <a class="reference external" href="https://docs.astropy.org/en/stable/modeling/models.html#models" title="(in Astropy v5.0)"><span class="xref std std-ref">here</span></a>):</p>
+<ul class="simple">
+<li><p>the real-space galaxy power spectrum at one-loop order</p></li>
+<li><p>multipoles (monopole, quadrupole, hexadecapole) of the redshift-space
+power spectrum at one-loop order</p></li>
+<li><p>the linear matter power spectrum (with and without infrared resummation)</p></li>
+<li><p>Gaussian covariance matrices for the real-space power spectrum and
+redshift-space multipoles</p></li>
+<li><p><span class="math notranslate nohighlight">\(\chi^2\)</span>’s for arbitrary combinations of multipoles</p></li>
+</ul>
+<p>COMET provides an easy-to-use interface for all of these computations, and
+we give quick-start as well as more in-depth examples on our
+<a class="reference internal" href="examples.html#examples"><span class="std std-ref">tutorial</span></a> pages.</p>
+<p>Our package is made publicly available under the MIT licence; please cite
+the papers listed above if you are making use of COMET in your own work.</p>
 </dd>
 </dl>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>The comet emulator is under constant development and new versions of the
+<p>The COMET emulator is under constant development and new versions of the
 emulator become available as we improve them. Follow our <a class="reference external" href="https://gitlab.com/aegge/pt-emulator">public repository</a> to make sure you are always up to
 date with our latest release.</p>
 </div>

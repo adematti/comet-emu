@@ -44,9 +44,13 @@
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="examples.html#the-real-space-emulator">The Real space emulator</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples.html#the-vdg-infty-emulator">The VDG_infty emulator</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples.html#the-eft-emulator">The EFT emulator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#using-mpc-units">Using Mpc units</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#using-mpc-h-units">Using Mpc/h units</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#using-a-specific-cosmology-parameter-space">Using a specific cosmology parameter space</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="spaceparams.html">Parameter Space</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="spaceparams.html#galaxy-power-spectrum-emulator"><strong>Galaxy power spectrum emulator</strong></a></li>
 </ul>
 </li>
 </ul>
@@ -135,57 +139,6 @@ specified in <span class="math notranslate nohighlight">\(\mathrm{Mpc}\)</span> 
 </dd>
 </dl>
 <dl class="py method">
-<dt class="sig sig-object py" id="comet.PTEmu.PTEmu.generate_samples">
-<span class="sig-name descname"><span class="pre">generate_samples</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ranges</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_samples</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_trials</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">validation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/PTEmu.html#PTEmu.generate_samples"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.PTEmu.PTEmu.generate_samples" title="Permalink to this definition"></a></dt>
-<dd><p>Generate sample for training or validating the emulator.</p>
-<p>Generates a parameter sample (with a Latin Hypercube for the training
-and a random sample for the validation) within the selected prior and
-with the given size. If the sample is meant for the training of the
-emulator, then it is possible to specify how many resampling of the
-Latin Hypercube are required (in order to find the best possible
-coverture of the specific hypervolume).</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>type</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a>) – Type of sample, based on the quantity to emulate. Can be either
-<cite>“SHAPE”</cite> or <cite>“FULL”</cite>.</p></li>
-<li><p><strong>ranges</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.10)"><em>dict</em></a>) – Dictionary containing the parameter priors. Each of them is a list
-with two entries, which correspond to the minimum and maximum
-value of the given parameter.</p></li>
-<li><p><strong>n_samples</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><em>int</em></a>) – Size of the sample. <strong>n_samples</strong> points are going to be generated
-in the specific hypervolume.</p></li>
-<li><p><strong>n_trials</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><em>int</em></a><em>, </em><em>optional</em>) – Number of resamplings of the Latin HyperCube when a training
-sample is requested. This is meant to obtain the best coverture of
-the hypervolume (with maxed minimum distance among points).
-Defaults to 0.</p></li>
-<li><p><strong>validation</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.10)"><em>bool</em></a><em>, </em><em>optional</em>) – Flag to determine if the sample is for the training (<strong>False</strong>)
-or the validation (<strong>True</strong>) of the emulator.
-Defaults to <strong>False</strong>.</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="comet.PTEmu.PTEmu.save_samples">
-<span class="sig-name descname"><span class="pre">save_samples</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fname</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">validation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/PTEmu.html#PTEmu.save_samples"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.PTEmu.PTEmu.save_samples" title="Permalink to this definition"></a></dt>
-<dd><p>Save a sample to file.</p>
-<p>Saves a parameter sample to an external file.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>type</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a>) – Type of sample, based on the quantity to emulate. Can be either
-<cite>“SHAPE”</cite> or <cite>“FULL”</cite>.</p></li>
-<li><p><strong>fname</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a>) – Name of output file.</p></li>
-<li><p><strong>validation</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.10)"><em>bool</em></a><em>, </em><em>optional</em>) – Flag to determine if the sample is for the training (<strong>False</strong>)
-or the validation (<strong>True</strong>) of the emulator.
-Defaults to <strong>False</strong>.</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
 <dt class="sig sig-object py" id="comet.PTEmu.PTEmu.init_params_dict">
 <span class="sig-name descname"><span class="pre">init_params_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/PTEmu.html#PTEmu.init_params_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.PTEmu.PTEmu.init_params_dict" title="Permalink to this definition"></a></dt>
 <dd><p>Initialize params dictionary.</p>
@@ -196,7 +149,7 @@ biases, noises, counterterms, and other nuisance parameters.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="comet.PTEmu.PTEmu.load_emulator_data">
-<span class="sig-name descname"><span class="pre">load_emulator_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fname</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">validation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/PTEmu.html#PTEmu.load_emulator_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.PTEmu.PTEmu.load_emulator_data" title="Permalink to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">load_emulator_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fname</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/PTEmu.html#PTEmu.load_emulator_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.PTEmu.PTEmu.load_emulator_data" title="Permalink to this definition"></a></dt>
 <dd><p>Load tables of the emulator.</p>
 <p>Loads a fits file, reads the tables and stores them as class
 attributes, as instances of the <strong>Tables</strong> class. Additionally sets up
@@ -206,48 +159,7 @@ or redshift-space, checking if the growth rate <span class="math notranslate noh
 parameter sample or not.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>fname</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a>) – Name of the output fits file to read from.</p></li>
-<li><p><strong>validation</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.10)"><em>bool</em></a><em>, </em><em>optional</em>) – Flag to determine if the sample is for the training (<strong>False</strong>)
-or the validation (<strong>True</strong>) of the emulator.
-Defaults to <strong>False</strong>.</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="comet.PTEmu.PTEmu.train_emulator">
-<span class="sig-name descname"><span class="pre">train_emulator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">max_f_eval</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_restarts</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/PTEmu.html#PTEmu.train_emulator"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.PTEmu.PTEmu.train_emulator" title="Permalink to this definition"></a></dt>
-<dd><p>Train the emulator.</p>
-<p>Calls the training method of the <strong>Tables</strong> objects that are stored as
-class attributes.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>max_f_eval</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><em>int</em></a><em>, </em><em>optional</em>) – Maximum number of function evaluations. Defaults to 1000.</p></li>
-<li><p><strong>num_restarts</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><em>int</em></a><em>, </em><em>optional</em>) – Number of resamplings of the Gaussian process.</p></li>
-<li><p><strong>data_type</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a><em>, </em><em>optional</em>) – Type of the table that is used to train the emulator. If <strong>None</strong>,
-it creates an emulator for all the tables that are stored as class
-attributes. Defaults to <strong>None</strong>.</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="comet.PTEmu.PTEmu.save_emulator">
-<span class="sig-name descname"><span class="pre">save_emulator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fname_base</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/PTEmu.html#PTEmu.save_emulator"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.PTEmu.PTEmu.save_emulator" title="Permalink to this definition"></a></dt>
-<dd><p>Save the emulator to pickle format.</p>
-<p>Saves the emulator objects to external files, in pickle formats.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>fname_base</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a>) – Root name of the output pickle file.</p></li>
-<li><p><strong>data_type</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a><em>, </em><em>optional</em>) – Type of the table which refers to the output emulator. If <strong>None</strong>,
-it saves the emulator for all the tables that are stored as class
-attributes. Defaults to <strong>None</strong>.</p></li>
-</ul>
+<dd class="field-odd"><p><strong>fname</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a>) – Name of the output fits file to read from.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -522,45 +434,6 @@ terms. The output correpsonds to</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="comet.PTEmu.PTEmu.get_bias_coeff_for_table">
-<span class="sig-name descname"><span class="pre">get_bias_coeff_for_table</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/PTEmu.html#PTEmu.get_bias_coeff_for_table"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.PTEmu.PTEmu.get_bias_coeff_for_table" title="Permalink to this definition"></a></dt>
-<dd><p>Get generic bias coefficients for all multipoles.</p>
-<p>Each term of the <span class="math notranslate nohighlight">\(P_{\ell}\)</span> expansion is multiplied by a
-combination of bias parameters. This method returns such
-combinations in an array format. Differently from <strong>get_bias_coeff</strong>,
-this method does not require the order of the multipole as input, and
-returns all the counterterms. Meant for validation purposes.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Returns</dt>
-<dd class="field-odd"><p><p><strong>params_comb</strong> – Combinations of bias parameters that multiply each term of the
-expansion of the multipoles. The output corresponds to</p>
-<div class="math notranslate nohighlight">
-    \begin{flalign*}
-        &amp; P_{\delta\delta}^\mathrm{tree} \rightarrow b_1^2 \\
-        &amp; P_{\delta\theta}^\mathrm{tree+1\mbox{-}loop} \
-        \rightarrow b_1 \\
-        &amp; P_{\theta\theta}^\mathrm{tree+1\mbox{-}loop} \
-        \rightarrow 1 \\
-        &amp; P_{\mathrm{ctr},k^2} \rightarrow [c_0,\: c_2\, \
-        \: c_4] \\
-        &amp; P_{\mathrm{ctr},k^4} \rightarrow \
-        [b_1^2c_\mathrm{nlo},\: b_1c_\mathrm{nlo},\: \
-        c_\mathrm{nlo}] \\
-        &amp; P_{\delta\delta}^\mathrm{1\mbox{-}loop} \
-        \rightarrow b_1^2 \\
-        &amp; P_{b_\mathrm{X}b_\mathrm{Y}} \rightarrow [b_1b_2, \
-        \: b_1\gamma_2,\: b_1\gamma_{21},\: \
-        b_2^2,\: b_2\gamma_2,\: \gamma_2^2,\: b_2,\: \
-        \gamma_2,\: \gamma_{21}]
-    \end{flalign*}</div></p>
-</dd>
-<dt class="field-even">Return type</dt>
-<dd class="field-even"><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)">numpy.ndarray</a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
 <dt class="sig sig-object py" id="comet.PTEmu.PTEmu.eval_emulator">
 <span class="sig-name descname"><span class="pre">eval_emulator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ell</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">de_model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/PTEmu.html#PTEmu.eval_emulator"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.PTEmu.PTEmu.eval_emulator" title="Permalink to this definition"></a></dt>
 <dd><p>Evaluate the emulators for the different terms.</p>
@@ -660,28 +533,6 @@ hexadecapole (<span class="math notranslate nohighlight">\(\ell=4\)</span>) and 
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="comet.PTEmu.PTEmu.build_Pell_spline_from_table">
-<span class="sig-name descname"><span class="pre">build_Pell_spline_from_table</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">Pell</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ell</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/PTEmu.html#PTEmu.build_Pell_spline_from_table"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.PTEmu.PTEmu.build_Pell_spline_from_table" title="Permalink to this definition"></a></dt>
-<dd><p>Build spline object for power spectrum multipoles.</p>
-<p>Generates a cubic spline object for the specified power spectrum
-multipole, and stores it as class attribute. Meant for validation
-purposes.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>Pell</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a><em> or </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)"><em>numpy.ndarray</em></a>) – Array containing the power spectrum multipole of order
-<span class="math notranslate nohighlight">\(\ell\)</span>, evaluated at the wavemodes defined by the class
-attribute <strong>k_table</strong>.</p></li>
-<li><p><strong>ell</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><em>int</em></a>) – Specific multipole order <span class="math notranslate nohighlight">\(\ell\)</span>.
-Can be chosen from the list [0,2,4,6], whose entries correspond to
-monopole (<span class="math notranslate nohighlight">\(\ell=0\)</span>), quadrupole (<span class="math notranslate nohighlight">\(\ell=2\)</span>),
-hexadecapole (<span class="math notranslate nohighlight">\(\ell=4\)</span>) and octopole (<span class="math notranslate nohighlight">\(\ell=6\)</span>).</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
 <dt class="sig sig-object py" id="comet.PTEmu.PTEmu.eval_Pell_spline">
 <span class="sig-name descname"><span class="pre">eval_Pell_spline</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">k</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ell</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/PTEmu.html#PTEmu.eval_Pell_spline"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.PTEmu.PTEmu.eval_Pell_spline" title="Permalink to this definition"></a></dt>
 <dd><p>Evaluate the spline of the specified power spectrum multipole.</p>
@@ -755,22 +606,36 @@ e^{-k^2\Sigma^2(f,\mu)}P_\mathrm{w}(k),\]</div>
 and wiggle-only component of the linear matter power spectrum, and
 <span class="math notranslate nohighlight">\(\Sigma(f,\mu)\)</span> is the anisotropic BAO damping factor due to
 infrared modes.</p>
+<p>Notice how this function does not include the leading order Kaiser
+effect due to the impact of the velocity field on the amplitude of
+the power spectrum.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>k</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em> or </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)"><em>numpy.ndarray</em></a>) – Value of the wavemode <span class="math notranslate nohighlight">\(k\)</span>.</p></li>
+<li><p><strong>k</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em> or </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)"><em>numpy.ndarray</em></a>) – Value of the requested wavemodes <span class="math notranslate nohighlight">\(k\)</span>.</p></li>
 <li><p><strong>mu</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em> or </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)"><em>numpy.ndarray</em></a>) – Value of the cosine <span class="math notranslate nohighlight">\(\mu\)</span> of the angle between
 the pair separation and the line of sight.</p></li>
-<li><p><strong>params</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.10)"><em>dict</em></a>) – Dictionary containing the list of parameters which are internally
-used by the emulator. The keywords of the dictionary specify the
-name of the parameters, while the values specify the values of the
-parameters.</p></li>
+<li><p><strong>params</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.10)"><em>dict</em></a>) – Dictionary containing the list of total model parameters which are
+internally used by the emulator. The keyword/value pairs of the
+dictionary specify the names and the values of the parameters,
+respectively.</p></li>
 <li><p><strong>de_model</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a><em>, </em><em>optional</em>) – String that determines the dark energy equation of state. Can be
-chosen form the list [‘lambda’, ‘w0’, ‘w0wa’].
-Defaults to None.</p></li>
+chosen from the list [<cite>“lambda”</cite>, <cite>“w0”</cite>, <cite>“w0wa”</cite>] to work with
+the standard cosmological parameters, or be left undefined to use
+only <span class="math notranslate nohighlight">\(\sigma_{12}\)</span>. Defaults to <strong>None</strong>.</p></li>
 <li><p><strong>ell_for_recon</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a><em>, </em><em>optional</em>) – List of <span class="math notranslate nohighlight">\(\ell\)</span> values used for the reconstruction of the
-2d leading-order IR-resummed power spectrum. Defaults to None.</p></li>
+2d leading-order IR-resummed power spectrum. If <strong>None</strong>, all the
+even multipoles up to <span class="math notranslate nohighlight">\(\ell=6\)</span> are used in the
+reconstruction. Defaults to <strong>None</strong>.</p></li>
 </ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>Pdw_2d</strong> – Leading-order infrared resummed power spectrum
+<span class="math notranslate nohighlight">\(P_\mathrm{IR-res}^\mathrm{LO}(k,\mu)\)</span> evaluated at the
+input wavemodes <span class="math notranslate nohighlight">\(k\)</span> and angles <span class="math notranslate nohighlight">\(\mu\)</span>.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)">numpy.ndarray</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1060,144 +925,6 @@ spectrum multipoles of order <span class="math notranslate nohighlight">\(\ell\)
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="comet.PTEmu.PTEmu.Pell_from_table_fid_ktable">
-<span class="sig-name descname"><span class="pre">Pell_from_table_fid_ktable</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ell</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/PTEmu.html#PTEmu.Pell_from_table_fid_ktable"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.PTEmu.PTEmu.Pell_from_table_fid_ktable" title="Permalink to this definition"></a></dt>
-<dd><p>Compute the power spectrum multipoles from an input table.</p>
-<p>Returns the specified multipole at a fixed <span class="math notranslate nohighlight">\(k\)</span> grid
-corresponding to the wavemodes used to train the emulator (without
-the need to recur to a spline interpolation in <span class="math notranslate nohighlight">\(k\)</span>). Differently
-from <strong>Pell_fid_ktable</strong>, the input table is specified as an extra
-argument to the function.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>table</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)"><em>numpy.ndarray</em></a>) – 2d array containing the tables for the individual contributions to
-the specified multipole <span class="math notranslate nohighlight">\(ell\)</span>.</p></li>
-<li><p><strong>ell</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><em>int</em></a>) – Specific multipole order <span class="math notranslate nohighlight">\(\ell\)</span>.
-Can be chosen from the list [0,2,4].</p></li>
-<li><p><strong>de_model</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a><em>, </em><em>optional</em>) – String that determines the dark energy equation of state. Can be
-chosen form the list [‘lambda’, ‘w0’, ‘w0wa’].
-Defaults to None.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns</dt>
-<dd class="field-even"><p><strong>Pell</strong> – Power spectrum multipole of order <span class="math notranslate nohighlight">\(\ell\)</span> at the fixed
-<span class="math notranslate nohighlight">\(k\)</span> grid used for the training of the emulator.</p>
-</dd>
-<dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)">numpy.ndarray</a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="comet.PTEmu.PTEmu.Pell_from_table">
-<span class="sig-name descname"><span class="pre">Pell_from_table</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ell</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">de_model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'lambda'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_tr_lo</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">W_damping</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/PTEmu.html#PTEmu.Pell_from_table"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.PTEmu.PTEmu.Pell_from_table" title="Permalink to this definition"></a></dt>
-<dd><p>Compute the power spectrum multipoles from an input table.</p>
-<p>Returns the specified multipole. Differently from <strong>Pell</strong>, the input
-table is specified as an extra argument to the function.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>table</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)"><em>numpy.ndarray</em></a>) – 2d array containing the tables for the individual contributions to
-the specified multipole <span class="math notranslate nohighlight">\(ell\)</span>.</p></li>
-<li><p><strong>k</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em> or </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a><em> or </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)"><em>numpy.ndarray</em></a>) – Wavemodes <span class="math notranslate nohighlight">\(k\)</span> at which to evaluate the multipoles. If a list
-is passed, it has to match the size of <cite>ell</cite>, and in that case
-each wavemode refer to a given multipole.</p></li>
-<li><p><strong>params</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.10)"><em>dict</em></a>) – Dictionary containing the list of parameters which are internally
-used by the emulator. The keywords of the dictionary specify the
-name of the parameters, while the values specify the values of the
-parameters.</p></li>
-<li><p><strong>ell</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><em>int</em></a><em> or </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a>) – Specific multipole order <span class="math notranslate nohighlight">\(\ell\)</span>.
-Can be chosen from the list [0,2,4].</p></li>
-<li><p><strong>de_model</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a><em>, </em><em>optional</em>) – String that determines the dark energy equation of state. Can be
-chosen form the list [‘lambda’, ‘w0’, ‘w0wa’].
-Defaults to None.</p></li>
-<li><p><strong>alpha_tr_lo</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a><em> or </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)"><em>numpy.ndarray</em></a><em>, </em><em>optional</em>) – List containing the user-provided AP parameters, in the form
-<span class="math notranslate nohighlight">\((\alpha_\perp, \alpha_\parallel)\)</span>. If provided, prevents
-computation from correct formulas (ratios of expansion factors and
-angular diameter distance). Defaults to None.</p></li>
-<li><p><strong>W_damping</strong> (<em>Callable</em><em>[</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>]</em><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>]</em><em>, </em><em>optional</em>) – Function returning the shape of the pairwise velocity generating
-function in the large scale limit <span class="math notranslate nohighlight">\(r\rightarrow\infty\)</span>. The
-function accepts two floats as arguments, corresponding to the
-wavemode <span class="math notranslate nohighlight">\(k\)</span> and the cosinus of the angle between pair
-separation and line of sight <span class="math notranslate nohighlight">\(\mu\)</span>, and returns a float. This
-function is used only with the <cite>VDG_infty</cite> model. If None, it uses
-the free kurtosis distribution defined by <strong>W_kurt</strong>.
-Defaults to None.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns</dt>
-<dd class="field-even"><p><strong>Pell_dict</strong> – Dictionary containing all the requested power spectrum multipoles
-of order <span class="math notranslate nohighlight">\(\ell\)</span> at the specified <span class="math notranslate nohighlight">\(k\)</span>.</p>
-</dd>
-<dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.10)">dict</a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="comet.PTEmu.PTEmu.Pell_from_table_fixed_cosmo_boost">
-<span class="sig-name descname"><span class="pre">Pell_from_table_fixed_cosmo_boost</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ell</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">de_model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'lambda'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_tr_lo</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">W_damping</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/PTEmu.html#PTEmu.Pell_from_table_fixed_cosmo_boost"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.PTEmu.PTEmu.Pell_from_table_fixed_cosmo_boost" title="Permalink to this definition"></a></dt>
-<dd><p>Compute the power spectrum multipoles from an input table.</p>
-<p>Returns the specified multipole. Differently from <strong>Pell_from_table</strong>,
-if the cosmology has not been varied from the last call, this method
-simply reconstructs the final multipoles by multiplying the stored
-model ingredients (which, at fixed cosmology are the same) by the
-new bias parameters.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>table</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)"><em>numpy.ndarray</em></a>) – 2d array containing the tables for the individual contributions to
-the specified multipole <span class="math notranslate nohighlight">\(ell\)</span>.</p></li>
-<li><p><strong>k</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em> or </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a><em> or </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)"><em>numpy.ndarray</em></a>) – Wavemodes <span class="math notranslate nohighlight">\(k\)</span> at which to evaluate the multipoles. If a list
-is passed, it has to match the size of <cite>ell</cite>, and in that case
-each wavemode refer to a given multipole.</p></li>
-<li><p><strong>params</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.10)"><em>dict</em></a>) – Dictionary containing the list of parameters which are internally
-used by the emulator. The keywords of the dictionary specify the
-name of the parameters, while the values specify the values of the
-parameters.</p></li>
-<li><p><strong>ell</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><em>int</em></a><em> or </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a>) – Specific multipole order <span class="math notranslate nohighlight">\(\ell\)</span>.
-Can be chosen from the list [0,2,4].</p></li>
-<li><p><strong>de_model</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a><em>, </em><em>optional</em>) – String that determines the dark energy equation of state. Can be
-chosen form the list [‘lambda’, ‘w0’, ‘w0wa’].
-Defaults to None.</p></li>
-<li><p><strong>alpha_tr_lo</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a><em> or </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)"><em>numpy.ndarray</em></a><em>, </em><em>optional</em>) – List containing the user-provided AP parameters, in the form
-<span class="math notranslate nohighlight">\((\alpha_\perp, \alpha_\parallel)\)</span>. If provided, prevents
-computation from correct formulas (ratios of expansion factors and
-angular diameter distance). Defaults to None.</p></li>
-<li><p><strong>W_damping</strong> (<em>Callable</em><em>[</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>]</em><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>]</em><em>, </em><em>optional</em>) – Function returning the shape of the pairwise velocity generating
-function in the large scale limit <span class="math notranslate nohighlight">\(r\rightarrow\infty\)</span>. The
-function accepts two floats as arguments, corresponding to the
-wavemode <span class="math notranslate nohighlight">\(k\)</span> and the cosinus of the angle between pair
-separation and line of sight <span class="math notranslate nohighlight">\(\mu\)</span>, and returns a float. This
-function is used only with the <cite>VDG_infty</cite> model. If None, it uses
-the free kurtosis distribution defined by <strong>W_kurt</strong>.
-Defaults to None.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns</dt>
-<dd class="field-even"><p><strong>Pell_dict</strong> – Dictionary containing all the requested power spectrum multipoles
-of order <span class="math notranslate nohighlight">\(\ell\)</span> at the specified <span class="math notranslate nohighlight">\(k\)</span>.</p>
-</dd>
-<dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.10)">dict</a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="comet.PTEmu.PTEmu.Pell_from_novir_noAP_table">
-<span class="sig-name descname"><span class="pre">Pell_from_novir_noAP_table</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ell</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">de_model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'lambda'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_tr_lo</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">W_damping</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ell_for_recon</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/PTEmu.html#PTEmu.Pell_from_novir_noAP_table"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.PTEmu.PTEmu.Pell_from_novir_noAP_table" title="Permalink to this definition"></a></dt>
-<dd></dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="comet.PTEmu.PTEmu.PX_ell_from_table">
-<span class="sig-name descname"><span class="pre">PX_ell_from_table</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ell</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">X</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">de_model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'lambda'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_tr_lo</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">W_damping</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/PTEmu.html#PTEmu.PX_ell_from_table"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.PTEmu.PTEmu.PX_ell_from_table" title="Permalink to this definition"></a></dt>
-<dd></dd></dl>
-
-<dl class="py method">
 <dt class="sig sig-object py" id="comet.PTEmu.PTEmu.Gaussian_covariance">
 <span class="sig-name descname"><span class="pre">Gaussian_covariance</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">l1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">l2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dk</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Pell</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">volume</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Nmodes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/PTEmu.html#PTEmu.Gaussian_covariance"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.PTEmu.PTEmu.Gaussian_covariance" title="Permalink to this definition"></a></dt>
 <dd></dd></dl>
@@ -1208,18 +935,8 @@ of order <span class="math notranslate nohighlight">\(\ell\)</span> at the speci
 <dd></dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="comet.PTEmu.PTEmu.Pell_covariance_from_table">
-<span class="sig-name descname"><span class="pre">Pell_covariance_from_table</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ell</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dk</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">volume</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zmin</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zmax</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fsky</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.36361026083215203</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">volfac</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/PTEmu.html#PTEmu.Pell_covariance_from_table"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.PTEmu.PTEmu.Pell_covariance_from_table" title="Permalink to this definition"></a></dt>
-<dd></dd></dl>
-
-<dl class="py method">
 <dt class="sig sig-object py" id="comet.PTEmu.PTEmu.chi2">
 <span class="sig-name descname"><span class="pre">chi2</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">obs_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kmax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">de_model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_tr_lo</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">W_damping</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">chi2_decomposition</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ell_for_recon</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/PTEmu.html#PTEmu.chi2"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.PTEmu.PTEmu.chi2" title="Permalink to this definition"></a></dt>
-<dd></dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="comet.PTEmu.PTEmu.chi2_from_table">
-<span class="sig-name descname"><span class="pre">chi2_from_table</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">obs_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">table</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kmax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">de_model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'lambda'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_tr_lo</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">chi2_decomposition</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/PTEmu.html#PTEmu.chi2_from_table"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.PTEmu.PTEmu.chi2_from_table" title="Permalink to this definition"></a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -1766,7 +1483,7 @@ order <span class="math notranslate nohighlight">\(\ell\)</span> up to <span cla
 <p>Tables module.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="comet.tables.Tables">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">comet.tables.</span></span><span class="sig-name descname"><span class="pre">Tables</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">validation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/tables.html#Tables"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.tables.Tables" title="Permalink to this definition"></a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">comet.tables.</span></span><span class="sig-name descname"><span class="pre">Tables</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/tables.html#Tables"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.tables.Tables" title="Permalink to this definition"></a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.10)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Class for handling the tables of the emulator.</p>
 <p>It handles both the training and validation sets, in the form of tables
@@ -1778,11 +1495,7 @@ predictions in the original metric.</p>
 <p>Class constructor.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>params</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a>) – List of parameters used to train the emulator.</p></li>
-<li><p><strong>validation</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.10)"><em>bool</em></a><em>, </em><em>optional</em>) – A flag specifying if the class is meant for the validation of the
-emulator. Defaults to <strong>False</strong>.</p></li>
-</ul>
+<dd class="field-odd"><p><strong>params</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a>) – List of parameters used to train the emulator.</p>
 </dd>
 </dl>
 <dl class="py method">
@@ -1796,57 +1509,6 @@ parameters of the emulator.</p>
 <dd class="field-odd"><p><strong>ranges</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.10)"><em>dict</em></a>) – Dictionary containing the parameter ranges. Keys correspond to the
 name of the parameters, while values are list with two entries,
 which correspond to the minimum and maximum value of the parameter.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="comet.tables.Tables.generate_samples">
-<span class="sig-name descname"><span class="pre">generate_samples</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ranges</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_samples</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_trials</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/tables.html#Tables.generate_samples"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.tables.Tables.generate_samples" title="Permalink to this definition"></a></dt>
-<dd><p>Generate parameter sample.</p>
-<p>The sample is built inside the specified parameter ranges and with the
-given size. Depending on the value of the class attribute
-<strong>validation</strong>, the sample is going to be generated using a Latin
-HyperCube (training) or randomly across the hypervolume (validation).</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>ranges</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.10)"><em>dict</em></a>) – Dictionary containing the parameter ranges. Keys correspond to the
-name of the parameters, while values are list with two entries,
-which correspond to the minimum and maximum value of the parameter.</p></li>
-<li><p><strong>n_samples</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><em>int</em></a>) – Size of the sample. <strong>n_samples</strong> points in the hypervolume defined
-by the parameter ranges are going to be generated.</p></li>
-<li><p><strong>n_trials</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><em>int</em></a><em>, </em><em>optional</em>) – Number of resamplings of the Latin HyperCube when a training
-sample is requested. This is meant to obtain the best coverture of
-the hypervolume (with maxed minimum distance among points).
-Defaults to 0.</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="comet.tables.Tables.save_samples">
-<span class="sig-name descname"><span class="pre">save_samples</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fname</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/tables.html#Tables.save_samples"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.tables.Tables.save_samples" title="Permalink to this definition"></a></dt>
-<dd><p>Save sample to file.</p>
-<p>Saves the parameter sample stored as class attribute into an external
-data file.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><p><strong>fname</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a>) – Name of output file.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="comet.tables.Tables.load_samples">
-<span class="sig-name descname"><span class="pre">load_samples</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fname</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/tables.html#Tables.load_samples"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.tables.Tables.load_samples" title="Permalink to this definition"></a></dt>
-<dd><p>Load sample from file.</p>
-<p>Loads a parameter sample from an external data file, and stores it
-as a class attribute.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><p><strong>fname</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a>) – Name of output file to read from.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1965,36 +1627,6 @@ into the emulator one.</p>
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><p><strong>data_type</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a><em> or </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a><em>, </em><em>optional</em>) – Types of the tables which have to be rescaled. If <em>None</em>, trasform
 the full set of model tables. Defaults to <strong>None</strong>.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="comet.tables.Tables.convert_dictionary">
-<span class="sig-name descname"><span class="pre">convert_dictionary</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/tables.html#Tables.convert_dictionary"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.tables.Tables.convert_dictionary" title="Permalink to this definition"></a></dt>
-<dd><p>Convert format of internal tables.</p>
-<p>Converts the format of the internal model tables, from dictionary
-to numpy.ndarray.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="comet.tables.Tables.GPy_model">
-<span class="sig-name descname"><span class="pre">GPy_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_type</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/tables.html#Tables.GPy_model"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.tables.Tables.GPy_model" title="Permalink to this definition"></a></dt>
-<dd><p>Run the Gaussian Regression model to build the emulator.</p>
-<p>Defines a kernel for the covariance of the Gaussian process, that is
-obtained as a combination of a squared-exponential (i.e. gaussian),
-Matérn, and white noise kernels (see the <a class="reference external" href="https://gpy.readthedocs.io/en/deploy/GPy.kern.html">GPy documentation page</a> for more
-detailed informations), and trains the emulator using the rescaled
-model tables as input.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><p><strong>data_type</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a>) – Type of the model table that is used to build the emulator.</p>
-</dd>
-<dt class="field-even">Returns</dt>
-<dd class="field-even"><p><strong>GPy_model</strong> – Emulator object.</p>
-</dd>
-<dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p>GPy.models.GPregression</p>
 </dd>
 </dl>
 </dd></dl>

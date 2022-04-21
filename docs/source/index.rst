@@ -18,52 +18,52 @@ Welcome to COMET's documentation!
 **References**:       `Sanchez 2020 <https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511>`_, `Sanchez et al. 2021 <https://arxiv.org/abs/2108.12710>`_,
 ====================  =====
 
-|:dizzy:| **COMET** - Cosmological Observables Modelled by Emulated perturbation
-                      Theory.
+|:dizzy:| **COMET** - Cosmological Observables Modelled by Emulated perturbation Theory
      COMET is a Python package that provides emulated predictions of large-scale
-     structure observables from models that are fundamentally based on
-     perturbation theory. COMET speeds up these analytic computations by two
-     orders of magnitude without any relevant sacrifice in accuracy, enabling
-     an extremely efficient exploration of large-scale structure likelihoods.
+     structure observables from models that are based on perturbation theory.
+     COMET substantially speeds up these analytic computations without any
+     relevant sacrifice in accuracy, enabling an extremely efficient
+     exploration of large-scale structure likelihoods.
 
      At its core, COMET exploits the evolution mapping approach of
      `Sanchez 2020 <https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511>`_
      and `Sanchez et al. 2021 <https://arxiv.org/abs/2108.12710>`_, which
      gives it a high degree of flexibility and allows it to cover a wide
-     cosmology parameter space at continuous redshifts up to ``z ~ 3``.
+     cosmology parameter space at continuous redshifts up to :math:`z \sim 3`.
      Specifically, the  current release of COMET supports the following
-     parameters (for more details, see here):
+     parameters (for more details, see :ref:`here<spaceparams>`):
 
-     ====                                               ====
-     Phys. cold dark matter density:                    ``omega_c``
-     Phys. baryon density:                              ``omega_b``
-     Scalar spectral index:                             ``n_s``
-     Hubble expansion rate:                             ``h``
-     Amplitude of scalar fluctuations:                  ``A_s``
-     Constant dark energy equation of state parameter:  ``w_0c``
-     Time-evolving equation of state parameter:         ``w_a``
-     Curvature density parameter:                       ``Omega_K``
-     ====                                               ====
+     ================================================  ====
+     Phys. cold dark matter density                    :math:`\omega_c`
+     Phys. baryon density                              :math:`\omega_b`
+     Scalar spectral index                             :math:`n_s`
+     Hubble expansion rate                             :math:`h`
+     Amplitude of scalar fluctuations                  :math:`A_s`
+     Constant dark energy equation of state parameter  :math:`w_0`
+     Time-evolving equation of state parameter         :math:`w_a`
+     Curvature density parameter                       :math:`\Omega_K`
+     ================================================  ====
 
-     Currently, COMET can be used to obtain the following quantities (for the
-     perturbation theory models described in more detail here):
+     Currently, COMET can be used to obtain the following quantities (the
+     perturbation theory models are described :ref:`here<models>`):
 
      - the real-space galaxy power spectrum at one-loop order
      - multipoles (monopole, quadrupole, hexadecapole) of the redshift-space
        power spectrum at one-loop order
-     - Gaussian covariances in real- and redshift-space
-     - ``chi^2``'s for arbitrary combinations of multipoles
+     - the linear matter power spectrum (with and without infrared resummation)
+     - Gaussian covariance matrices for the real-space power spectrum and
+       redshift-space multipoles
+     - :math:`\chi^2`'s for arbitrary combinations of multipoles
 
-     COMET provides an easy-to-use interface for any of these computations, and
-     we give quick-start as well as more in-depth examples on our Tutorial
-     pages. For installation instructions, see here. 
+     COMET provides an easy-to-use interface for all of these computations, and
+     we give quick-start as well as more in-depth examples on our
+     :ref:`tutorial<examples>` pages.
 
-     Our emulators are publicly available under MIT licence; please, follow the
-     links above to be see te corresponding papers on the arXiv website, where
-     you can find all the references to credit our work.
+     Our package is made publicly available under the MIT licence; please cite
+     the papers listed above if you are making use of COMET in your own work.
 
 .. note::
-  The comet emulator is under constant development and new versions of the
+  The COMET emulator is under constant development and new versions of the
   emulator become available as we improve them. Follow our `public repository
   <https://gitlab.com/aegge/pt-emulator>`_ to make sure you are always up to
   date with our latest release.
