@@ -69,7 +69,7 @@ Welcome to COMET's documentation!
    :caption: Contents:
 
    installation
-   examples
+   ./Tutorial/example
    spaceparams
 
 .. toctree::
