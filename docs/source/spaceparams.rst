@@ -1,5 +1,3 @@
-.. _spaceparams:
-
 Parameter Space
 ---------------
 
