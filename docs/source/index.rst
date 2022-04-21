@@ -15,45 +15,48 @@ Welcome to COMET's documentation!
 **Source**:           `Source code at GitLab <https://gitlab.com/aegge/pt-emulator/-/tree/main/notebooks>`_
 **Documentation**:    `Documentation at Readthedocs <https://gitlab.com/aegge/pt-emulator/-/tree/main/notebooks>`_
 **Installation**:     ``pip install comet``
-**References**:       `Sanchez 2020 <https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511>`_, `Sanchez et al 2021 <https://arxiv.org/abs/2108.12710>`_,
+**References**:       `Sanchez 2020 <https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511>`_, `Sanchez et al. 2021 <https://arxiv.org/abs/2108.12710>`_,
 ====================  =====
 
 |:dizzy:| **COMET** - Cosmological Observables Modelled by Emulated perturbation
                       Theory.
-     The emulator makes use of evolution mapping (`Sanchez 2020
-     <https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511>`_,
-     `Sanchez et al 2021 <https://arxiv.org/abs/2108.12710>`_,) to compress
-     the information of evolution parameters :math:`\mathbf{\Theta_{e}}`
-     (e.g. :math:`h,\,\Omega_\mathrm{K},\,w_0,\,w_\mathrm{a},\,A_\mathrm{s},\,
-     \ldots`) into the single quantity :math:`\sigma_{12}`, defined as the rms
-     fluctuation of the linear density contrast :math:`\delta` within spheres
-     of radius :math:`R=8\,\mathrm{Mpc}`.
+     COMET is a Python package that provides emulated predictions of large-scale
+     structure observables from models that are fundamentally based on
+     perturbation theory. COMET speeds up these analytic computations by two
+     orders of magnitude without any relevant sacrifice in accuracy, enabling
+     an extremely efficient exploration of large-scale structure likelihoods.
 
-     This parameter, together with the parameters affecting the shape of the
-     power spectrum :math:`\mathbf{\Theta_{s}}` (e.g.
-     :math:`\omega_\mathrm{b},\,\omega_\mathrm{c},\,n_\mathrm{s}`), and
-     the linear growth rate :math:`f`, are used as base of the emulator.
+     At its core, COMET exploits the evolution mapping approach of
+     `Sanchez 2020 <https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511>`_
+     and `Sanchez et al. 2021 <https://arxiv.org/abs/2108.12710>`_, which
+     gives it a high degree of flexibility and allows it to cover a wide
+     cosmology parameter space at continuous redshifts up to ``z ~ 3``.
+     Specifically, the  current release of COMET supports the following
+     parameters (for more details, see here):
 
-     The redshift-dependency of the multipoles can also be treated similarly to
-     the impact that different evolution parameters have on the power spectrum,
-     that is, by a simple rescaling of the amplitude of the power spectrum in
-     order to match the desired value of :math:`\sigma_{12}`.
+     ====                                               ====
+     Phys. cold dark matter density:                    ``omega_c``
+     Phys. baryon density:                              ``omega_b``
+     Scalar spectral index:                             ``n_s``
+     Hubble expansion rate:                             ``h``
+     Amplitude of scalar fluctuations:                  ``A_s``
+     Constant dark energy equation of state parameter:  ``w_0c``
+     Time-evolving equation of state parameter:         ``w_a``
+     Curvature density parameter:                       ``Omega_K``
+     ====                                               ====
 
-     Internally to the emulator, the pair :math:`\left[k,P(k)\right]` is
-     expressed in :math:`\left[\mathrm{Mpc}^{-1},\mathrm{Mpc}^3\right]` units,
-     since this is the only set of units for which the evolution parameter
-     degeneracy is present. If the user wishes to use the more conventional
-     unit set :math:`\left[h\,\mathrm{Mpc}^{-1},h^{-3}\,\mathrm{Mpc}^3\right]`,
-     they can do so by specifying it in the proper class attribute flag. In this
-     case, the input/output are converted into :math:`\mathrm{Mpc}` units
-     before being used/returned.
+     Currently, COMET can be used to obtain the following quantities (for the
+     perturbation theory models described in more detail here):
 
-     Geometrical distortions (AP corrections) are included a posteriori without
-     the need of including them in the emulation. This process is carried out
-     by first reconstructing the full anisotropic 2d galaxy power spectrum
-     :math:`P_\mathrm{gg}(k,\mu)`, summing up all the even multipoles up to
-     :math:`\ell=6`, applying distortions to :math:`k` and :math:`\mu`, and then
-     projecting again over the Legendre polynomials.
+     - the real-space galaxy power spectrum at one-loop order
+     - multipoles (monopole, quadrupole, hexadecapole) of the redshift-space
+       power spectrum at one-loop order
+     - Gaussian covariances in real- and redshift-space
+     - ``chi^2``'s for arbitrary combinations of multipoles
+
+     COMET provides an easy-to-use interface for any of these computations, and
+     we give quick-start as well as more in-depth examples on our Tutorial
+     pages. For installation instructions, see here. 
 
      Our emulators are publicly available under MIT licence; please, follow the
      links above to be see te corresponding papers on the arXiv website, where
