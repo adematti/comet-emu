@@ -448,6 +448,80 @@ one-loop corrections and the counterterms are evaluated using the leading order
 IR-resummed matter power spectrum in place of the linear power spectrum.
 
 
-Geometrical distortions
------------------------
-ehi
+Legendre multipoles and geometrical distortions
+-----------------------------------------------
+
+For practical reasons, like the size of the covariance matrix rapidly
+increasing as a function of :math:`n_k\cdot n_\mu`, it has become standard
+practice to project the full anisotropic galaxy power spectrum into a basis
+formed by the Legendre multipoles :math:`\mathcal{L}_\ell`, such that
+
+.. math::
+  P_\ell(k) = \frac{2\ell+1}{2}\int_{-1}^{+1} \
+  P_\mathrm{gg}^{s}\left(k,\mu\right) \
+  \mathcal{L}_\ell\left(\mu\right)d\mu.
+
+By construction, all the odd terms of this projection vanish, because of the
+symmetric behaviour in terms of :math:`\mu`, which only enters in the
+expression of :math:`P_\mathrm{gg}^s(k,\mu)` with even powers
+:math:`(0,2,4,\ldots)`. In linear theory, the only non-vanishing even
+multipoles are the monopole :math:`P_0(k)`, the quadrupole :math:`P_2(k)` and
+the hexadecapole :math:`P_4(k)`. Even though non-linear evolution generates
+higher order multipoles, their constraining power is basically irrelevant if
+compared to the other three multipoles, and therefore, it is natural to only
+them as a good representation of the full anisotropic galaxy power spectrum.
+
+A direct comparison between the one-loop model for the galaxy power spectrum
+multipoles and real-data observations still allows for an extra degree of
+freedom, represented by the choice of the fiducial cosmology used to convert
+observed redshifts into comoving distances/wavemodes. A wrong fiducial
+cosmology, deviating from the correct one, inevitably leads to a wrong
+rescaling of the components along and orthogonal to the line of sight of the
+two-point statistics that has been the central argument of this documentation.
+
+The anisotropic distortions introduced by the choice of a wrong fiducial
+cosmology are partially degenerate with the anisotropies induced by the
+peculiar velocity field, and therefore, must be correctly taken into account
+if one wishes to correctly interpret the information content contained in the
+galaxy power spectrum.
+
+The standard approach to account for the choice of the fiducial cosmology is
+to rescale the considered model power spectrum along the two directions,
+parallel and perpendicular to the line of sight, such that
+
+.. math:
+  \begin{flalign*}
+    & k'_\perp = q_\perp k_\perp, \\
+    & k'_\parallel = q_\parallel k_\parallel,
+  \end{flalign*}
+
+where primed quantities denote are evaluated in the fiducial cosmology, and the
+Alcock-Paczinsky parameters, :math:`q_\perp` and :math:`q_\parallel` are
+defined as ratios of the angular diameter distance :math:`D_\mathrm{M}(z)` and
+the Hubble distance :math:`D_H(z)`,
+
+.. math::
+  \begin{flalign*}
+    & q_\perp(z) = \frac{D_\mathrm{M}(z)}{D'_\mathrm{M}(z)}, \\
+    & q_\parallel(z) = \frac{D_H(z)}{D'_H(z)} = \
+    \frac{H'(z)}{H(z)}.
+  \end{flalign*}
+
+In this way it is possible to rewrite the AP-corrected quantities
+:math:`k(k',\mu')` and :math:`\mu(\mu')` as
+
+.. math::
+  \begin{flalign*}
+    k(k',\mu') = \; & k' \bigg[\frac{(\mu')^2}{q_\parallel^2} + \
+    \frac{1-(\mu')^2}{q_\perp^2}\bigg]^\frac{1}{2}, \\
+    \mu(\mu') = \; & \frac{\mu'}{q_\parallel} \
+    \bigg[\frac{(\mu')^2}{q_\parallel^2} + \frac{1-(\mu')^2}{q_\perp^2} \
+    \bigg]^{-\frac{1}{2}},
+  \end{flalign*}
+
+and finally evaluate the AP-corrected galaxy power spectrum multipoles as
+
+.. math::
+  P_\ell(k') = \frac{2\ell+1}{2q_\perp^2q_\parallel}\int_{-1}^{+1} \
+  P_\mathrm{gg}^{s}\left(k(k',\mu'),\mu(\mu')\right) \
+  \mathcal{L}_\ell\left(\mu(\mu')\right)d\mu'.
