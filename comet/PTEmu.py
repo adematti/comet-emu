@@ -1026,17 +1026,20 @@ class PTEmu:
         Parameters
         ----------
         params: dict
-            Dictionary containing the list of parameters which are internally
-            used by the emulator. The keywords of the dictionary specify the
-            name of the parameters, while the values specify the values of the
-            parameters.
+            Dictionary containing the list of total model parameters which are
+            internally used by the emulator. The keyword/value pairs of the
+            dictionary specify the names and the values of the parameters,
+            respectively.
         ell: int
             Specific multipole order :math:`\ell`.
-            Can be chosen from the list [0,2,4].
+            Can be chosen from the list [0,2,4,6], whose entries correspond to
+            monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`),
+            hexadecapole (:math:`\ell=4`) and octopole (:math:`\ell=6`).
         de_model: str, optional
             String that determines the dark energy equation of state. Can be
-            chosen form the list ['lambda', 'w0', 'w0wa'].
-            Defaults to None.
+            chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
+            the standard cosmological parameters, or be left undefined to use
+            only :math:`\sigma_{12}`. Defaults to **None**.
 
         Returns
         -------
@@ -1102,34 +1105,40 @@ class PTEmu:
             is passed, it has to match the size of `ell`, and in that case
             each wavemode refer to a given multipole.
         params: dict
-            Dictionary containing the list of parameters which are internally
-            used by the emulator. The keywords of the dictionary specify the
-            name of the parameters, while the values specify the values of the
-            parameters.
+            Dictionary containing the list of total model parameters which are
+            internally used by the emulator. The keyword/value pairs of the
+            dictionary specify the names and the values of the parameters,
+            respectively.
         ell: int or list
             Specific multipole order :math:`\ell`.
-            Can be chosen from the list [0,2,4].
+            Can be chosen from the list [0,2,4,6], whose entries correspond to
+            monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`),
+            hexadecapole (:math:`\ell=4`) and octopole (:math:`\ell=6`).
         de_model: str, optional
             String that determines the dark energy equation of state. Can be
-            chosen form the list ['lambda', 'w0', 'w0wa'].
-            Defaults to None.
+            chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
+            the standard cosmological parameters, or be left undefined to use
+            only :math:`\sigma_{12}`. Defaults to **None**.
         alpha_tr_lo: list or numpy.ndarray, optional
             List containing the user-provided AP parameters, in the form
             :math:`(\alpha_\perp, \alpha_\parallel)`. If provided, prevents
-            computation from correct formulas (ratios of expansion factors and
-            angular diameter distance). Defaults to None.
+            computation from correct formulas (ratios of angular diameter
+            distances and expansion factors wrt to the corresponding quantities
+            of the fiducial cosmology). Defaults to **None**.
         W_damping: Callable[[float, float], float], optional
             Function returning the shape of the pairwise velocity generating
-            function in the large scale limit :math:`r\rightarrow\infty`. The
+            function in the large scale limit, :math:`r\rightarrow\infty`. The
             function accepts two floats as arguments, corresponding to the
             wavemode :math:`k` and the cosinus of the angle between pair
             separation and line of sight :math:`\mu`, and returns a float. This
-            function is used only with the `VDG_infty` model. If None, it uses
-            the free kurtosis distribution defined by **W_kurt**.
-            Defaults to None.
+            function is used only with the **VDG_infty** model. If **None**, it
+            uses the free kurtosis distribution defined by **W_kurt**.
+            Defaults to **None**.
         ell_for_recon: list, optional
             List of :math:`\ell` values used for the reconstruction of the
-            2d leading-order IR-resummed power spectrum. Defaults to None.
+            2d leading-order IR-resummed power spectrum. If **None**, all the
+            even multipoles up to :math:`\ell=6` are used in the
+            reconstruction. Defaults to **None**.
 
         Returns
         -------
@@ -1141,7 +1150,7 @@ class PTEmu:
             ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
 
         def P2d(q, mu):
-            t = 0.
+            t = 0.0
             for m in ell_for_recon:
                 t += eval_legendre(m, mu) * self.eval_Pell_spline(q, m)
             return t
@@ -1151,7 +1160,7 @@ class PTEmu:
             def integrand(mu):
                 mu2 = mu**2
                 APfac = np.sqrt(mu2/self.params['alpha_lo']**2 +
-                                (1. - mu2)/self.params['alpha_tr']**2)
+                                (1.0 - mu2)/self.params['alpha_tr']**2)
                 kp = k*APfac
                 mup = mu/self.params['alpha_lo']/APfac
                 return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
@@ -1163,7 +1172,7 @@ class PTEmu:
             def integrand(mu):
                 mu2 = mu**2
                 APfac = np.sqrt(mu2/self.params['alpha_lo']**2 +
-                                (1. - mu2)/self.params['alpha_tr']**2)
+                                (1.0 - mu2)/self.params['alpha_tr']**2)
                 kp = k*APfac
                 mup = mu/self.params['alpha_lo']/APfac
                 P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
@@ -1203,8 +1212,8 @@ class PTEmu:
                               alpha_tr_lo=alpha_tr_lo)
         alpha3 = self.params['alpha_tr']**2 * self.params['alpha_lo']
 
-        Pell_model = quad_vec(integrand, 0, 1)[0]
-        Pell_model *= (2*np.array(ell)+1) / alpha3
+        Pell_model = quad_vec(integrand, 0.0, 1.0)[0]
+        Pell_model *= (2.0*np.array(ell)+1.0) / alpha3
 
         Pell_dict = {}
         for i, m in enumerate(ell):
@@ -1232,34 +1241,40 @@ class PTEmu:
             is passed, it has to match the size of `ell`, and in that case
             each wavemode refer to a given multipole.
         params: dict
-            Dictionary containing the list of parameters which are internally
-            used by the emulator. The keywords of the dictionary specify the
-            name of the parameters, while the values specify the values of the
-            parameters.
+            Dictionary containing the list of total model parameters which are
+            internally used by the emulator. The keyword/value pairs of the
+            dictionary specify the names and the values of the parameters,
+            respectively.
         ell: int or list
-            Specific multipole order :math:`\ell`.
-            Can be chosen from the list [0,2,4].
+            pecific multipole order :math:`\ell`.
+            Can be chosen from the list [0,2,4,6], whose entries correspond to
+            monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`),
+            hexadecapole (:math:`\ell=4`) and octopole (:math:`\ell=6`).
         de_model: str, optional
             String that determines the dark energy equation of state. Can be
-            chosen form the list ['lambda', 'w0', 'w0wa'].
-            Defaults to None.
+            chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
+            the standard cosmological parameters, or be left undefined to use
+            only :math:`\sigma_{12}`. Defaults to **None**.
         alpha_tr_lo: list or numpy.ndarray, optional
             List containing the user-provided AP parameters, in the form
             :math:`(\alpha_\perp, \alpha_\parallel)`. If provided, prevents
-            computation from correct formulas (ratios of expansion factors and
-            angular diameter distance). Defaults to None.
+            computation from correct formulas (ratios of angular diameter
+            distances and expansion factors wrt to the corresponding quantities
+            of the fiducial cosmology). Defaults to **None**.
         W_damping: Callable[[float, float], float], optional
             Function returning the shape of the pairwise velocity generating
-            function in the large scale limit :math:`r\rightarrow\infty`. The
+            function in the large scale limit, :math:`r\rightarrow\infty`. The
             function accepts two floats as arguments, corresponding to the
             wavemode :math:`k` and the cosinus of the angle between pair
             separation and line of sight :math:`\mu`, and returns a float. This
-            function is used only with the `VDG_infty` model. If None, it uses
-            the free kurtosis distribution defined by **W_kurt**.
-            Defaults to None.
+            function is used only with the **VDG_infty** model. If **None**, it
+            uses the free kurtosis distribution defined by **W_kurt**.
+            Defaults to **None**.
         ell_for_recon: list, optional
             List of :math:`\ell` values used for the reconstruction of the
-            2d leading-order IR-resummed power spectrum. Defaults to None.
+            2d leading-order IR-resummed power spectrum. If **None**, all the
+            even multipoles up to :math:`\ell=6` are used in the
+            reconstruction. Defaults to **None**.
 
         Returns
         -------
@@ -1308,7 +1323,7 @@ class PTEmu:
             if p in params.keys():
                 self.params[p] = params[p]
             else:
-                self.params[p] = 0.
+                self.params[p] = 0.0
         self.splines_up_to_date = False
         bX = self.get_bias_coeff_for_chi2_decomposition()
 
@@ -1334,37 +1349,43 @@ class PTEmu:
             is passed, it has to match the size of `ell`, and in that case
             each wavemode refer to a given multipole.
         params: dict
-            Dictionary containing the list of parameters which are internally
-            used by the emulator. The keywords of the dictionary specify the
-            name of the parameters, while the values specify the values of the
-            parameters.
+            Dictionary containing the list of total model parameters which are
+            internally used by the emulator. The keyword/value pairs of the
+            dictionary specify the names and the values of the parameters,
+            respectively.
         ell: int or list
-            Specific multipole order :math:`\ell`.
-            Can be chosen from the list [0,2,4].
+            pecific multipole order :math:`\ell`.
+            Can be chosen from the list [0,2,4,6], whose entries correspond to
+            monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`),
+            hexadecapole (:math:`\ell=4`) and octopole (:math:`\ell=6`).
         obs_id: str
             Identifier of the data sample. Necessary to obtain access to the
             particular window function of the sample.
         de_model: str, optional
             String that determines the dark energy equation of state. Can be
-            chosen form the list ['lambda', 'w0', 'w0wa'].
-            Defaults to None.
+            chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
+            the standard cosmological parameters, or be left undefined to use
+            only :math:`\sigma_{12}`. Defaults to **None**.
         alpha_tr_lo: list or numpy.ndarray, optional
             List containing the user-provided AP parameters, in the form
             :math:`(\alpha_\perp, \alpha_\parallel)`. If provided, prevents
-            computation from correct formulas (ratios of expansion factors and
-            angular diameter distance). Defaults to None.
+            computation from correct formulas (ratios of angular diameter
+            distances and expansion factors wrt to the corresponding quantities
+            of the fiducial cosmology). Defaults to **None**.
         W_damping: Callable[[float, float], float], optional
             Function returning the shape of the pairwise velocity generating
-            function in the large scale limit :math:`r\rightarrow\infty`. The
+            function in the large scale limit, :math:`r\rightarrow\infty`. The
             function accepts two floats as arguments, corresponding to the
             wavemode :math:`k` and the cosinus of the angle between pair
             separation and line of sight :math:`\mu`, and returns a float. This
-            function is used only with the `VDG_infty` model. If None, it uses
-            the free kurtosis distribution defined by **W_kurt**.
-            Defaults to None.
+            function is used only with the **VDG_infty** model. If **None**, it
+            uses the free kurtosis distribution defined by **W_kurt**.
+            Defaults to **None**.
         ell_for_recon: list, optional
             List of :math:`\ell` values used for the reconstruction of the
-            2d leading-order IR-resummed power spectrum. Defaults to None.
+            2d leading-order IR-resummed power spectrum. If **None**, all the
+            even multipoles up to :math:`\ell=6` are used in the
+            reconstruction. Defaults to **None**.
 
         Returns
         -------
@@ -1408,8 +1429,8 @@ class PTEmu:
     def PX(self, k, mu, params, X, de_model=None):
         r"""Compute the individual contribution X to the galaxy power spectrum.
 
-        Returns the individual contribution X to the galaxy power spectrum
-        :math:`P_\mathrm{gg}(k,\mu)`.
+        Returns the individual anisotropic contribution X to the galaxy power
+        spectrum :math:`P_\mathrm{gg}(k,\mu)`.
 
         Parameters
         ----------
@@ -1419,16 +1440,22 @@ class PTEmu:
             Cosinus :math:`\mu` between the pair separation and the line of
             sight at which to evaluate the X contribution.
         params: dict
-            Dictionary containing the list of parameters which are internally
-            used by the emulator. The keywords of the dictionary specify the
-            name of the parameters, while the values specify the values of the
-            parameters.
+            Dictionary containing the list of total model parameters which are
+            internally used by the emulator. The keyword/value pairs of the
+            dictionary specify the names and the values of the parameters,
+            respectively.
         X: str
-            Identifier of the contribution to the galaxy power spectrum.
+            Identifier of the contribution to the galaxy power spectrum. Can
+            be chosen from the list [`"P0L_b1b1"`, `"PNL_b1"`, `"PNL_id"`,
+            `"Pctr_clo"`, `"Pctr_b1b1cnlo"`, `"Pctr_b1cnlo"`, `"Pctr_cnlo"`,
+            `"P1L_b1b1"`, `"P1L_b1b2"`, `"P1L_b1g2"`, `"P1L_b1g21"`,
+            `"P1L_b2b2"`, `"P1L_b2g2"`, `"P1L_g2g2"`, `"P1L_b2"`, `"P1L_g2"`,
+            `"P1L_g21"`].
         de_model: str, optional
             String that determines the dark energy equation of state. Can be
-            chosen form the list ['lambda', 'w0', 'w0wa'].
-            Defaults to None.
+            chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
+            the standard cosmological parameters, or be left undefined to use
+            only :math:`\sigma_{12}`. Defaults to **None**.
 
         Returns
         -------
@@ -1465,7 +1492,7 @@ class PTEmu:
                                               PX_ell[:, i]*self.params['h']**3,
                                               kind='cubic')
 
-            PX_2d = 0.
+            PX_2d = 0.0
             for ell in ell_for_recon:
                 PX_2d += np.outer(PX_spline[ell](k), eval_legendre(ell, mu))
         else:
@@ -1483,7 +1510,12 @@ class PTEmu:
         Parameters
         ----------
         X: str
-            Identifier of the contribution to the octopole.
+            Identifier of the contribution to the octopole of the galaxy power
+            spectrum. Can be chosen from the list [`"P0L_b1b1"`, `"PNL_b1"`,
+            `"PNL_id"`, `"Pctr_b1b1cnlo"`, `"Pctr_b1cnlo"`,
+            `"Pctr_cnlo"`, `"P1L_b1b1"`, `"P1L_b1b2"`, `"P1L_b1g2"`,
+            `"P1L_b1g21"`, `"P1L_b2b2"`, `"P1L_b2g2"`, `"P1L_g2g2"`,
+            `"P1L_b2"`, `"P1L_g2"`, `"P1L_g21"`].
 
         Returns
         -------
@@ -1542,8 +1574,8 @@ class PTEmu:
         r"""Get the individual contribution to the power spectrum multipoles.
 
         Computes the individual contribution X to the galaxy power spectrum
-        multipoles. Returns the specified multipole at the given wavemodes
-        :math:`k`.
+        multipoles. Returns the contribution to the specified multipole at the
+        specified wavemodes :math:`k`.
 
         Parameters
         ----------
@@ -1552,37 +1584,47 @@ class PTEmu:
             is passed, it has to match the size of `ell`, and in that case
             each wavemode refer to a given multipole.
         params: dict
-            Dictionary containing the list of parameters which are internally
-            used by the emulator. The keywords of the dictionary specify the
-            name of the parameters, while the values specify the values of the
-            parameters.
+            Dictionary containing the list of total model parameters which are
+            internally used by the emulator. The keyword/value pairs of the
+            dictionary specify the names and the values of the parameters,
+            respectively.
         ell: int or list
-            Specific multipole order :math:`\ell`.
-            Can be chosen from the list [0,2,4].
+            pecific multipole order :math:`\ell`.
+            Can be chosen from the list [0,2,4,6], whose entries correspond to
+            monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`),
+            hexadecapole (:math:`\ell=4`) and octopole (:math:`\ell=6`).
         X: str
-            Identifier of the contribution to the galaxy power spectrum
-            multipoles.
+            Identifier of the contribution to the galaxy power spectrum. Can
+            be chosen from the list [`"P0L_b1b1"`, `"PNL_b1"`, `"PNL_id"`,
+            `"Pctr_clo"`, `"Pctr_b1b1cnlo"`, `"Pctr_b1cnlo"`, `"Pctr_cnlo"`,
+            `"P1L_b1b1"`, `"P1L_b1b2"`, `"P1L_b1g2"`, `"P1L_b1g21"`,
+            `"P1L_b2b2"`, `"P1L_b2g2"`, `"P1L_g2g2"`, `"P1L_b2"`, `"P1L_g2"`,
+            `"P1L_g21"`, `"Pnoise_N0"`, `"Pnoise_N20"`, `"Pnoise_N22"`].
         de_model: str, optional
             String that determines the dark energy equation of state. Can be
-            chosen form the list ['lambda', 'w0', 'w0wa'].
-            Defaults to None.
+            chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
+            the standard cosmological parameters, or be left undefined to use
+            only :math:`\sigma_{12}`. Defaults to **None**.
         alpha_tr_lo: list or numpy.ndarray, optional
             List containing the user-provided AP parameters, in the form
             :math:`(\alpha_\perp, \alpha_\parallel)`. If provided, prevents
-            computation from correct formulas (ratios of expansion factors and
-            angular diameter distance). Defaults to None.
+            computation from correct formulas (ratios of angular diameter
+            distances and expansion factors wrt to the corresponding quantities
+            of the fiducial cosmology). Defaults to **None**.
         W_damping: Callable[[float, float], float], optional
             Function returning the shape of the pairwise velocity generating
-            function in the large scale limit :math:`r\rightarrow\infty`. The
+            function in the large scale limit, :math:`r\rightarrow\infty`. The
             function accepts two floats as arguments, corresponding to the
             wavemode :math:`k` and the cosinus of the angle between pair
             separation and line of sight :math:`\mu`, and returns a float. This
-            function is used only with the `VDG_infty` model. If None, it uses
-            the free kurtosis distribution defined by **W_kurt**.
-            Defaults to None.
+            function is used only with the **VDG_infty** model. If **None**, it
+            uses the free kurtosis distribution defined by **W_kurt**.
+            Defaults to **None**.
         ell_for_recon: list, optional
             List of :math:`\ell` values used for the reconstruction of the
-            2d leading-order IR-resummed power spectrum. Defaults to None.
+            2d leading-order IR-resummed power spectrum. If **None**, all the
+            even multipoles up to :math:`\ell=6` are used in the
+            reconstruction. Defaults to **None**.
 
         Returns
         -------
@@ -1600,7 +1642,7 @@ class PTEmu:
             pass
 
         def P2d(q, mu):
-            t = 0.
+            t = 0.0
             for m in ell_for_recon:
                 t += eval_legendre(m, mu) * self.PX_ell_spline[X][m](q)
             return t
@@ -1610,7 +1652,7 @@ class PTEmu:
             def integrand(mu):
                 mu2 = mu**2
                 APfac = np.sqrt(mu2/self.params['alpha_lo']**2 +
-                                (1. - mu2)/self.params['alpha_tr']**2)
+                                (1.0 - mu2)/self.params['alpha_tr']**2)
                 kp = k*APfac
                 mup = mu/self.params['alpha_lo']/APfac
                 return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
@@ -1622,7 +1664,7 @@ class PTEmu:
             def integrand(mu):
                 mu2 = mu**2
                 APfac = np.sqrt(mu2/self.params['alpha_lo']**2 +
-                                (1. - mu2)/self.params['alpha_tr']**2)
+                                (1.0 - mu2)/self.params['alpha_tr']**2)
                 kp = k*APfac
                 mup = mu/self.params['alpha_lo']/APfac
                 P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
@@ -1697,8 +1739,8 @@ class PTEmu:
                               alpha_tr_lo=alpha_tr_lo)
         alpha3 = self.params['alpha_tr']**2 * self.params['alpha_lo']
 
-        PX_ell_model = quad_vec(integrand, 0, 1)[0]
-        PX_ell_model *= (2*np.array(ell)+1) / alpha3
+        PX_ell_model = quad_vec(integrand, 0.0, 1.0)[0]
+        PX_ell_model *= (2.0*np.array(ell)+1.0) / alpha3
 
         PX_ell_dict = {}
         for i, m in enumerate(ell):
@@ -1718,8 +1760,40 @@ class PTEmu:
     #     # construct cyclic permutations
 
     def Gaussian_covariance(self, l1, l2, k, dk, Pell, volume, Nmodes=None):
+        r"""Compute the gaussian covariance of the power spectrum multipoles.
+
+        Returns the gaussian covariance predictions for the specified power
+        spectrum multipoles (of order :math:`\ell_1` and :math:`\ell_2`), at
+        the specified wavemodes :math:`k`, and for the given volume.
+
+        Parameters
+        ----------
+        l1: int
+            Order of first power spectrum multipole.
+        l2: int
+            Order of second power spectrum multipole.
+        k: numpy.ndarray
+            Wavemodes :math:`k` at which to evaluate the gaussian covariance.
+        dk: float
+            Width of the :math:`k` bins.
+        Pell: dict
+            Dictionary containing the monopole, quadrupole and hexadecapole
+            of the power spectrum.
+        volume: float
+            Reference volume to be used in the calculation of the gaussian
+            covariance.
+        Nmodes: numpy.ndarray, optional
+            Number of modes contained in each :math:`k` bin. If not provided,
+            its calculation is carried out based on the value of :math:`k` and
+            :math:`\mathrm{d}k`. Defaults to **None**.
+
+        Returns
+        -------
+        cov: numpy.ndarray
+            Gaussian covariance of the selected power spectrum multipoles.
+        """
         if Nmodes is None:
-            Nmodes = volume/3/(2*np.pi**2)*((k+dk/2)**3 - (k-dk/2)**3)
+            Nmodes = volume/3.0/(2.0*np.pi**2)*((k+dk/2.0)**3 - (k-dk/2.0)**3)
 
         if not self.real_space:
             P0 = Pell['ell0']
@@ -1727,30 +1801,98 @@ class PTEmu:
             P4 = Pell['ell4']
 
             if l1 == l2 == 0:
-                cov = P0**2 + 1./5.*P2**2 + 1./9.*P4**2
+                cov = P0**2 + 1.0/5.0*P2**2 + 1.0/9.0*P4**2
             elif l1 == 0 and l2 == 2:
-                cov = 2*P0*P2 + 2/7.*P2**2 + 4/7.*P2*P4 + 100/693.*P4**2
+                cov = (2.0*P0*P2 + 2.0/7.0*P2**2 + 4.0/7.0*P2*P4 +
+                       100.0/693.0*P4**2)
             elif l1 == l2 == 2:
-                cov = 5*P0**2 + 20/7*P0*P2 + 20/7*P0*P4 + 15/7.*P2**2 \
-                    + 120/77.*P2*P4 + 8945/9009.*P4**2
+                cov = (5.0*P0**2 + 20.0/7.0*P0*P2 + 20.0/7.0*P0*P4 +
+                       15.0/7.0*P2**2 + 120.0/77.0*P2*P4 + 8945.0/9009.0*P4**2)
             elif l1 == 0 and l2 == 4:
-                cov = 2*P0*P4 + 18/35*P2**2 + 40/77*P2*P4 + 162/1001.*P4**2
+                cov = (2.0*P0*P4 + 18.0/35.0*P2**2 + 40.0/77.0*P2*P4 +
+                       162.0/1001.0*P4**2)
             elif l1 == 2 and l2 == 4:
-                cov = 36/7*P0*P2 + 200/77*P0*P4 + 108/77.*P2**2 \
-                    + 3578/1001*P2*P4 + 900/1001*P4**2
+                cov = (36.0/7.0*P0*P2 + 200.0/77.0*P0*P4 + 108.0/77.0*P2**2 +
+                       3578.0/1001.0*P2*P4 + 900.0/1001.0*P4**2)
             elif l1 == l2 == 4:
-                cov = 9*P0**2 + 360/77*P0*P2 + 2916/1001*P0*P4 \
-                    + 16101/5005*P2**2 + 3240/1001*P2*P4 + 42849/17017*P4**2
+                cov = (9.0*P0**2 + 360.0/77.0*P0*P2 + 2916.0/1001.0*P0*P4 +
+                       16101.0/5005.0*P2**2 + 3240.0/1001.0*P2*P4 +
+                       42849.0/17017.0*P4**2)
         else:
             cov = Pell['ell0']**2
 
-        cov *= 2./Nmodes
+        cov *= 2.0/Nmodes
         return cov
 
     def Pell_covariance(self, k, params, ell, dk, de_model=None,
                         alpha_tr_lo=None, W_damping=None,
                         volume=None, zmin=None, zmax=None,
-                        fsky=15000./(360**2/np.pi), volfac=1):
+                        fsky=15000.0/(360.0**2/np.pi), volfac=1.0):
+        r"""Compute the gaussian covariance of the power spectrum multipoles.
+
+        Generates the selected power spectrum multipoles for the specified set
+        of parameters, and returns their gaussian covariance predictions at
+        the specified wavemodes :math:`k`.
+
+        Parameters
+        ----------
+        k: float or list or numpy.ndarray
+            Wavemodes :math:`k` at which to evaluate the multipoles. If a list
+            is passed, it has to match the size of `ell`, and in that case
+            each wavemode refer to a given multipole.
+        params: dict
+            Dictionary containing the list of total model parameters which are
+            internally used by the emulator. The keyword/value pairs of the
+            dictionary specify the names and the values of the parameters,
+            respectively.
+        ell: int or list
+            pecific multipole order :math:`\ell`.
+            Can be chosen from the list [0,2,4,6], whose entries correspond to
+            monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`),
+            hexadecapole (:math:`\ell=4`) and octopole (:math:`\ell=6`).
+        dk: float
+            Width of the :math:`k` bins.
+        de_model: str, optional
+            String that determines the dark energy equation of state. Can be
+            chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
+            the standard cosmological parameters, or be left undefined to use
+            only :math:`\sigma_{12}`. Defaults to **None**.
+        alpha_tr_lo: list or numpy.ndarray, optional
+            List containing the user-provided AP parameters, in the form
+            :math:`(\alpha_\perp, \alpha_\parallel)`. If provided, prevents
+            computation from correct formulas (ratios of angular diameter
+            distances and expansion factors wrt to the corresponding quantities
+            of the fiducial cosmology). Defaults to **None**.
+        W_damping: Callable[[float, float], float], optional
+            Function returning the shape of the pairwise velocity generating
+            function in the large scale limit, :math:`r\rightarrow\infty`. The
+            function accepts two floats as arguments, corresponding to the
+            wavemode :math:`k` and the cosinus of the angle between pair
+            separation and line of sight :math:`\mu`, and returns a float. This
+            function is used only with the **VDG_infty** model. If **None**, it
+            uses the free kurtosis distribution defined by **W_kurt**.
+            Defaults to **None**.
+        volume: float, optional
+            Reference volume to be used in the calculation of the gaussian
+            covariance. Defaults to **None**.
+        zmin: float, optional
+            Minimum redshift of the volume used in the calculation of the
+            gaussian covariance. Defaults to **None**.
+        zmin: float, optional
+            Maximum redshift of the volume used in the calculation of the
+            gaussian covariance. Defaults to **None**.
+        fsky: float, optional
+            Sky fraction of the volume used in the calculation of the gaussian
+            covariance (in units of radians). Defaults to
+            :math:`15000\mathrm{deg}^2`.
+        volfac: float, optional
+            Rescaling volume fraction. Defaults to :math:`1`.
+
+        Returns
+        -------
+        cov: numpy.ndarray
+            Gaussian covariance of the selected power spectrum multipoles.
+        """
         ell = [ell] if not isinstance(ell, list) else ell
         if not isinstance(k, list):
             k = [np.array(k)]*len(ell)
@@ -1767,11 +1909,11 @@ class PTEmu:
         ell_for_cov = [0, 2, 4] if not self.real_space else 0
         Pell = self.Pell(k_all, params, ell=ell_for_cov, de_model=de_model,
                          alpha_tr_lo=alpha_tr_lo, W_damping=W_damping)
-        Pell['ell0'] += 1./self.nbar
+        Pell['ell0'] += 1.0/self.nbar
 
         if de_model is not None and volume is None:
             Om0 = (self.params['wc']+self.params['wb'])/self.params['h']**2
-            H0 = 100*self.params['h']
+            H0 = 100.0*self.params['h']
             self.cosmo.update_cosmology(Om0=Om0, H0=H0, Ok0=self.params['Ok'],
                                         de_model=de_model,
                                         w0=self.params['w0'],
@@ -1803,6 +1945,60 @@ class PTEmu:
 
     def chi2(self, obs_id, params, kmax, de_model=None, alpha_tr_lo=None,
              W_damping=None, chi2_decomposition=False, ell_for_recon=None):
+        r"""Compute the :math:`\chi^2 for the given configurations`.
+
+        Generates the selected power spectrum multipoles for the specified set
+        of parameters, and returns the :math:`\chi^2` evaluated with the
+        specified :math:`k_\mathrm{max}` for the specified data sample.
+
+        Parameters
+        ----------
+        obs_id: str
+            Identifier of the data sample.
+        params: dict
+            Dictionary containing the list of total model parameters which are
+            internally used by the emulator. The keyword/value pairs of the
+            dictionary specify the names and the values of the parameters,
+            respectively.
+        kmax: float or list
+            Maximum wavemode up to which the :math:`\chi^2` is computed. If a
+            float is passed, this is used for all the multipoles,
+            else each value refers to a given multipoles.
+        de_model: str, optional
+            String that determines the dark energy equation of state. Can be
+            chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
+            the standard cosmological parameters, or be left undefined to use
+            only :math:`\sigma_{12}`. Defaults to **None**.
+        alpha_tr_lo: list or numpy.ndarray, optional
+            List containing the user-provided AP parameters, in the form
+            :math:`(\alpha_\perp, \alpha_\parallel)`. If provided, prevents
+            computation from correct formulas (ratios of angular diameter
+            distances and expansion factors wrt to the corresponding quantities
+            of the fiducial cosmology). Defaults to **None**.
+        W_damping: Callable[[float, float], float], optional
+            Function returning the shape of the pairwise velocity generating
+            function in the large scale limit, :math:`r\rightarrow\infty`. The
+            function accepts two floats as arguments, corresponding to the
+            wavemode :math:`k` and the cosinus of the angle between pair
+            separation and line of sight :math:`\mu`, and returns a float. This
+            function is used only with the **VDG_infty** model. If **None**, it
+            uses the free kurtosis distribution defined by **W_kurt**.
+            Defaults to **None**.
+        chi2_decomposition: bool, optional
+            Flag to determine if the :math:`\chi^2` is computed using the fast
+            :math:`\chi^2` decomposition (**True**) or not (**False**).
+            Defaults to **False**.
+        ell_for_recon: list, optional
+            List of :math:`\ell` values used for the reconstruction of the
+            2d leading-order IR-resummed power spectrum. If **None**, all the
+            even multipoles up to :math:`\ell=6` are used in the
+            reconstruction. Defaults to **None**.
+
+        Returns
+        -------
+        chi2: float
+            Value of the :math:`\chi^2`.
+        """
         if (not self.data[obs_id].kmax_is_set or
             (self.data[obs_id].kmax != kmax and
              self.data[obs_id].kmax !=
