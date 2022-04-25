@@ -450,7 +450,8 @@ class Cosmology:
 
             if get_growth_rate:
                 Dp = dic['y'][1, :]
-                f = a_eval*Dp/D
+                f = np.float(a_eval*Dp/D)
+
                 return [D, f]
             else:
                 return D
