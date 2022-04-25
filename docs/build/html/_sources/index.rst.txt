@@ -72,6 +72,7 @@ Welcome to COMET's documentation!
    :maxdepth: 2
    :caption: Contents:
 
+   model
    installation
    ./Tutorial/example
    spaceparams

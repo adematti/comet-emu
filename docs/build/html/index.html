@@ -22,7 +22,7 @@
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Installation" href="installation.html" /> 
+    <link rel="next" title="Model Description" href="model.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -42,8 +42,15 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="model.html">Model Description</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="model.html#real-space-matter-power-spectrum">Real-space matter power spectrum</a></li>
+<li class="toctree-l2"><a class="reference internal" href="model.html#real-space-galaxy-power-spectrum">Real-space galaxy power spectrum</a></li>
+<li class="toctree-l2"><a class="reference internal" href="model.html#redshift-space-galaxy-power-spectrum">Redshift-space galaxy power spectrum</a></li>
+<li class="toctree-l2"><a class="reference internal" href="model.html#legendre-multipoles-and-geometrical-distortions">Legendre multipoles and geometrical distortions</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="Tutorial/example.html">Examples</a><ul>
+<li class="toctree-l1"><a class="reference internal" href="Tutorial/example.html">Tutorials</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="Tutorial/example.html#quick-start">Quick-start</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Tutorial/example.html#in-depth-options-for-obtaining-multipoles">In-depth options for obtaining multipoles</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="Tutorial/example.html#an-alternative-dark-energy-model">An alternative Dark energy model.</a></li>
@@ -54,8 +61,10 @@
 </li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="spaceparams.html">Parameter Space</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="spaceparams.html#galaxy-power-spectrum-emulator"><strong>Galaxy power spectrum emulator</strong></a></li>
+<li class="toctree-l1"><a class="reference internal" href="spaceparams.html">Parameter space</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="spaceparams.html#ranges-of-emulated-parameters">Ranges of emulated parameters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="spaceparams.html#cosmological-parameters">Cosmological parameters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="spaceparams.html#bias-parameters">Bias parameters</a></li>
 </ul>
 </li>
 </ul>
@@ -170,7 +179,7 @@ parameters (for more details, see <a class="reference internal" href="spaceparam
 </tbody>
 </table>
 <p>Currently, COMET can be used to obtain the following quantities (the
-perturbation theory models are described <a class="reference external" href="https://docs.astropy.org/en/stable/modeling/models.html#models" title="(in Astropy v5.0)"><span class="xref std std-ref">here</span></a>):</p>
+perturbation theory models are described <a class="reference internal" href="model.html#models"><span class="std std-ref">here</span></a>):</p>
 <ul class="simple">
 <li><p>the real-space galaxy power spectrum at one-loop order</p></li>
 <li><p>multipoles (monopole, quadrupole, hexadecapole) of the redshift-space
@@ -182,7 +191,7 @@ redshift-space multipoles</p></li>
 </ul>
 <p>COMET provides an easy-to-use interface for all of these computations, and
 we give quick-start as well as more in-depth examples on our
-<a class="reference internal" href="examples.html#examples"><span class="std std-ref">tutorial</span></a> pages.</p>
+<a class="reference internal" href="Tutorial/example.html#examples"><span class="std std-ref">tutorial</span></a> pages.</p>
 <p>Our package is made publicly available under the MIT licence; please cite
 the papers listed above if you are making use of COMET in your own work.</p>
 </dd>
@@ -196,14 +205,23 @@ date with our latest release.</p>
 <div class="toctree-wrapper compound">
 <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="model.html">Model Description</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="model.html#real-space-matter-power-spectrum">Real-space matter power spectrum</a></li>
+<li class="toctree-l2"><a class="reference internal" href="model.html#real-space-galaxy-power-spectrum">Real-space galaxy power spectrum</a></li>
+<li class="toctree-l2"><a class="reference internal" href="model.html#redshift-space-galaxy-power-spectrum">Redshift-space galaxy power spectrum</a></li>
+<li class="toctree-l2"><a class="reference internal" href="model.html#legendre-multipoles-and-geometrical-distortions">Legendre multipoles and geometrical distortions</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="Tutorial/example.html">Examples</a><ul>
+<li class="toctree-l1"><a class="reference internal" href="Tutorial/example.html">Tutorials</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="Tutorial/example.html#quick-start">Quick-start</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Tutorial/example.html#in-depth-options-for-obtaining-multipoles">In-depth options for obtaining multipoles</a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="spaceparams.html">Parameter Space</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="spaceparams.html#galaxy-power-spectrum-emulator"><strong>Galaxy power spectrum emulator</strong></a></li>
+<li class="toctree-l1"><a class="reference internal" href="spaceparams.html">Parameter space</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="spaceparams.html#ranges-of-emulated-parameters">Ranges of emulated parameters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="spaceparams.html#cosmological-parameters">Cosmological parameters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="spaceparams.html#bias-parameters">Bias parameters</a></li>
 </ul>
 </li>
 </ul>
@@ -234,7 +252,7 @@ date with our latest release.</p>
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="installation.html" class="btn btn-neutral float-right" title="Installation" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="model.html" class="btn btn-neutral float-right" title="Model Description" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>
