@@ -1,7 +1,12 @@
 .. _examples:
 
+<<<<<<< HEAD
 Examples
 --------
+=======
+Tutorials
+---------
+>>>>>>> main
 
 Quick-start
 ===========
@@ -11,15 +16,14 @@ Quick-start
    .. rubric::
       :name: quick-start
 
-   -  Here we will show
-
-      -  How to initialise the emulator.
-      -  How to obtain multipoles for the standard LCDM cosmology.
+   In this tutorial we will show
+    -  how to initialise the emulator
+    -  how to obtain power spectrum multipoles for a standard
+       :math:`\Lambda\mathrm{CDM}` cosmology
 
 .. container:: cell markdown
 
-   Lets first call the main function ``comet`` as well as the required
-   libraries
+   Let's first import ``comet`` as well as other requried libraries:
 
 .. container:: cell code
 
@@ -31,61 +35,77 @@ Quick-start
 
 .. container:: cell markdown
 
-   Before being able to use the emulator for predictions of the
-   multipoles, we need to specify the perturbation theory model that we
-   want to use, in this case we are going to use the ``EFT`` model, at
-   the same time, we configure the emulator to output results either in
-   units of 1/Mpc (``use_Mpc = True``) or h/Mpc (``use_Mpc = False``)
-   units, we will use the standar h/Mpc. All quantities that are not
-   dimensionless are then assumed to be given in the corresponding
-   units. The last requirement is a number density (i.e., the inverse
-   Poisson shot noise).
+   At initialisation we only need to specify the perturbation theory model that
+   we want to use (for an overview of the models implemented in COMET, see
+   :ref:`here<models>`) and we can configure COMET either in Mpc units
+   (``use_Mpc = True``, which is the default option) or in :math:`h^{-1}\,\mathrm{Mpc}`
+   units (``use_Mpc = False``). All quantities that are not dimensionless are
+   then returned or assumed to be given in the respective unit system. Let's
+   define an emulator object for the ``EFT`` model using the standard
+   :math:`h^{-1}\,\mathrm{Mpc}` units:
 
 .. container:: cell code
 
    .. code:: python
 
-      EFT=comet(model="EFT", use_Mpc=False)
-      EFT.define_nbar(nbar=3.95898e-4)
+      EFT = comet(model="EFT", use_Mpc=False)
 
 .. container:: cell markdown
 
-   We then can provide the argument ``de_model`` in order to obtain
-   predictions directly in terms of the corresponding cosmological
-   parameters. Currently, ``de_model`` can either be ``lambda``, ``w0``
-   or ``w0wa``, in which cases one must include the Hubble rate ``h``,
-   the scalar amplitude of fluctuations ``As``, the redshift ``z``, and
-   potentially ``w0`` and ``wa`` in the parameter dictionary.
-   Optionally, it is also possible to specify the curvature density
-   parameter at present time, ``Ok``, in order to obtain predictions for
-   non-flat cosmologies.
-
-   A corresponding model is used to make the parameter conversions and
-   since the computation of the Alcock-Paczynski parameters requires a
-   fiducial cosmology we first need to specify the corresponding
-   parameter values as follows:
+   In order to make predictions for a given cosmological model we first need to
+   specify the fiducial background cosmology, from which the Alcock-Paczynski
+   distortions will be computed. This is done by calling the function
+   ```define_fiducial_cosmology`` with a dictionary specifying the cosmological
+   parameters and the redshift:
 
 .. container:: cell code
 
    .. code:: python
 
-      params_fid_Minerva = {'h':0.695, 'wc':0.11544, 'wb':0.0222191, 'z':0.57}
+      params_fid = {'h':0.695, 'wc':0.11544, 'wb':0.0222191, 'z':0.57}
 
-      # This assumes by default a "lambda" cosmology with w0 = -1, a non-flat cosmology is assumed if `params_fid` includes the key `Ok`.
-      # For other dark energy models one can set `de_model` to `w0` or `w0wa`, in which case one needs to provide the values for w0, wa in `params_fid`.
-      EFT.define_fiducial_cosmology(params_fid=params_fid_Minerva, de_model='lambda')
+      # This assumes by default a "lambda" cosmology with w0 = -1, for other
+      # options, see the in-depth examples below.
+      EFT.define_fiducial_cosmology(params_fid)
 
 .. container:: cell markdown
 
-   The functions returning the multipoles take generally two arguments:
+   .. We then can provide the argument ``de_model`` in order to obtain
+   .. predictions directly in terms of the corresponding cosmological
+   .. parameters. Currently, ``de_model`` can either be ``lambda``, ``w0``
+   .. or ``w0wa``, in which cases one must include the Hubble rate ``h``,
+   .. the scalar amplitude of fluctuations ``As``, the redshift ``z``, and
+   .. potentially ``w0`` and ``wa`` in the parameter dictionary.
+   .. Optionally, it is also possible to specify the curvature density
+   .. parameter at present time, ``Ok``, in order to obtain predictions for
+   .. non-flat cosmologies.
+   ..
+   .. A corresponding model is used to make the parameter conversions and
+   .. since the computation of the Alcock-Paczynski parameters requires a
+   .. fiducial cosmology we first need to specify the corresponding
+   .. parameter values as follows:
+   ..
+   .. The last requirement is a number density (i.e., the inverse
+   .. Poisson shot noise).
 
-   #. The scales for which to compute the multipoles: if given as a
-      number or numpy array all specified multipoles will be computed
-      for those scales, if given as a list, the length must match the
-      number of specified multipoles (``ell``) and the first entry of
-      the list is evaluated for the first multipole etc.
+.. container:: cell markdown
+
+   The function ``Pell``, which returns the power spectrum multipoles takes
+   generally three parameters:
+
+   #. The scales for which to compute the multipoles (in the corresponding
+      units)
+   #. A parameter dictionary, specifying cosmological, bias, and (if applicable)
+      additional redshift-space distortions parameters
    #. The multipole number, i.e. ell = 0, 2, 4, or a list of multipole
       numbers
+
+   The parameter dictionary must include all shape parameters: the physical cold
+   dark matter and baryon densities (``wc`` and ``wb``) and the scalar spectral
+   index (``ns``). In case of a flat :math:`\Lambda\mathrm{CDM}` model we also need to
+   specify values for :math:`h` (``h``), the amplitude of scalar fluctuations
+   (``As``) and redshift (``z``). For other cosmologies, see
+   :ref:`examples_in_depth`.
 
 .. container:: cell code
 
@@ -99,54 +119,42 @@ Quick-start
       params['wb'] = 0.0222191
       params['ns'] = 0.9632
 
-.. container:: cell markdown
-
-   Next, we specify the three additional :math:`\Lambda`\ CDM parameters
-   in the dictionary (keeping the three shape parameters
-   :math:`\omega_c`, :math:`\omega_b` and :math:`n_s` fixed from
-   before):
-
-.. container:: cell code
-
-   .. code:: python
-
+      # For a LCDM cosmology, we also need:
       params['h']  = 0.8
       params['As'] = 2.3
       params['z']  = 0.6
 
+.. container:: cell markdown
+
+   Finally, we define the values of the bias parameters. The complete list of
+   parameters along with a brief explanation and their dioctionary keywords can
+   be found :ref:`here<spaceparams>`. In the following we only specify values
+   for the linear and quadratic bias, all other parameters are automatically set
+   to zero:
+
 .. container:: cell code
 
    .. code:: python
 
-      # Finally, the bias parameters: any parameters from {b1, b2, g2, g21, c0, c2, c4, cnlo, N0, N20, N22} can be specified.
-      # Parameters, which are not explicitly specified are automatically set to zero. As an example, let's just set b1 and b2:
       params['b1'] = 2.
       params['b2'] = -0.5
 
 .. container:: cell markdown
 
-   Now, let's define a range of scales
+   Now, let's compute the monopole (``ell=0``), quadrupole (``ell=2``) and
+   hexadecapole (``ell=4``) for a range of scales from
+   :math:`0.001\,h\,\mathrm{Mpc}^{-1}` to :math:`0.3\,h\,\mathrm{Mpc}^{-1}`:
 
 .. container:: cell code
 
    .. code:: python
 
       k_hMpc = np.logspace(-3,np.log10(0.3),100)
+      Pell_LCDM = EFT.Pell(k_hMpc, params, ell=[0,2,4], de_model='lambda')
 
 .. container:: cell markdown
 
-   Let's generate multipoles for this parameter set for the range of
-   scales above:
-
-.. container:: cell code
-
-   .. code:: python
-
-      Pell_LCDM = EFT.Pell(k_hMpc, params, ell=[0,2,4], de_model='lambda') # E.g., this is for a flat LCDM cosmology
-
-.. container:: cell markdown
-
-   The output is given in a dictionary format.
+   The output of ``Pell`` is given in a dictionary format:
 
 .. container:: cell code
 
@@ -162,7 +170,7 @@ Quick-start
 
 .. container:: cell markdown
 
-   So we can access our results and plot them as follow.
+   So we can access our results and plot them as follows:
 
 .. container:: cell code
 
@@ -177,13 +185,14 @@ Quick-start
       ax.set_xlabel('$k$ [h/Mpc]',fontsize=15)
       ax.set_ylabel(r'$k^{1/2}\,P_{\ell}(k)$ [$(\mathrm{Mpc}/h)^{5/2}$]',fontsize=15)
       ax.legend(fontsize=15)
-      plt.show()
 
    .. container:: output display_data
 
       .. image:: vertopal_63f8ea5046a542bd93141360260eb85c/537407037d704ddedc6cd575f28290c731218f9f.png
 
 .. container:: cell markdown
+
+.. _examples_in_depth:
 
 In-depth options for obtaining multipoles
 =========================================
@@ -219,6 +228,10 @@ An alternative Dark energy model.
 
    .. code:: python
 
+      # a non-flat
+      # cosmology is assumed if `params_fid` includes the key `Ok`.
+      # For other dark energy models one can set `de_model` to `w0` or `w0wa`, in
+      # which case one needs to provide the values for w0, wa in `params_fid`.
       params['w0'] = -1.1
       params['wa'] = 0.1
 
@@ -368,6 +381,12 @@ How to provide different k-scales.
       :name: how-to-provide-different-k-scales
 
 .. container:: cell markdown
+
+   The scales for which to compute the multipoles: if given as a
+   number or numpy array all specified multipoles will be computed
+   for those scales, if given as a list, the length must match the
+   number of specified multipoles (``ell``) and the first entry of
+   the list is evaluated for the first multipole etc.
 
    We can output at a single scale and single multipole number, e.g. for
    the quadrupole at k = 0.1 1/Mpc:

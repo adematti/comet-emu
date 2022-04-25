@@ -74,6 +74,7 @@ Welcome to COMET's documentation!
 
    installation
    ./Tutorial/example
+   model
    spaceparams
 
 .. toctree::
