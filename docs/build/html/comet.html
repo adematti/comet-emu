@@ -666,15 +666,18 @@ for validation purposes.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>params</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.10)"><em>dict</em></a>) – Dictionary containing the list of parameters which are internally
-used by the emulator. The keywords of the dictionary specify the
-name of the parameters, while the values specify the values of the
-parameters.</p></li>
+<li><p><strong>params</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.10)"><em>dict</em></a>) – Dictionary containing the list of total model parameters which are
+internally used by the emulator. The keyword/value pairs of the
+dictionary specify the names and the values of the parameters,
+respectively.</p></li>
 <li><p><strong>ell</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><em>int</em></a>) – Specific multipole order <span class="math notranslate nohighlight">\(\ell\)</span>.
-Can be chosen from the list [0,2,4].</p></li>
+Can be chosen from the list [0,2,4,6], whose entries correspond to
+monopole (<span class="math notranslate nohighlight">\(\ell=0\)</span>), quadrupole (<span class="math notranslate nohighlight">\(\ell=2\)</span>),
+hexadecapole (<span class="math notranslate nohighlight">\(\ell=4\)</span>) and octopole (<span class="math notranslate nohighlight">\(\ell=6\)</span>).</p></li>
 <li><p><strong>de_model</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a><em>, </em><em>optional</em>) – String that determines the dark energy equation of state. Can be
-chosen form the list [‘lambda’, ‘w0’, ‘w0wa’].
-Defaults to None.</p></li>
+chosen from the list [<cite>“lambda”</cite>, <cite>“w0”</cite>, <cite>“w0wa”</cite>] to work with
+the standard cosmological parameters, or be left undefined to use
+only <span class="math notranslate nohighlight">\(\sigma_{12}\)</span>. Defaults to <strong>None</strong>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
@@ -699,29 +702,35 @@ Returns the specified multipole at the given wavemodes <span class="math notrans
 <li><p><strong>k</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em> or </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a><em> or </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)"><em>numpy.ndarray</em></a>) – Wavemodes <span class="math notranslate nohighlight">\(k\)</span> at which to evaluate the multipoles. If a list
 is passed, it has to match the size of <cite>ell</cite>, and in that case
 each wavemode refer to a given multipole.</p></li>
-<li><p><strong>params</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.10)"><em>dict</em></a>) – Dictionary containing the list of parameters which are internally
-used by the emulator. The keywords of the dictionary specify the
-name of the parameters, while the values specify the values of the
-parameters.</p></li>
+<li><p><strong>params</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.10)"><em>dict</em></a>) – Dictionary containing the list of total model parameters which are
+internally used by the emulator. The keyword/value pairs of the
+dictionary specify the names and the values of the parameters,
+respectively.</p></li>
 <li><p><strong>ell</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><em>int</em></a><em> or </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a>) – Specific multipole order <span class="math notranslate nohighlight">\(\ell\)</span>.
-Can be chosen from the list [0,2,4].</p></li>
+Can be chosen from the list [0,2,4,6], whose entries correspond to
+monopole (<span class="math notranslate nohighlight">\(\ell=0\)</span>), quadrupole (<span class="math notranslate nohighlight">\(\ell=2\)</span>),
+hexadecapole (<span class="math notranslate nohighlight">\(\ell=4\)</span>) and octopole (<span class="math notranslate nohighlight">\(\ell=6\)</span>).</p></li>
 <li><p><strong>de_model</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a><em>, </em><em>optional</em>) – String that determines the dark energy equation of state. Can be
-chosen form the list [‘lambda’, ‘w0’, ‘w0wa’].
-Defaults to None.</p></li>
+chosen from the list [<cite>“lambda”</cite>, <cite>“w0”</cite>, <cite>“w0wa”</cite>] to work with
+the standard cosmological parameters, or be left undefined to use
+only <span class="math notranslate nohighlight">\(\sigma_{12}\)</span>. Defaults to <strong>None</strong>.</p></li>
 <li><p><strong>alpha_tr_lo</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a><em> or </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)"><em>numpy.ndarray</em></a><em>, </em><em>optional</em>) – List containing the user-provided AP parameters, in the form
 <span class="math notranslate nohighlight">\((\alpha_\perp, \alpha_\parallel)\)</span>. If provided, prevents
-computation from correct formulas (ratios of expansion factors and
-angular diameter distance). Defaults to None.</p></li>
+computation from correct formulas (ratios of angular diameter
+distances and expansion factors wrt to the corresponding quantities
+of the fiducial cosmology). Defaults to <strong>None</strong>.</p></li>
 <li><p><strong>W_damping</strong> (<em>Callable</em><em>[</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>]</em><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>]</em><em>, </em><em>optional</em>) – Function returning the shape of the pairwise velocity generating
-function in the large scale limit <span class="math notranslate nohighlight">\(r\rightarrow\infty\)</span>. The
+function in the large scale limit, <span class="math notranslate nohighlight">\(r\rightarrow\infty\)</span>. The
 function accepts two floats as arguments, corresponding to the
 wavemode <span class="math notranslate nohighlight">\(k\)</span> and the cosinus of the angle between pair
 separation and line of sight <span class="math notranslate nohighlight">\(\mu\)</span>, and returns a float. This
-function is used only with the <cite>VDG_infty</cite> model. If None, it uses
-the free kurtosis distribution defined by <strong>W_kurt</strong>.
-Defaults to None.</p></li>
+function is used only with the <strong>VDG_infty</strong> model. If <strong>None</strong>, it
+uses the free kurtosis distribution defined by <strong>W_kurt</strong>.
+Defaults to <strong>None</strong>.</p></li>
 <li><p><strong>ell_for_recon</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a><em>, </em><em>optional</em>) – List of <span class="math notranslate nohighlight">\(\ell\)</span> values used for the reconstruction of the
-2d leading-order IR-resummed power spectrum. Defaults to None.</p></li>
+2d leading-order IR-resummed power spectrum. If <strong>None</strong>, all the
+even multipoles up to <span class="math notranslate nohighlight">\(\ell=6\)</span> are used in the
+reconstruction. Defaults to <strong>None</strong>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
@@ -750,29 +759,35 @@ are the same) by the new bias parameters.</p>
 <li><p><strong>k</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em> or </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a><em> or </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)"><em>numpy.ndarray</em></a>) – Wavemodes <span class="math notranslate nohighlight">\(k\)</span> at which to evaluate the multipoles. If a list
 is passed, it has to match the size of <cite>ell</cite>, and in that case
 each wavemode refer to a given multipole.</p></li>
-<li><p><strong>params</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.10)"><em>dict</em></a>) – Dictionary containing the list of parameters which are internally
-used by the emulator. The keywords of the dictionary specify the
-name of the parameters, while the values specify the values of the
-parameters.</p></li>
-<li><p><strong>ell</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><em>int</em></a><em> or </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a>) – Specific multipole order <span class="math notranslate nohighlight">\(\ell\)</span>.
-Can be chosen from the list [0,2,4].</p></li>
+<li><p><strong>params</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.10)"><em>dict</em></a>) – Dictionary containing the list of total model parameters which are
+internally used by the emulator. The keyword/value pairs of the
+dictionary specify the names and the values of the parameters,
+respectively.</p></li>
+<li><p><strong>ell</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><em>int</em></a><em> or </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a>) – pecific multipole order <span class="math notranslate nohighlight">\(\ell\)</span>.
+Can be chosen from the list [0,2,4,6], whose entries correspond to
+monopole (<span class="math notranslate nohighlight">\(\ell=0\)</span>), quadrupole (<span class="math notranslate nohighlight">\(\ell=2\)</span>),
+hexadecapole (<span class="math notranslate nohighlight">\(\ell=4\)</span>) and octopole (<span class="math notranslate nohighlight">\(\ell=6\)</span>).</p></li>
 <li><p><strong>de_model</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a><em>, </em><em>optional</em>) – String that determines the dark energy equation of state. Can be
-chosen form the list [‘lambda’, ‘w0’, ‘w0wa’].
-Defaults to None.</p></li>
+chosen from the list [<cite>“lambda”</cite>, <cite>“w0”</cite>, <cite>“w0wa”</cite>] to work with
+the standard cosmological parameters, or be left undefined to use
+only <span class="math notranslate nohighlight">\(\sigma_{12}\)</span>. Defaults to <strong>None</strong>.</p></li>
 <li><p><strong>alpha_tr_lo</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a><em> or </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)"><em>numpy.ndarray</em></a><em>, </em><em>optional</em>) – List containing the user-provided AP parameters, in the form
 <span class="math notranslate nohighlight">\((\alpha_\perp, \alpha_\parallel)\)</span>. If provided, prevents
-computation from correct formulas (ratios of expansion factors and
-angular diameter distance). Defaults to None.</p></li>
+computation from correct formulas (ratios of angular diameter
+distances and expansion factors wrt to the corresponding quantities
+of the fiducial cosmology). Defaults to <strong>None</strong>.</p></li>
 <li><p><strong>W_damping</strong> (<em>Callable</em><em>[</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>]</em><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>]</em><em>, </em><em>optional</em>) – Function returning the shape of the pairwise velocity generating
-function in the large scale limit <span class="math notranslate nohighlight">\(r\rightarrow\infty\)</span>. The
+function in the large scale limit, <span class="math notranslate nohighlight">\(r\rightarrow\infty\)</span>. The
 function accepts two floats as arguments, corresponding to the
 wavemode <span class="math notranslate nohighlight">\(k\)</span> and the cosinus of the angle between pair
 separation and line of sight <span class="math notranslate nohighlight">\(\mu\)</span>, and returns a float. This
-function is used only with the <cite>VDG_infty</cite> model. If None, it uses
-the free kurtosis distribution defined by <strong>W_kurt</strong>.
-Defaults to None.</p></li>
+function is used only with the <strong>VDG_infty</strong> model. If <strong>None</strong>, it
+uses the free kurtosis distribution defined by <strong>W_kurt</strong>.
+Defaults to <strong>None</strong>.</p></li>
 <li><p><strong>ell_for_recon</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a><em>, </em><em>optional</em>) – List of <span class="math notranslate nohighlight">\(\ell\)</span> values used for the reconstruction of the
-2d leading-order IR-resummed power spectrum. Defaults to None.</p></li>
+2d leading-order IR-resummed power spectrum. If <strong>None</strong>, all the
+even multipoles up to <span class="math notranslate nohighlight">\(\ell=6\)</span> are used in the
+reconstruction. Defaults to <strong>None</strong>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
@@ -798,31 +813,37 @@ Returns the specified multipole at the given wavemodes <span class="math notrans
 <li><p><strong>k</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em> or </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a><em> or </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)"><em>numpy.ndarray</em></a>) – Wavemodes <span class="math notranslate nohighlight">\(k\)</span> at which to evaluate the multipoles. If a list
 is passed, it has to match the size of <cite>ell</cite>, and in that case
 each wavemode refer to a given multipole.</p></li>
-<li><p><strong>params</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.10)"><em>dict</em></a>) – Dictionary containing the list of parameters which are internally
-used by the emulator. The keywords of the dictionary specify the
-name of the parameters, while the values specify the values of the
-parameters.</p></li>
-<li><p><strong>ell</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><em>int</em></a><em> or </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a>) – Specific multipole order <span class="math notranslate nohighlight">\(\ell\)</span>.
-Can be chosen from the list [0,2,4].</p></li>
+<li><p><strong>params</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.10)"><em>dict</em></a>) – Dictionary containing the list of total model parameters which are
+internally used by the emulator. The keyword/value pairs of the
+dictionary specify the names and the values of the parameters,
+respectively.</p></li>
+<li><p><strong>ell</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><em>int</em></a><em> or </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a>) – pecific multipole order <span class="math notranslate nohighlight">\(\ell\)</span>.
+Can be chosen from the list [0,2,4,6], whose entries correspond to
+monopole (<span class="math notranslate nohighlight">\(\ell=0\)</span>), quadrupole (<span class="math notranslate nohighlight">\(\ell=2\)</span>),
+hexadecapole (<span class="math notranslate nohighlight">\(\ell=4\)</span>) and octopole (<span class="math notranslate nohighlight">\(\ell=6\)</span>).</p></li>
 <li><p><strong>obs_id</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a>) – Identifier of the data sample. Necessary to obtain access to the
 particular window function of the sample.</p></li>
 <li><p><strong>de_model</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a><em>, </em><em>optional</em>) – String that determines the dark energy equation of state. Can be
-chosen form the list [‘lambda’, ‘w0’, ‘w0wa’].
-Defaults to None.</p></li>
+chosen from the list [<cite>“lambda”</cite>, <cite>“w0”</cite>, <cite>“w0wa”</cite>] to work with
+the standard cosmological parameters, or be left undefined to use
+only <span class="math notranslate nohighlight">\(\sigma_{12}\)</span>. Defaults to <strong>None</strong>.</p></li>
 <li><p><strong>alpha_tr_lo</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a><em> or </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)"><em>numpy.ndarray</em></a><em>, </em><em>optional</em>) – List containing the user-provided AP parameters, in the form
 <span class="math notranslate nohighlight">\((\alpha_\perp, \alpha_\parallel)\)</span>. If provided, prevents
-computation from correct formulas (ratios of expansion factors and
-angular diameter distance). Defaults to None.</p></li>
+computation from correct formulas (ratios of angular diameter
+distances and expansion factors wrt to the corresponding quantities
+of the fiducial cosmology). Defaults to <strong>None</strong>.</p></li>
 <li><p><strong>W_damping</strong> (<em>Callable</em><em>[</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>]</em><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>]</em><em>, </em><em>optional</em>) – Function returning the shape of the pairwise velocity generating
-function in the large scale limit <span class="math notranslate nohighlight">\(r\rightarrow\infty\)</span>. The
+function in the large scale limit, <span class="math notranslate nohighlight">\(r\rightarrow\infty\)</span>. The
 function accepts two floats as arguments, corresponding to the
 wavemode <span class="math notranslate nohighlight">\(k\)</span> and the cosinus of the angle between pair
 separation and line of sight <span class="math notranslate nohighlight">\(\mu\)</span>, and returns a float. This
-function is used only with the <cite>VDG_infty</cite> model. If None, it uses
-the free kurtosis distribution defined by <strong>W_kurt</strong>.
-Defaults to None.</p></li>
+function is used only with the <strong>VDG_infty</strong> model. If <strong>None</strong>, it
+uses the free kurtosis distribution defined by <strong>W_kurt</strong>.
+Defaults to <strong>None</strong>.</p></li>
 <li><p><strong>ell_for_recon</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a><em>, </em><em>optional</em>) – List of <span class="math notranslate nohighlight">\(\ell\)</span> values used for the reconstruction of the
-2d leading-order IR-resummed power spectrum. Defaults to None.</p></li>
+2d leading-order IR-resummed power spectrum. If <strong>None</strong>, all the
+even multipoles up to <span class="math notranslate nohighlight">\(\ell=6\)</span> are used in the
+reconstruction. Defaults to <strong>None</strong>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
@@ -839,22 +860,28 @@ of order <span class="math notranslate nohighlight">\(\ell\)</span> at the speci
 <dt class="sig sig-object py" id="comet.PTEmu.PTEmu.PX">
 <span class="sig-name descname"><span class="pre">PX</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">k</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mu</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">X</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">de_model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/PTEmu.html#PTEmu.PX"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.PTEmu.PTEmu.PX" title="Permalink to this definition"></a></dt>
 <dd><p>Compute the individual contribution X to the galaxy power spectrum.</p>
-<p>Returns the individual contribution X to the galaxy power spectrum
-<span class="math notranslate nohighlight">\(P_\mathrm{gg}(k,\mu)\)</span>.</p>
+<p>Returns the individual anisotropic contribution X to the galaxy power
+spectrum <span class="math notranslate nohighlight">\(P_\mathrm{gg}(k,\mu)\)</span>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>k</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em> or </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a><em> or </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)"><em>numpy.ndarray</em></a>) – Wavemodes <span class="math notranslate nohighlight">\(k\)</span> at which to evaluate the X contribution.</p></li>
 <li><p><strong>mu</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em> or </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a><em> or </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)"><em>numpy.ndarray</em></a>) – Cosinus <span class="math notranslate nohighlight">\(\mu\)</span> between the pair separation and the line of
 sight at which to evaluate the X contribution.</p></li>
-<li><p><strong>params</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.10)"><em>dict</em></a>) – Dictionary containing the list of parameters which are internally
-used by the emulator. The keywords of the dictionary specify the
-name of the parameters, while the values specify the values of the
-parameters.</p></li>
-<li><p><strong>X</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a>) – Identifier of the contribution to the galaxy power spectrum.</p></li>
+<li><p><strong>params</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.10)"><em>dict</em></a>) – Dictionary containing the list of total model parameters which are
+internally used by the emulator. The keyword/value pairs of the
+dictionary specify the names and the values of the parameters,
+respectively.</p></li>
+<li><p><strong>X</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a>) – Identifier of the contribution to the galaxy power spectrum. Can
+be chosen from the list [<cite>“P0L_b1b1”</cite>, <cite>“PNL_b1”</cite>, <cite>“PNL_id”</cite>,
+<cite>“Pctr_clo”</cite>, <cite>“Pctr_b1b1cnlo”</cite>, <cite>“Pctr_b1cnlo”</cite>, <cite>“Pctr_cnlo”</cite>,
+<cite>“P1L_b1b1”</cite>, <cite>“P1L_b1b2”</cite>, <cite>“P1L_b1g2”</cite>, <cite>“P1L_b1g21”</cite>,
+<cite>“P1L_b2b2”</cite>, <cite>“P1L_b2g2”</cite>, <cite>“P1L_g2g2”</cite>, <cite>“P1L_b2”</cite>, <cite>“P1L_g2”</cite>,
+<cite>“P1L_g21”</cite>].</p></li>
 <li><p><strong>de_model</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a><em>, </em><em>optional</em>) – String that determines the dark energy equation of state. Can be
-chosen form the list [‘lambda’, ‘w0’, ‘w0wa’].
-Defaults to None.</p></li>
+chosen from the list [<cite>“lambda”</cite>, <cite>“w0”</cite>, <cite>“w0wa”</cite>] to work with
+the standard cosmological parameters, or be left undefined to use
+only <span class="math notranslate nohighlight">\(\sigma_{12}\)</span>. Defaults to <strong>None</strong>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
@@ -876,7 +903,12 @@ spectrum at the specified <span class="math notranslate nohighlight">\(k\)</span
 correspondent bias and growth coefficients.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><p><strong>X</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a>) – Identifier of the contribution to the octopole.</p>
+<dd class="field-odd"><p><strong>X</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a>) – Identifier of the contribution to the octopole of the galaxy power
+spectrum. Can be chosen from the list [<cite>“P0L_b1b1”</cite>, <cite>“PNL_b1”</cite>,
+<cite>“PNL_id”</cite>, <cite>“Pctr_b1b1cnlo”</cite>, <cite>“Pctr_b1cnlo”</cite>,
+<cite>“Pctr_cnlo”</cite>, <cite>“P1L_b1b1”</cite>, <cite>“P1L_b1b2”</cite>, <cite>“P1L_b1g2”</cite>,
+<cite>“P1L_b1g21”</cite>, <cite>“P1L_b2b2”</cite>, <cite>“P1L_b2g2”</cite>, <cite>“P1L_g2g2”</cite>,
+<cite>“P1L_b2”</cite>, <cite>“P1L_g2”</cite>, <cite>“P1L_g21”</cite>].</p>
 </dd>
 <dt class="field-even">Returns</dt>
 <dd class="field-even"><p><strong>P6X</strong> – Array containing the X contribution to the octopole <span class="math notranslate nohighlight">\(P_6(k)\)</span>.</p>
@@ -892,39 +924,49 @@ correspondent bias and growth coefficients.</p>
 <span class="sig-name descname"><span class="pre">PX_ell</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">k</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ell</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">X</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">de_model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_tr_lo</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">W_damping</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ell_for_recon</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/PTEmu.html#PTEmu.PX_ell"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.PTEmu.PTEmu.PX_ell" title="Permalink to this definition"></a></dt>
 <dd><p>Get the individual contribution to the power spectrum multipoles.</p>
 <p>Computes the individual contribution X to the galaxy power spectrum
-multipoles. Returns the specified multipole at the given wavemodes
-<span class="math notranslate nohighlight">\(k\)</span>.</p>
+multipoles. Returns the contribution to the specified multipole at the
+specified wavemodes <span class="math notranslate nohighlight">\(k\)</span>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>k</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em> or </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a><em> or </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)"><em>numpy.ndarray</em></a>) – Wavemodes <span class="math notranslate nohighlight">\(k\)</span> at which to evaluate the multipoles. If a list
 is passed, it has to match the size of <cite>ell</cite>, and in that case
 each wavemode refer to a given multipole.</p></li>
-<li><p><strong>params</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.10)"><em>dict</em></a>) – Dictionary containing the list of parameters which are internally
-used by the emulator. The keywords of the dictionary specify the
-name of the parameters, while the values specify the values of the
-parameters.</p></li>
-<li><p><strong>ell</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><em>int</em></a><em> or </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a>) – Specific multipole order <span class="math notranslate nohighlight">\(\ell\)</span>.
-Can be chosen from the list [0,2,4].</p></li>
-<li><p><strong>X</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a>) – Identifier of the contribution to the galaxy power spectrum
-multipoles.</p></li>
+<li><p><strong>params</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.10)"><em>dict</em></a>) – Dictionary containing the list of total model parameters which are
+internally used by the emulator. The keyword/value pairs of the
+dictionary specify the names and the values of the parameters,
+respectively.</p></li>
+<li><p><strong>ell</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><em>int</em></a><em> or </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a>) – pecific multipole order <span class="math notranslate nohighlight">\(\ell\)</span>.
+Can be chosen from the list [0,2,4,6], whose entries correspond to
+monopole (<span class="math notranslate nohighlight">\(\ell=0\)</span>), quadrupole (<span class="math notranslate nohighlight">\(\ell=2\)</span>),
+hexadecapole (<span class="math notranslate nohighlight">\(\ell=4\)</span>) and octopole (<span class="math notranslate nohighlight">\(\ell=6\)</span>).</p></li>
+<li><p><strong>X</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a>) – Identifier of the contribution to the galaxy power spectrum. Can
+be chosen from the list [<cite>“P0L_b1b1”</cite>, <cite>“PNL_b1”</cite>, <cite>“PNL_id”</cite>,
+<cite>“Pctr_clo”</cite>, <cite>“Pctr_b1b1cnlo”</cite>, <cite>“Pctr_b1cnlo”</cite>, <cite>“Pctr_cnlo”</cite>,
+<cite>“P1L_b1b1”</cite>, <cite>“P1L_b1b2”</cite>, <cite>“P1L_b1g2”</cite>, <cite>“P1L_b1g21”</cite>,
+<cite>“P1L_b2b2”</cite>, <cite>“P1L_b2g2”</cite>, <cite>“P1L_g2g2”</cite>, <cite>“P1L_b2”</cite>, <cite>“P1L_g2”</cite>,
+<cite>“P1L_g21”</cite>, <cite>“Pnoise_N0”</cite>, <cite>“Pnoise_N20”</cite>, <cite>“Pnoise_N22”</cite>].</p></li>
 <li><p><strong>de_model</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a><em>, </em><em>optional</em>) – String that determines the dark energy equation of state. Can be
-chosen form the list [‘lambda’, ‘w0’, ‘w0wa’].
-Defaults to None.</p></li>
+chosen from the list [<cite>“lambda”</cite>, <cite>“w0”</cite>, <cite>“w0wa”</cite>] to work with
+the standard cosmological parameters, or be left undefined to use
+only <span class="math notranslate nohighlight">\(\sigma_{12}\)</span>. Defaults to <strong>None</strong>.</p></li>
 <li><p><strong>alpha_tr_lo</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a><em> or </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)"><em>numpy.ndarray</em></a><em>, </em><em>optional</em>) – List containing the user-provided AP parameters, in the form
 <span class="math notranslate nohighlight">\((\alpha_\perp, \alpha_\parallel)\)</span>. If provided, prevents
-computation from correct formulas (ratios of expansion factors and
-angular diameter distance). Defaults to None.</p></li>
+computation from correct formulas (ratios of angular diameter
+distances and expansion factors wrt to the corresponding quantities
+of the fiducial cosmology). Defaults to <strong>None</strong>.</p></li>
 <li><p><strong>W_damping</strong> (<em>Callable</em><em>[</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>]</em><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>]</em><em>, </em><em>optional</em>) – Function returning the shape of the pairwise velocity generating
-function in the large scale limit <span class="math notranslate nohighlight">\(r\rightarrow\infty\)</span>. The
+function in the large scale limit, <span class="math notranslate nohighlight">\(r\rightarrow\infty\)</span>. The
 function accepts two floats as arguments, corresponding to the
 wavemode <span class="math notranslate nohighlight">\(k\)</span> and the cosinus of the angle between pair
 separation and line of sight <span class="math notranslate nohighlight">\(\mu\)</span>, and returns a float. This
-function is used only with the <cite>VDG_infty</cite> model. If None, it uses
-the free kurtosis distribution defined by <strong>W_kurt</strong>.
-Defaults to None.</p></li>
+function is used only with the <strong>VDG_infty</strong> model. If <strong>None</strong>, it
+uses the free kurtosis distribution defined by <strong>W_kurt</strong>.
+Defaults to <strong>None</strong>.</p></li>
 <li><p><strong>ell_for_recon</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a><em>, </em><em>optional</em>) – List of <span class="math notranslate nohighlight">\(\ell\)</span> values used for the reconstruction of the
-2d leading-order IR-resummed power spectrum. Defaults to None.</p></li>
+2d leading-order IR-resummed power spectrum. If <strong>None</strong>, all the
+even multipoles up to <span class="math notranslate nohighlight">\(\ell=6\)</span> are used in the
+reconstruction. Defaults to <strong>None</strong>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
@@ -941,17 +983,147 @@ spectrum multipoles of order <span class="math notranslate nohighlight">\(\ell\)
 <dl class="py method">
 <dt class="sig sig-object py" id="comet.PTEmu.PTEmu.Gaussian_covariance">
 <span class="sig-name descname"><span class="pre">Gaussian_covariance</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">l1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">l2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dk</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Pell</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">volume</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Nmodes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/PTEmu.html#PTEmu.Gaussian_covariance"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.PTEmu.PTEmu.Gaussian_covariance" title="Permalink to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Compute the gaussian covariance of the power spectrum multipoles.</p>
+<p>Returns the gaussian covariance predictions for the specified power
+spectrum multipoles (of order <span class="math notranslate nohighlight">\(\ell_1\)</span> and <span class="math notranslate nohighlight">\(\ell_2\)</span>), at
+the specified wavemodes <span class="math notranslate nohighlight">\(k\)</span>, and for the given volume.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>l1</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><em>int</em></a>) – Order of first power spectrum multipole.</p></li>
+<li><p><strong>l2</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><em>int</em></a>) – Order of second power spectrum multipole.</p></li>
+<li><p><strong>k</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)"><em>numpy.ndarray</em></a>) – Wavemodes <span class="math notranslate nohighlight">\(k\)</span> at which to evaluate the gaussian covariance.</p></li>
+<li><p><strong>dk</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a>) – Width of the <span class="math notranslate nohighlight">\(k\)</span> bins.</p></li>
+<li><p><strong>Pell</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.10)"><em>dict</em></a>) – Dictionary containing the monopole, quadrupole and hexadecapole
+of the power spectrum.</p></li>
+<li><p><strong>volume</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a>) – Reference volume to be used in the calculation of the gaussian
+covariance.</p></li>
+<li><p><strong>Nmodes</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)"><em>numpy.ndarray</em></a><em>, </em><em>optional</em>) – Number of modes contained in each <span class="math notranslate nohighlight">\(k\)</span> bin. If not provided,
+its calculation is carried out based on the value of <span class="math notranslate nohighlight">\(k\)</span> and
+<span class="math notranslate nohighlight">\(\mathrm{d}k\)</span>. Defaults to <strong>None</strong>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>cov</strong> – Gaussian covariance of the selected power spectrum multipoles.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)">numpy.ndarray</a></p>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="comet.PTEmu.PTEmu.Pell_covariance">
-<span class="sig-name descname"><span class="pre">Pell_covariance</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">k</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ell</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dk</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">de_model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_tr_lo</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">W_damping</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">volume</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zmin</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zmax</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fsky</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.36361026083215203</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">volfac</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/PTEmu.html#PTEmu.Pell_covariance"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.PTEmu.PTEmu.Pell_covariance" title="Permalink to this definition"></a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">Pell_covariance</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">k</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ell</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dk</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">de_model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_tr_lo</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">W_damping</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">volume</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zmin</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zmax</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fsky</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.36361026083215203</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">volfac</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/PTEmu.html#PTEmu.Pell_covariance"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.PTEmu.PTEmu.Pell_covariance" title="Permalink to this definition"></a></dt>
+<dd><p>Compute the gaussian covariance of the power spectrum multipoles.</p>
+<p>Generates the selected power spectrum multipoles for the specified set
+of parameters, and returns their gaussian covariance predictions at
+the specified wavemodes <span class="math notranslate nohighlight">\(k\)</span>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>k</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em> or </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a><em> or </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)"><em>numpy.ndarray</em></a>) – Wavemodes <span class="math notranslate nohighlight">\(k\)</span> at which to evaluate the multipoles. If a list
+is passed, it has to match the size of <cite>ell</cite>, and in that case
+each wavemode refer to a given multipole.</p></li>
+<li><p><strong>params</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.10)"><em>dict</em></a>) – Dictionary containing the list of total model parameters which are
+internally used by the emulator. The keyword/value pairs of the
+dictionary specify the names and the values of the parameters,
+respectively.</p></li>
+<li><p><strong>ell</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><em>int</em></a><em> or </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a>) – pecific multipole order <span class="math notranslate nohighlight">\(\ell\)</span>.
+Can be chosen from the list [0,2,4,6], whose entries correspond to
+monopole (<span class="math notranslate nohighlight">\(\ell=0\)</span>), quadrupole (<span class="math notranslate nohighlight">\(\ell=2\)</span>),
+hexadecapole (<span class="math notranslate nohighlight">\(\ell=4\)</span>) and octopole (<span class="math notranslate nohighlight">\(\ell=6\)</span>).</p></li>
+<li><p><strong>dk</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a>) – Width of the <span class="math notranslate nohighlight">\(k\)</span> bins.</p></li>
+<li><p><strong>de_model</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a><em>, </em><em>optional</em>) – String that determines the dark energy equation of state. Can be
+chosen from the list [<cite>“lambda”</cite>, <cite>“w0”</cite>, <cite>“w0wa”</cite>] to work with
+the standard cosmological parameters, or be left undefined to use
+only <span class="math notranslate nohighlight">\(\sigma_{12}\)</span>. Defaults to <strong>None</strong>.</p></li>
+<li><p><strong>alpha_tr_lo</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a><em> or </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)"><em>numpy.ndarray</em></a><em>, </em><em>optional</em>) – List containing the user-provided AP parameters, in the form
+<span class="math notranslate nohighlight">\((\alpha_\perp, \alpha_\parallel)\)</span>. If provided, prevents
+computation from correct formulas (ratios of angular diameter
+distances and expansion factors wrt to the corresponding quantities
+of the fiducial cosmology). Defaults to <strong>None</strong>.</p></li>
+<li><p><strong>W_damping</strong> (<em>Callable</em><em>[</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>]</em><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>]</em><em>, </em><em>optional</em>) – Function returning the shape of the pairwise velocity generating
+function in the large scale limit, <span class="math notranslate nohighlight">\(r\rightarrow\infty\)</span>. The
+function accepts two floats as arguments, corresponding to the
+wavemode <span class="math notranslate nohighlight">\(k\)</span> and the cosinus of the angle between pair
+separation and line of sight <span class="math notranslate nohighlight">\(\mu\)</span>, and returns a float. This
+function is used only with the <strong>VDG_infty</strong> model. If <strong>None</strong>, it
+uses the free kurtosis distribution defined by <strong>W_kurt</strong>.
+Defaults to <strong>None</strong>.</p></li>
+<li><p><strong>volume</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>, </em><em>optional</em>) – Reference volume to be used in the calculation of the gaussian
+covariance. Defaults to <strong>None</strong>.</p></li>
+<li><p><strong>zmin</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>, </em><em>optional</em>) – Minimum redshift of the volume used in the calculation of the
+gaussian covariance. Defaults to <strong>None</strong>.</p></li>
+<li><p><strong>zmin</strong> – Maximum redshift of the volume used in the calculation of the
+gaussian covariance. Defaults to <strong>None</strong>.</p></li>
+<li><p><strong>fsky</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>, </em><em>optional</em>) – Sky fraction of the volume used in the calculation of the gaussian
+covariance (in units of radians). Defaults to
+<span class="math notranslate nohighlight">\(15000\mathrm{deg}^2\)</span>.</p></li>
+<li><p><strong>volfac</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>, </em><em>optional</em>) – Rescaling volume fraction. Defaults to <span class="math notranslate nohighlight">\(1\)</span>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>cov</strong> – Gaussian covariance of the selected power spectrum multipoles.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)">numpy.ndarray</a></p>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="comet.PTEmu.PTEmu.chi2">
 <span class="sig-name descname"><span class="pre">chi2</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">obs_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kmax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">de_model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_tr_lo</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">W_damping</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">chi2_decomposition</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ell_for_recon</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/PTEmu.html#PTEmu.chi2"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.PTEmu.PTEmu.chi2" title="Permalink to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Compute the <span class="math notranslate nohighlight">\(\chi^2 for the given configurations\)</span>.</p>
+<p>Generates the selected power spectrum multipoles for the specified set
+of parameters, and returns the <span class="math notranslate nohighlight">\(\chi^2\)</span> evaluated with the
+specified <span class="math notranslate nohighlight">\(k_\mathrm{max}\)</span> for the specified data sample.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>obs_id</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a>) – Identifier of the data sample.</p></li>
+<li><p><strong>params</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.10)"><em>dict</em></a>) – Dictionary containing the list of total model parameters which are
+internally used by the emulator. The keyword/value pairs of the
+dictionary specify the names and the values of the parameters,
+respectively.</p></li>
+<li><p><strong>kmax</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em> or </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a>) – Maximum wavemode up to which the <span class="math notranslate nohighlight">\(\chi^2\)</span> is computed. If a
+float is passed, this is used for all the multipoles,
+else each value refers to a given multipoles.</p></li>
+<li><p><strong>de_model</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><em>str</em></a><em>, </em><em>optional</em>) – String that determines the dark energy equation of state. Can be
+chosen from the list [<cite>“lambda”</cite>, <cite>“w0”</cite>, <cite>“w0wa”</cite>] to work with
+the standard cosmological parameters, or be left undefined to use
+only <span class="math notranslate nohighlight">\(\sigma_{12}\)</span>. Defaults to <strong>None</strong>.</p></li>
+<li><p><strong>alpha_tr_lo</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a><em> or </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.22)"><em>numpy.ndarray</em></a><em>, </em><em>optional</em>) – List containing the user-provided AP parameters, in the form
+<span class="math notranslate nohighlight">\((\alpha_\perp, \alpha_\parallel)\)</span>. If provided, prevents
+computation from correct formulas (ratios of angular diameter
+distances and expansion factors wrt to the corresponding quantities
+of the fiducial cosmology). Defaults to <strong>None</strong>.</p></li>
+<li><p><strong>W_damping</strong> (<em>Callable</em><em>[</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>]</em><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a><em>]</em><em>, </em><em>optional</em>) – Function returning the shape of the pairwise velocity generating
+function in the large scale limit, <span class="math notranslate nohighlight">\(r\rightarrow\infty\)</span>. The
+function accepts two floats as arguments, corresponding to the
+wavemode <span class="math notranslate nohighlight">\(k\)</span> and the cosinus of the angle between pair
+separation and line of sight <span class="math notranslate nohighlight">\(\mu\)</span>, and returns a float. This
+function is used only with the <strong>VDG_infty</strong> model. If <strong>None</strong>, it
+uses the free kurtosis distribution defined by <strong>W_kurt</strong>.
+Defaults to <strong>None</strong>.</p></li>
+<li><p><strong>chi2_decomposition</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.10)"><em>bool</em></a><em>, </em><em>optional</em>) – Flag to determine if the <span class="math notranslate nohighlight">\(\chi^2\)</span> is computed using the fast
+<span class="math notranslate nohighlight">\(\chi^2\)</span> decomposition (<strong>True</strong>) or not (<strong>False</strong>).
+Defaults to <strong>False</strong>.</p></li>
+<li><p><strong>ell_for_recon</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.10)"><em>list</em></a><em>, </em><em>optional</em>) – List of <span class="math notranslate nohighlight">\(\ell\)</span> values used for the reconstruction of the
+2d leading-order IR-resummed power spectrum. If <strong>None</strong>, all the
+even multipoles up to <span class="math notranslate nohighlight">\(\ell=6\)</span> are used in the
+reconstruction. Defaults to <strong>None</strong>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>chi2</strong> – Value of the <span class="math notranslate nohighlight">\(\chi^2\)</span>.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
 
 </dd></dl>
 

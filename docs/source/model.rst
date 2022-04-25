@@ -1,3 +1,5 @@
+.. _models:
+
 Model Description
 =================
 
@@ -409,7 +411,7 @@ where the individual contribution are given by
   P_\mathrm{gg}^{s,\mathrm{ctr,\nabla^4\delta}}(k,\mu), \\
   P_\mathrm{gg}^{s,\mathrm{noise}}(k,\mu) = \; & \
   \frac{1}{\bar{n}} \
-  \left(1 + N_0 + N_{20}k^2 + N_{22}k^2\mu^2\right).
+  \left[1 + N_0 + N_{20}k^2 + N_{22}k^2\,{\cal L}_2(\mu)\right].
   \end{flalign*}
 
 Here, the individual galaxy redshift-space PT kernels :math:`Z_n` are defined
@@ -453,7 +455,7 @@ into the leading order term, which now scales with different powers of
 
 .. math::
   P_\mathrm{gg}^{s,\mathrm{ctr,\nabla^2\delta}}(k,\mu) = \
-  -2\left(c_0+c_2f\mu^2+c_4f^2\mu^4\right) k^2 P_\mathrm{L}(k),
+  -2\left[c_0+c_2\,{\cal L}_2(\mu)+c_4\,{\cal L}_4(\mu)\right] k^2 P_\mathrm{L}(k),
 
 and the next-to-leading order correction that scales with :math:`k^4`,
 

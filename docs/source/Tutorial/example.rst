@@ -1,12 +1,7 @@
 .. _examples:
 
-<<<<<<< HEAD
-Examples
---------
-=======
 Tutorials
 ---------
->>>>>>> main
 
 Quick-start
 ===========
