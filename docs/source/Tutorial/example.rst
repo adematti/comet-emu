@@ -50,7 +50,7 @@ Quick-start
    In order to make predictions for a given cosmological model we first need to
    specify the fiducial background cosmology, from which the Alcock-Paczynski
    distortions will be computed. This is done by calling the function
-   `define_fiducial_cosmology` with a dictionary specifying the cosmological
+   ```define_fiducial_cosmology`` with a dictionary specifying the cosmological
    parameters and the redshift:
 
 .. container:: cell code
