@@ -40,14 +40,28 @@
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples.html">Examples</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="../../examples.html#using-mpc-units">Using Mpc units</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../../examples.html#using-mpc-h-units">Using Mpc/h units</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../../examples.html#using-a-specific-cosmology-parameter-space">Using a specific cosmology parameter space</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../Tutorial/example.html">Tutorials</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../Tutorial/example.html#quick-start">Quick-start</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../Tutorial/example.html#in-depth-options-for-obtaining-multipoles">In-depth options for obtaining multipoles</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/example.html#an-alternative-dark-energy-model">An alternative Dark energy model.</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/example.html#the-f-sigma-12-parameter-space">The <span class="math notranslate nohighlight">\(f-\sigma_{12}\)</span> parameter space.</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/example.html#how-to-provide-different-k-scales">How to provide different k-scales.</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/example.html#speedup-when-changing-just-bias-parameters">Speedup when changing just bias parameters.</a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="../../spaceparams.html">Parameter Space</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="../../spaceparams.html#galaxy-power-spectrum-emulator"><strong>Galaxy power spectrum emulator</strong></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../model.html">Model Description</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../model.html#real-space-matter-power-spectrum">Real-space matter power spectrum</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../model.html#real-space-galaxy-power-spectrum">Real-space galaxy power spectrum</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../model.html#redshift-space-galaxy-power-spectrum">Redshift-space galaxy power spectrum</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../model.html#legendre-multipoles-and-geometrical-distortions">Legendre multipoles and geometrical distortions</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../spaceparams.html">Parameter space</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../spaceparams.html#ranges-of-emulated-parameters">Ranges of emulated parameters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../spaceparams.html#cosmological-parameters">Cosmological parameters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../spaceparams.html#bias-parameters">Bias parameters</a></li>
 </ul>
 </li>
 </ul>
@@ -442,7 +456,7 @@
             <span class="k">elif</span> <span class="n">de_model</span> <span class="o">==</span> <span class="s1">&#39;w0&#39;</span><span class="p">:</span>
                 <span class="n">w0</span> <span class="o">=</span> <span class="n">params_fid</span><span class="p">[</span><span class="s1">&#39;w0&#39;</span><span class="p">]</span>
                 <span class="n">wa</span> <span class="o">=</span> <span class="mf">0.0</span>
-            <span class="k">elif</span> <span class="n">de_model</span> <span class="o">==</span> <span class="s1">&#39;wa&#39;</span><span class="p">:</span>
+            <span class="k">elif</span> <span class="n">de_model</span> <span class="o">==</span> <span class="s1">&#39;w0wa&#39;</span><span class="p">:</span>
                 <span class="n">w0</span> <span class="o">=</span> <span class="n">params_fid</span><span class="p">[</span><span class="s1">&#39;w0&#39;</span><span class="p">]</span>
                 <span class="n">wa</span> <span class="o">=</span> <span class="n">params_fid</span><span class="p">[</span><span class="s1">&#39;wa&#39;</span><span class="p">]</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">cosmo</span><span class="o">.</span><span class="n">update_cosmology</span><span class="p">(</span><span class="n">Om0</span><span class="p">,</span> <span class="n">H0</span><span class="p">,</span> <span class="n">Ok0</span><span class="o">=</span><span class="n">Ok0</span><span class="p">,</span> <span class="n">de_model</span><span class="o">=</span><span class="n">de_model</span><span class="p">,</span>
