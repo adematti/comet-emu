@@ -353,7 +353,7 @@ class PTEmu:
             elif de_model == 'w0':
                 w0 = params_fid['w0']
                 wa = 0.0
-            elif de_model == 'wa':
+            elif de_model == 'w0wa':
                 w0 = params_fid['w0']
                 wa = params_fid['wa']
             self.cosmo.update_cosmology(Om0, H0, Ok0=Ok0, de_model=de_model,
