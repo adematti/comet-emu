@@ -73,7 +73,7 @@ Welcome to COMET's documentation!
    :caption: Contents:
 
    installation
-   ./Tutorial/example
+   ./Tutorial/examples
    model
    spaceparams
 
