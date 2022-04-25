@@ -25,16 +25,16 @@ cosmology parameter space at continuous redshifts up to $z \sim 3$.
 Specifically, the  current release of COMET supports the following
 parameters (for more details, see [here](https://comet-emulator-comet-emu.readthedocs-hosted.com/en/latest/spaceparams.html)):
 
-| |
+| | |
 | ---    | ---     |
-| Phys. cold dark matter density   |                 $\omega_c$ |
-| Phys. baryon density  |                            $\omega_b$ |
-| Scalar spectral index |                            $n_s$ |
-| Hubble expansion rate  |                           $h$ |
-| Amplitude of scalar fluctuations  |                $A_s$ |
-| Constant dark energy equation of state parameter | $w_0$ |
-| Time-evolving equation of state parameter   |      $w_a$ |
-| Curvature density parameter   |                    $\Omega_K$ |
+| Phys. cold dark matter density   |                 $`\omega_c`$ |
+| Phys. baryon density  |                            $`\omega_b`$ |
+| Scalar spectral index |                            $`n_s`$ |
+| Hubble expansion rate  |                           $`h`$ |
+| Amplitude of scalar fluctuations  |                $`A_s`$ |
+| Constant dark energy equation of state parameter | $`w_0`$ |
+| Time-evolving equation of state parameter   |      $`w_a`$ |
+| Curvature density parameter   |                    $`\Omega_K`$ |
 
 Currently, COMET can be used to obtain the following quantities (the
 perturbation theory models are described [here](https://comet-emulator-comet-emu.readthedocs-hosted.com/en/latest/model.html)):
@@ -45,7 +45,7 @@ perturbation theory models are described [here](https://comet-emulator-comet-emu
 - the linear matter power spectrum (with and without infrared resummation)
 - Gaussian covariance matrices for the real-space power spectrum and
   redshift-space multipoles
-- $\chi^2$'s for arbitrary combinations of multipoles
+- $`\chi^2`$'s for arbitrary combinations of multipoles
 
 COMET provides an easy-to-use interface for all of these computations, and
 we give quick-start as well as more in-depth examples on our
@@ -64,7 +64,7 @@ pip install comet
 
 Then you can follow the [Jupyter Notebook](https://gitlab.com/aegge/pt-emulator/-/tree/main/notebooks)
 for a small example on how to make predictions, compare with data and estimate
-the $\chi^2$ of your model.
+the $`\chi^2`$ of your model.
 
 ## Developer version
 
