@@ -33,7 +33,7 @@ Quick-start
 
    At initialisation we only need to specify the perturbation theory
    model that we want to use (for an overview of the models implemented
-   in COMET, see :ref:`here<models>`)) and we can configure COMET either in :math:`Mpc`
+   in COMET, see :ref:`here<models>`) and we can configure COMET either in :math:`Mpc`
    units (``use_Mpc = True``, which is the default option) or in
    :math:`h^{-1}Mpc` units (``use_Mpc = False``). All quantities that
    are not dimensionless are then returned or assumed to be given in the

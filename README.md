@@ -37,7 +37,7 @@ parameters (for more details, see [here](https://comet-emulator-comet-emu.readth
 | Curvature density parameter   |                    $`\Omega_K`$ |
 
 Currently, COMET can be used to obtain the following quantities (the
-perturbation theory models are described [here](https://comet-emulator-comet-emu.readthedocs-hosted.com/en/latest/model.html)):
+perturbation theory models are described [here](https://comet-emu.readthedocs.io/en/latest/model.html)):
 
 - the real-space galaxy power spectrum at one-loop order
 - multipoles (monopole, quadrupole, hexadecapole) of the redshift-space
@@ -49,7 +49,7 @@ perturbation theory models are described [here](https://comet-emulator-comet-emu
 
 COMET provides an easy-to-use interface for all of these computations, and
 we give quick-start as well as more in-depth examples on our
-[tutorial pages](https://comet-emulator-comet-emu.readthedocs-hosted.com/en/latest/Tutorial/example.html).
+[tutorial pages](https://comet-emu.readthedocs.io/en/latest/Tutorial/examples.html).
 
 Our package is made publicly available under the MIT licence; please cite
 the papers listed above if you are making use of COMET in your own work.
@@ -62,7 +62,7 @@ Install the code is as easy as
 pip install comet
 ```
 
-Then you can follow the [Jupyter Notebook](https://gitlab.com/aegge/pt-emulator/-/tree/main/notebooks)
+Then you can follow the [Jupyter Notebook](https://gitlab.com/aegge/comet-emu/-/tree/main/notebooks)
 for a small example on how to make predictions, compare with data and estimate
 the $`\chi^2`$ of your model.
 
@@ -80,7 +80,7 @@ cd pt-emulator
 pip install -e .
 ```
 
-Then you can follow the [Jupyter Notebook](https://gitlab.com/aegge/pt-emulator/-/tree/main/notebooks)
+Then you can follow the [Jupyter Notebook](https://gitlab.com/aegge/comet-emu/-/tree/main/notebooks)
 to learn how to train the *COMET* and make predictions.
 
 
