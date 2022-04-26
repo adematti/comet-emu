@@ -179,7 +179,7 @@ In-depth options for obtaining multipoles
 
 .. container:: cell markdown
 
-   -  Now, let's see somo details:
+   -  Now, let's see some details:
 
       -  different cosmologies (:math:`\omega_0 + \omega_0\omega_a`)
       -  using the :math:`f-\sigma_{12}` parameter space
