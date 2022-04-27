@@ -14,7 +14,7 @@ Welcome to COMET's documentation!
                       Martin Crocce, Román Scoccimarro, Ariel Sánchez
 **Source**:           `Source code at GitLab <https://gitlab.com/aegge/comet-emu>`_
 **Documentation**:    `Documentation at Readthedocs <https://comet-emu.readthedocs.io/en/latest/>`_
-**Installation**:     ``pip install comet``
+**Installation**:     ``pip install comet-emu``
 **References**:       `Sanchez 2020 <https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511>`_, `Sanchez et al. 2021 <https://arxiv.org/abs/2108.12710>`_,
 ====================  =====
 
