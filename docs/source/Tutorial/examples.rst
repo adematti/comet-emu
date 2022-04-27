@@ -19,7 +19,7 @@ Quick-start
 
 .. container:: cell markdown
 
-   Let’s first import ``comet`` as well as other requried libraries:
+   Let’s first import ``comet`` as well as other required libraries:
 
 .. container:: cell code
 
@@ -104,7 +104,7 @@ Quick-start
 
    Finally, we define the values of the bias parameters. The complete
    list of parameters along with a brief explanation and their
-   dioctionary keywords can be found here. In the following we only
+   dictionary keywords can be found here. In the following we only
    specify values for the linear and quadratic bias, all other
    parameters are automatically set to zero:
 
@@ -433,7 +433,7 @@ Speedup when changing just bias parameters.
    can call the function ``Pell_fixed_cosmo_boost``, which looks into
    the parameters specified and if any cosmological parameter has
    changed, it uses the computation from previous calls. In the
-   following cells the diferences on time can be seen, which reflects a
+   following cells the differences on time can be seen, which reflects a
    speed up of around 3 orders of magnitude.
 
 .. container:: cell code
@@ -471,7 +471,7 @@ Beyond :math:`P_{\ell}` predictions.
 .. container:: cell markdown
 
    We have included some required tools needed for cosmological analysis
-   in order to make easiert to integrate it into a complete pipeline
+   in order to make easier to integrate it into a complete pipeline
 
 
 Computing covariance matrices
@@ -588,7 +588,7 @@ Computing the :math:`\chi^2`
 
 .. container:: cell markdown
 
-   As the data vector would have an assosiated shot noise, we can
+   As the data vector would have an associated shot noise, we can
    specify it by indicating the number density of the sample.
 
 .. container:: cell code
