@@ -4,8 +4,8 @@
 | ---      | ---      |
 | **Author**:  |  Alex E. et al. |
 | **Source:**  |  [Source code at GitLab](https://gitlab.com/aegge/pt-emulator)  |
-| **Documentation**: | [Documentation at Readthedocs](https://gitlab.com/aegge/pt-emulator)  |
-| **Installation**:  |  `pip install comet`|
+| **Documentation**: | [Documentation at Readthedocs](https://comet-emu.readthedocs.io/en/latest/index.html)  |
+| **Installation**:  |  `pip install comet-emu`|
 | **References**:  |[Sanchez 2020](https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511), [Sanchez et al 2021](https://arxiv.org/abs/2108.12710) |
 
 ---
@@ -59,7 +59,7 @@ the papers listed above if you are making use of COMET in your own work.
 Install the code is as easy as
 
 ```
-pip install comet
+pip install comet-emu
 ```
 
 Then you can follow the [Jupyter Notebook](https://gitlab.com/aegge/comet-emu/-/tree/main/notebooks)
@@ -75,8 +75,8 @@ with your own computations. You can install the developer
 version as follow.
 
 ```
-git clone git@gitlab.com:aegge/pt-emulator.git
-cd pt-emulator
+git clone git@gitlab.com:aegge/comet-emu.git
+cd comet-emu
 pip install -e .
 ```
 
