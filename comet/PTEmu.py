@@ -233,7 +233,7 @@ class PTEmu:
                     open('{}_{}.pickle'.format(fname_base, dt), "rb"))
             if self.RSD_model == 'VDG_infty':
                 self.emu['sv'] = pickle.load(
-                    open('{}_{}.pickle'.format(fname_base, dt), "rb"))
+                    open('{}_{}.pickle'.format(fname_base, 'sv'), "rb"))
             for ell in ell_train:
                 self.emu[ell] = pickle.load(
                     open('{}_ratios_ell{}.pickle'.format(fname_base, ell),
