@@ -9,6 +9,7 @@ import pickle
 from comet.cosmology import Cosmology
 from comet.data import MeasuredData
 from comet.tables import Tables
+from comet.bispectrum import Bispectrum
 import os
 
 base_dir = os.path.join(os.path.dirname(__file__))
@@ -66,7 +67,7 @@ class PTEmu:
             :math:`h^{-1}\mathrm{Mpc}` (**False**) units. Defaults to **True**.
         """
         self.bias_params_list = ['b1', 'b2', 'g2', 'g21', 'c0', 'c2', 'c4',
-                                 'cnlo', 'N0', 'N20', 'N22']
+                                 'cnlo', 'N0', 'N20', 'N22', 'NB0', 'MB0']
         self.RSD_params_list = []
         self.de_model_params_list = {
             'lambda': ['h', 'As', 'Ok', 'z'],
@@ -211,6 +212,8 @@ class PTEmu:
             self.s12_for_P6 = hdul['MODEL_Pell6'].header['SIG12']
             self.P6 = hdul['MODEL_Pell6'].data['P_all']
 
+        self.Bisp = Bispectrum(self.real_space, self.use_Mpc)
+
     def load_emulator(self, fname_base, data_type=None):
         r"""Load the emulator from pickle file.
 
@@ -271,6 +274,7 @@ class PTEmu:
             for obs_id in self.data.keys():
                 self.data[obs_id].clear_data()
             self.splines_up_to_date = False
+            self.Bispectrum.set_nbar(self.nbar)
             nbar_unit = '(1/Mpc)^3' if self.use_Mpc else '(h/Mpc)^3'
             print("Number density resetted to nbar = 1 {}. Data set (if "
                   "defined) cleared.".format(nbar_unit))
@@ -291,6 +295,7 @@ class PTEmu:
             depending on the value of the class attribute **use_Mpc**.
         """
         self.nbar = np.copy(nbar)
+        self.Bispectrum.define_nbar(self.nbar)
         self.splines_up_to_date = False
 
     def define_data_set(self, obs_id, **kwargs):
@@ -1999,24 +2004,54 @@ class PTEmu:
         chi2: float
             Value of the :math:`\chi^2`.
         """
-        if (not self.data[obs_id].kmax_is_set or
-            (self.data[obs_id].kmax != kmax and
-             self.data[obs_id].kmax !=
-             [kmax for i in range(self.data[obs_id].n_ell)])):
-            self.data[obs_id].set_kmax(kmax)
-            self.chi2_decomposition = None
+        obs_id = [obs_id] if not isinstance(obs_id, list) else obs_id
 
-        ell = [2*m for m in range(self.data[obs_id].n_ell)
-               if self.data[obs_id].nbins[m] > 0]
+        if not isinstance(kmax, dict):
+            kmax_dict = {}
+            for oi in obs_id:
+                kmax_dict[oi] = kmax
+            kmax = kmax_dict
+
+        for oi in obs_id:
+            if (not self.data[oi].kmax_is_set or
+                (self.data[oi].kmax != kmax[oi] and self.data[oi].kmax !=
+                    [kmax[oi] for i in range(self.data[oi].n_ell)])):
+                        self.data[oi].set_kmax(kmax[oi])
+                        if self.data[oi].stat == 'bispectrum':
+                            self.Bisp.set_tri_fixed(self.data[oi].bins_kmax[0],
+                                                    self.data[oi].kfun)
+                        self.chi2_decomposition = None
+            if self.data[oi].stat == 'bispectrum':
+                chi2_decomposition = False # currently only implemented for Pk
+
+        ell = {}
+        for oi in obs_id:
+            ell[oi] = [2*m for m in range(self.data[oi].n_ell)
+                       if self.data[oi].nbins[m] > 0]
 
         if not chi2_decomposition:
-            Pell = self.Pell(self.data[obs_id].bins_kmax, params, ell,
-                             de_model=de_model, alpha_tr_lo=alpha_tr_lo,
-                             W_damping=W_damping, ell_for_recon=ell_for_recon)
-            Pell_list = np.hstack([Pell[m] for m in Pell.keys()])
+            chi2 = 0.0
+            for oi in obs_id:
+                if self.data[oi].stat == 'powerspectrum':
+                    Pell = self.Pell(self.data[oi].bins_kmax, params, ell[oi],
+                                     de_model=de_model, alpha_tr_lo=alpha_tr_lo,
+                                     W_damping=W_damping,
+                                     ell_for_recon=ell_for_recon)
+                    Pell_list = np.hstack([Pell[m] for m in Pell.keys()])
 
-            diff = Pell_list - self.data[obs_id].signal_kmax
-            chi2 = diff @ self.data[obs_id].inverse_cov_kmax @ diff.T
+                    diff = Pell_list - self.data[oi].signal_kmax
+                    chi2 += diff @ self.data[oi].inverse_cov_kmax @ diff.T
+                elif self.data[oi].stat == 'bispectrum':
+                    # currently only for real-space without AP
+                    Pdw = self.Pdw(self.Bisp.tri_fixed_unique, 0.0,
+                                   params, de_model=de_model,
+                                   ell_for_recon=ell_for_recon)
+                    Bell = self.Bisp.Bell_fixed(Pdw[:,0], params, ell[oi])
+                    Bell_list = np.hstack([Bell[m] for m in Bell.keys()])
+
+                    diff = Bell_list - self.data[oi].signal_kmax
+                    Ldiff = self.data[oi].inverse_cov_kmax_cholesky @ diff
+                    chi2 += np.sum(Ldiff**2)
         else:
             # check if cosmological + RSD parameters have changed, if so,
             # re-evaluate chi2 decomposition
