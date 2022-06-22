@@ -274,7 +274,7 @@ class PTEmu:
             for obs_id in self.data.keys():
                 self.data[obs_id].clear_data()
             self.splines_up_to_date = False
-            self.Bispectrum.set_nbar(self.nbar)
+            self.Bisp.define_nbar(self.nbar)
             nbar_unit = '(1/Mpc)^3' if self.use_Mpc else '(h/Mpc)^3'
             print("Number density resetted to nbar = 1 {}. Data set (if "
                   "defined) cleared.".format(nbar_unit))
@@ -295,7 +295,7 @@ class PTEmu:
             depending on the value of the class attribute **use_Mpc**.
         """
         self.nbar = np.copy(nbar)
-        self.Bispectrum.define_nbar(self.nbar)
+        self.Bisp.define_nbar(self.nbar)
         self.splines_up_to_date = False
 
     def define_data_set(self, obs_id, **kwargs):
