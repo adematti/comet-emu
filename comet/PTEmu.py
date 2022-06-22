@@ -2021,6 +2021,11 @@ class PTEmu:
                             self.Bisp.set_tri_fixed(self.data[oi].bins_kmax[0],
                                                     self.data[oi].kfun)
                         self.chi2_decomposition = None
+            else:
+                if self.data[oi].stat == 'bispectrum' and \
+                    self.Bisp.tri_fixed is None:
+                        self.Bisp.set_tri_fixed(self.data[oi].bins_kmax[0],
+                                                self.data[oi].kfun)
             if self.data[oi].stat == 'bispectrum':
                 chi2_decomposition = False # currently only implemented for Pk
 

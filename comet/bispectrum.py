@@ -8,6 +8,7 @@ class Bispectrum:
         self.real_space = real_space
         self.use_Mpc = use_Mpc
         self.nbar = 1.0 # in units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
+        self.tri_fixed = None
 
     def define_nbar(self, nbar):
         self.nbar = np.copy(nbar)
@@ -74,12 +75,10 @@ class Bispectrum:
                            params['g2']*self.K_fixed)
         P2 = PL_dw[self.ki]*PL_dw[self.kj]
 
-        NB0 = params['NB0'] if self.use_Mpc else params['NB0']/params['h']**6
-        MB0 = params['MB0'] if self.use_Mpc else params['MB0']/params['h']**3
-
         B_SPT = np.einsum("ij,ij->i", kernel, P2[self.tri_to_id_sq])
-        B_stoch = b1sq*MB0/self.nbar * np.sum(PL_dw[self.tri_to_id],axis=1) \
-            + NB0/self.nbar**2
+        B_stoch = b1sq*params['MB0']/self.nbar \
+                  * np.sum(PL_dw[self.tri_to_id],axis=1) \
+                  + params['NB0']/self.nbar**2
 
         Bell = {}
         Bell['ell0'] = B_SPT + B_stoch
