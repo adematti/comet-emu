@@ -383,6 +383,13 @@ class PTEmu:
             the standard cosmological parameters, or be left undefined to use
             only :math:`\sigma_{12}`. Defaults to **None**.
         """
+        def check_ranges(params_list):
+            for p in params_list:
+                if not self.params_ranges[p][0] <= self.params[p] \
+                    <= self.params_ranges[p][1]:
+                        print('Warning! Leaving emulator range' + \
+                              'for parameter {}'.format(p))
+
         try:
             if de_model is None and self.use_Mpc:
                 emu_params_updated = any([params[p] != self.params[p] for p
@@ -391,6 +398,7 @@ class PTEmu:
                     self.params[p] = params[p]
                 self.params['As'] = 0.0
                 self.params['z'] = 0.0
+                check_ranges(self.params_list)
             elif de_model is None and not self.use_Mpc:
                 emu_params_updated = any([params[p] != self.params[p] for p
                                           in self.params_list+['h']])
@@ -398,6 +406,7 @@ class PTEmu:
                     self.params[p] = params[p]
                 self.params['As'] = 0.0
                 self.params['z'] = 0.0
+                check_ranges(self.params_list)
             else:
                 expected_params = self.params_shape_list \
                                   + self.de_model_params_list[de_model]
@@ -407,6 +416,7 @@ class PTEmu:
                                           in expected_params])
                 for p in expected_params:
                     self.params[p] = params[p]
+                check_ranges(self.params_shape_list)
         except KeyError:
             print('Not all required parameter values have been defined.')
 
@@ -419,6 +429,9 @@ class PTEmu:
                 self.params[p] = params[p]
             else:
                 self.params[p] = 0.0
+
+        if self.RSD_model == 'VDG_infty':
+            self.params['cnlo'] = 0.0
 
         return emu_params_updated
 
@@ -747,6 +760,12 @@ class PTEmu:
                 self.Pk_lin *= amplitude_scaling**2
                 self.params['s12'] = sigma12[0]*amplitude_scaling
                 self.params['f'] = f
+
+                for p in list(set(['s12','f']) & set(self.params_list)):
+                    if not self.params_ranges[p][0] <= self.params[p] \
+                        <= self.params_ranges[p][1]:
+                            print('Warning! Leaving emulator range' + \
+                                  'for parameter {}'.format(p))
 
                 if self.RSD_model == 'VDG_infty':
                     self.params['sv'] = self.training['SHAPE'].transform_inv(
