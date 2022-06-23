@@ -54,7 +54,7 @@ class PTEmu:
     projecting again over the Legendre polynomials.
     """
 
-    def __init__(self, model, use_Mpc=True):
+    def __init__(self, model, use_Mpc=True, bias_basis='EggScoSmi'):
         r"""Class constructor.
 
         Parameters
@@ -66,8 +66,23 @@ class PTEmu:
             specified in :math:`\mathrm{Mpc}` (**True**) or
             :math:`h^{-1}\mathrm{Mpc}` (**False**) units. Defaults to **True**.
         """
-        self.bias_params_list = ['b1', 'b2', 'g2', 'g21', 'c0', 'c2', 'c4',
-                                 'cnlo', 'N0', 'N20', 'N22', 'NB0', 'MB0']
+        self.bias_basis = bias_basis
+
+        if self.bias_basis == 'EggScoSmi':
+            self.bias_params_list = ['b1', 'b2', 'g2', 'g21', 'c0', 'c2', 'c4',
+                                     'cnlo', 'N0', 'N20', 'N22', 'NB0', 'MB0']
+        elif self.bias_basis == 'AssBauGre':
+            self.bias_params_list = ['b1', 'b2', 'bG2', 'bGam3', 'c0', 'c2',
+                                     'c4', 'cnlo', 'N0', 'N20', 'N22',
+                                     'NB0', 'MB0']
+        elif self.bias_basis == 'AmiGleKok':
+            self.bias_params_list = ['b1t', 'b2t', 'b3t', 'b4t', 'c0', 'c2',
+                                     'c4', 'cnlo', 'N0', 'N20', 'N22',
+                                     'NB0', 'MB0']
+        else:
+            print('Warning. Bias basis not recognised, defaulting to '
+                  '"EggScoSmi".')
+
         self.RSD_params_list = []
         self.de_model_params_list = {
             'lambda': ['h', 'As', 'Ok', 'z'],
@@ -388,6 +403,13 @@ class PTEmu:
             the standard cosmological parameters, or be left undefined to use
             only :math:`\sigma_{12}`. Defaults to **None**.
         """
+        def check_ranges(params_list):
+            for p in params_list:
+                if not self.params_ranges[p][0] <= self.params[p] \
+                    <= self.params_ranges[p][1]:
+                        print('Warning! Leaving emulator range' + \
+                              'for parameter {}'.format(p))
+
         try:
             if de_model is None and self.use_Mpc:
                 emu_params_updated = any([params[p] != self.params[p] for p
@@ -396,6 +418,7 @@ class PTEmu:
                     self.params[p] = params[p]
                 self.params['As'] = 0.0
                 self.params['z'] = 0.0
+                check_ranges(self.params_list)
             elif de_model is None and not self.use_Mpc:
                 emu_params_updated = any([params[p] != self.params[p] for p
                                           in self.params_list+['h']])
@@ -403,6 +426,7 @@ class PTEmu:
                     self.params[p] = params[p]
                 self.params['As'] = 0.0
                 self.params['z'] = 0.0
+                check_ranges(self.params_list)
             else:
                 expected_params = self.params_shape_list \
                                   + self.de_model_params_list[de_model]
@@ -412,6 +436,7 @@ class PTEmu:
                                           in expected_params])
                 for p in expected_params:
                     self.params[p] = params[p]
+                check_ranges(self.params_shape_list)
         except KeyError:
             print('Not all required parameter values have been defined.')
 
@@ -424,6 +449,23 @@ class PTEmu:
                 self.params[p] = params[p]
             else:
                 self.params[p] = 0.0
+
+        if self.RSD_model == 'VDG_infty':
+            self.params['cnlo'] = 0.0
+
+        if self.bias_basis == 'AssBauGre':
+            self.params['g2'] = self.params['bG2']
+            self.params['g21'] = -4.0/7.0 * (self.params['bG2']
+                                             + self.params['bGam3'])
+        elif self.bias_basis == 'AmiGleKok':
+            self.params['b1'] = self.params['b1t']
+            self.params['b2'] = 2.0 * (-self.params['b1t'] + self.params['b2t']
+                                       + self.params['b4t'])
+            self.params['g2'] = -2.0/7.0 * (self.params['b1t']
+                                            - self.params['b2t'])
+            self.params['g21'] = -2.0/147.0 * (11*self.params['b1t']
+                                               - 18*self.params['b2t']
+                                               + 9*self.params['b3t'])
 
         return emu_params_updated
 
@@ -752,6 +794,12 @@ class PTEmu:
                 self.Pk_lin *= amplitude_scaling**2
                 self.params['s12'] = sigma12[0]*amplitude_scaling
                 self.params['f'] = f
+
+                for p in list(set(['s12','f']) & set(self.params_list)):
+                    if not self.params_ranges[p][0] <= self.params[p] \
+                        <= self.params_ranges[p][1]:
+                            print('Warning! Leaving emulator range' + \
+                                  'for parameter {}'.format(p))
 
                 if self.RSD_model == 'VDG_infty':
                     self.params['sv'] = self.training['SHAPE'].transform_inv(
