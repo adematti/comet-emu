@@ -53,7 +53,7 @@ class PTEmu:
     projecting again over the Legendre polynomials.
     """
 
-    def __init__(self, model, use_Mpc=True):
+    def __init__(self, model, use_Mpc=True, bias_basis='EggScoSmi'):
         r"""Class constructor.
 
         Parameters
@@ -65,8 +65,21 @@ class PTEmu:
             specified in :math:`\mathrm{Mpc}` (**True**) or
             :math:`h^{-1}\mathrm{Mpc}` (**False**) units. Defaults to **True**.
         """
-        self.bias_params_list = ['b1', 'b2', 'g2', 'g21', 'c0', 'c2', 'c4',
-                                 'cnlo', 'N0', 'N20', 'N22']
+        self.bias_basis = bias_basis
+
+        if self.bias_basis == 'EggScoSmi':
+            self.bias_params_list = ['b1', 'b2', 'g2', 'g21', 'c0', 'c2', 'c4',
+                                     'cnlo', 'N0', 'N20', 'N22']
+        elif self.bias_basis == 'AssBauGre':
+            self.bias_params_list = ['b1', 'b2', 'bG2', 'bGam3', 'c0', 'c2',
+                                     'c4', 'cnlo', 'N0', 'N20', 'N22']
+        elif self.bias_basis == 'AmiGleKok':
+            self.bias_params_list = ['b1t', 'b2t', 'b3t', 'b4t', 'c0', 'c2',
+                                     'c4', 'cnlo', 'N0', 'N20', 'N22']
+        else:
+            print('Warning. Bias basis not recognised, defaulting to '
+                  '"EggScoSmi".')
+
         self.RSD_params_list = []
         self.de_model_params_list = {
             'lambda': ['h', 'As', 'Ok', 'z'],
@@ -432,6 +445,20 @@ class PTEmu:
 
         if self.RSD_model == 'VDG_infty':
             self.params['cnlo'] = 0.0
+
+        if self.bias_basis == 'AssBauGre':
+            self.params['g2'] = self.params['bG2']
+            self.params['g21'] = -4.0/7.0 * (self.params['bG2']
+                                             + self.params['bGam3'])
+        elif self.bias_basis == 'AmiGleKok':
+            self.params['b1'] = self.params['b1t']
+            self.params['b2'] = 2.0 * (-self.params['b1t'] + self.params['b2t']
+                                       + self.params['b4t'])
+            self.params['g2'] = -2.0/7.0 * (self.params['b1t']
+                                            - self.params['b2t'])
+            self.params['g21'] = -2.0/147.0 * (11*self.params['b1t']
+                                               - 18*self.params['b2t']
+                                               + 9*self.params['b3t'])
 
         return emu_params_updated
 
