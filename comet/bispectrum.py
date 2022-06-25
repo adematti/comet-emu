@@ -24,6 +24,9 @@ class Bispectrum:
         self.kernels_fixed = {}
         self.I_fixed = {}
 
+    def define_units(self, use_Mpc):
+        self.use_Mpc = use_Mpc
+
     def define_nbar(self, nbar):
         self.nbar = np.copy(nbar)
 

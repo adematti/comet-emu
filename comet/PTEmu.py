@@ -133,6 +133,7 @@ class PTEmu:
         self.data = {}
 
         self.splines_up_to_date = False
+        self.dw_spline_up_to_date = False
         self.X_splines_up_to_date = {X: False for X in self.diagrams_all}
         self.emu_params_updated = False
 
@@ -289,6 +290,8 @@ class PTEmu:
             for obs_id in self.data.keys():
                 self.data[obs_id].clear_data()
             self.splines_up_to_date = False
+            self.dw_spline_up_to_date = False
+            self.Bisp.define_units(self.use_Mpc)
             self.Bisp.define_nbar(self.nbar)
             nbar_unit = '(1/Mpc)^3' if self.use_Mpc else '(h/Mpc)^3'
             print("Number density resetted to nbar = 1 {}. Data set (if "
@@ -442,6 +445,10 @@ class PTEmu:
 
         if emu_params_updated:
             self.Pk_ratios = {0: None, 2: None, 4: None}
+            self.splines_up_to_date = False
+            self.dw_spline_up_to_date = False
+            self.X_splines_up_to_date = {X: False for X
+                                         in self.diagrams_all}
             self.chi2_decomposition = None
 
         for p in self.bias_params_list + self.RSD_params_list:
@@ -909,6 +916,48 @@ class PTEmu:
             self.neff_min[ell] = dlP_min/dlk_min
             self.neff_max[ell] = dlP_max/dlk_max
 
+    def build_Pdw_spline(self, Pdw):
+        r"""Build spline object for multipoles of linear de-wiggled power
+        spectrum.
+
+        Generates a cubic spline object for the linear de-wiggled power
+        spectrum, including the computation of effective indexes for the low-
+        and high-:math:`k` tails, and stores it as class attribute.
+
+        Parameters
+        ----------
+        Pdw: list or numpy.ndarray
+            Array containing the de-wiggled linear power spectrum evaluated at
+            the wavemodes defined by the class attribute **k_table**.
+        """
+        id_min = 0
+        if self.use_Mpc:
+            self.Pdw_spline = UnivariateSpline(self.k_table, Pdw, k=3, s=0)
+            self.Pdw_min = Pdw[id_min]
+            self.Pdw_max = Pdw[-1]
+            self.k_table_min[0] = self.k_table[id_min]
+            self.k_table_max[0] = self.k_table[-1]
+            dlP_min = np.log10(np.abs(Pdw[id_min+2]/Pdw[id_min]))
+            dlP_max = np.log10(np.abs(Pdw[-1]/Pdw[-3]))
+            dlk_min = np.log10(self.k_table[id_min+2]/self.k_table[id_min])
+            dlk_max = np.log10(self.k_table[-1]/self.k_table[-3])
+            self.neff_dw_min = dlP_min/dlk_min
+            self.neff_dw_max = dlP_max/dlk_max
+        else:
+            Pdw *= self.params['h']**3
+            self.Pdw_spline = UnivariateSpline(self.k_table/self.params['h'],
+                                               Pdw, k=3, s=0)
+            self.Pdw_min = Pdw[id_min]
+            self.Pdw_max = Pdw[-1]
+            self.k_table_min[0] = self.k_table[id_min]/self.params['h']
+            self.k_table_max[0] = self.k_table[-1]/self.params['h']
+            dlP_min = np.log10(np.abs(Pdw[id_min+2]/Pdw[id_min]))
+            dlP_max = np.log10(np.abs(Pdw[-1]/Pdw[-3]))
+            dlk_min = np.log10(self.k_table[id_min+2]/self.k_table[id_min])
+            dlk_max = np.log10(self.k_table[-1]/self.k_table[-3])
+            self.neff_dw_min = dlP_min/dlk_min
+            self.neff_dw_max = dlP_max/dlk_max
+
     def eval_Pell_spline(self, k, ell):
         r"""Evaluate the spline of the specified power spectrum multipole.
 
@@ -943,6 +992,37 @@ class PTEmu:
                 k[np.invert(mask_low) & np.invert(mask_high)]),
              self.Pell_max[ell] *
              (k[mask_high]/self.k_table_max[ell])**self.neff_max[ell]]
+            )
+        return spline
+
+    def eval_Pdw_spline(self, k):
+        r"""Evaluate the spline of the linear de-wiggled power spectrum.
+
+        Calls the spline object stored as class attribute for the linear
+        de-wiggled power spectrum on the input wavemodes :math:`k`. The called
+        interpolator results in a cubic spline or in a power-law extrapolation,
+        depending if the value of :math:`k` is within or outside the original
+        boundary spcified by the training table.
+
+        Parameters
+        ----------
+        k: numpy.ndarray
+            Values of the requested wavemodes :math:`k`.
+
+        Returns
+        -------
+        spline: numpy.ndarray
+            Interpolated linear de-wiggled power spectrum at the requested
+            wavemodes :math:`k`.
+        """
+        mask_low = k < self.k_table_min[0]
+        mask_high = k > self.k_table_max[0]
+        spline = np.hstack(
+            [self.Pdw_min *
+             (k[mask_low]/self.k_table_min[0])**self.neff_dw_min,
+             self.Pdw_spline(k[np.invert(mask_low) & np.invert(mask_high)]),
+             self.Pdw_max *
+             (k[mask_high]/self.k_table_max[0])**self.neff_dw_max]
             )
         return spline
 
@@ -985,7 +1065,7 @@ class PTEmu:
 
         return PL_spline(k)
 
-    def Pdw(self, k, mu, params, de_model=None, ell_for_recon=None):
+    def Pdw_2d(self, k, mu, params, de_model=None, ell_for_recon=None):
         r"""Compute the anisotropic leading order IR-resummed power spectrum.
 
         Evaluates the emulator calling **eval_emulator**, and returns the
@@ -1069,6 +1149,84 @@ class PTEmu:
             Pdw_2d += np.outer(Pdw_spline[ell](k), eval_legendre(ell, mu))
 
         return Pdw_2d
+
+    def Pdw(self, k, params, de_model=None, ell_for_recon=None):
+        r"""Compute the real space leading order IR-resummed power spectrum.
+
+        Evaluates the emulator calling **eval_emulator**, and returns the
+        real space (:math:`\mu = 0`) leading order IR-resummed power spectrum
+        :math:`P_\mathrm{IR-res}^\mathrm{LO}(k,\mu)`, defined as
+
+        .. math::
+            P_\mathrm{IR-res}^\mathrm{LO}(k,\mu) = P_\mathrm{nw}(k) + \
+            e^{-k^2\Sigma^2(f,\mu)}P_\mathrm{w}(k),
+
+        where :math:`P_\mathrm{nw}` and :math:`P_\mathrm{w}` are the no-wiggle
+        and wiggle-only component of the linear matter power spectrum, and
+        :math:`\Sigma(f,\mu)` is the anisotropic BAO damping factor due to
+        infrared modes.
+
+        Notice how this function does not include the leading order Kaiser
+        effect due to the impact of the velocity field on the amplitude of
+        the power spectrum.
+
+        Parameters
+        ----------
+        k: float or numpy.ndarray
+            Value of the requested wavemodes :math:`k`.
+        mu: float or numpy.ndarray
+            Value of the cosine :math:`\mu` of the angle between
+            the pair separation and the line of sight.
+        params: dict
+            Dictionary containing the list of total model parameters which are
+            internally used by the emulator. The keyword/value pairs of the
+            dictionary specify the names and the values of the parameters,
+            respectively.
+        de_model: str, optional
+            String that determines the dark energy equation of state. Can be
+            chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
+            the standard cosmological parameters, or be left undefined to use
+            only :math:`\sigma_{12}`. Defaults to **None**.
+        ell_for_recon: list, optional
+            List of :math:`\ell` values used for the reconstruction of the
+            2d leading-order IR-resummed power spectrum. If **None**, all the
+            even multipoles up to :math:`\ell=6` are used in the
+            reconstruction. Defaults to **None**.
+
+        Returns
+        -------
+        Pdw_2d: numpy.ndarray
+            Leading-order infrared resummed power spectrum
+            :math:`P_\mathrm{IR-res}^\mathrm{LO}(k,\mu)` evaluated at the
+            input wavemodes :math:`k` and angles :math:`\mu`.
+        """
+        if ell_for_recon is None:
+            ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
+        ell_eval_emu = ell_for_recon.copy()
+        try:
+            ell_eval_emu.remove(6)
+        except Exception:
+            pass
+        self.eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
+
+        if not self.dw_spline_up_to_date:
+            Pdw_ell = np.zeros([self.nk, len(ell_for_recon)])
+            for i, ell in enumerate(ell_for_recon):
+                if ell != 6:
+                    Pdw_ell[:, i] = self.Pk_ratios[ell][:self.nk]
+                else:
+                    Pdw_ell[:, i] = self.P6[:, 0]
+            Pdw_ell[:, :len(ell_eval_emu)] = (Pdw_ell[:, :len(ell_eval_emu)].T *
+                                              self.Pk_lin).T
+
+            Pdw = 0.0
+            for i, ell in enumerate(ell_for_recon):
+                Pdw += Pdw_ell[:,i]*eval_legendre(ell, 0.0)
+            self.build_Pdw_spline(Pdw)
+            self.dw_spline_up_to_date = True
+
+        Pdw = self.eval_Pdw_spline(k)
+        return Pdw
 
     def Pell_fid_ktable(self, params, ell, de_model=None):
         r"""Compute the power spectrum multipoles at the training wavemodes.
@@ -1261,8 +1419,8 @@ class PTEmu:
             for i, m in enumerate(ell_for_recon):
                 self.build_Pell_spline(Pell[:, i], m)
             self.splines_up_to_date = True
-            self.X_splines_up_to_date = {X: False for X in self.diagrams_all}
-            self.chi2_decomposition = None
+            # self.X_splines_up_to_date = {X: False for X in self.diagrams_all}
+            # self.chi2_decomposition = None
 
         self.update_AP_params(params, de_model=de_model,
                               alpha_tr_lo=alpha_tr_lo)
@@ -1380,7 +1538,8 @@ class PTEmu:
                 self.params[p] = params[p]
             else:
                 self.params[p] = 0.0
-        self.splines_up_to_date = False
+        # self.splines_up_to_date = False
+        # self.dw_spline_up_to_date = False
         bX = self.get_bias_coeff_for_chi2_decomposition()
 
         Pell_dict = {}
@@ -2152,6 +2311,7 @@ class PTEmu:
                 else:
                     self.params[p] = 0.
             self.splines_up_to_date = False
+            self.dw_spline_up_to_date = False
 
             bX = self.get_bias_coeff_for_chi2_decomposition()
             chi2 = (bX @ self.chi2_decomposition['XX'] @ bX -
