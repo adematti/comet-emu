@@ -10,6 +10,20 @@ class Bispectrum:
         self.nbar = 1.0 # in units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
         self.tri_fixed = None
 
+        if self.real_space:
+            self.kernel_names = ['F2', 'K']
+        else:
+            self.kernel_names = ['F2', 'G2', 'K', 'k31', 'k32',
+                                 'dF2_dlnk1', 'dF2_dlnk2', 'dF2_dlnk3',
+                                 'dG2_dlnk1', 'dG2_dlnk2', 'dG2_dlnk3',
+                                 'dK_dlnk1', 'dK_dlnk2', 'dK_dlnk3',
+                                 'dk31_dlnk1', 'dk31_dlnk2', 'dk31_dlnk3',
+                                 'dk32_dlnk1', 'dk32_dlnk2', 'dk32_dlnk3']
+            self.I_names = ['000', '']
+
+        self.kernels_fixed = {}
+        self.I_fixed = {}
+
     def define_nbar(self, nbar):
         self.nbar = np.copy(nbar)
 
@@ -23,17 +37,71 @@ class Bispectrum:
         mu = (k3**2 - k1**2 - k2**2)/(2*k1*k2)
         return 5.0/7.0 + mu/2 * (k1/k2 + k2/k1) + 2.0/7.0 * mu**2
 
+    def G2(self, k1, k2, k3):
+        mu = (k3**2 - k1**2 - k2**2)/(2*k1*k2)
+        return 3.0/7.0 + mu/2 * (k1/k2 + k2/k1) + 4.0/7.0 * mu**2
+
     def K(self, k1, k2, k3):
         mu = (k3**2 - k1**2 - k2**2)/(2*k1*k2)
         return mu**2 - 1.0
 
+    def kernels_real_space(self, k1, k2, k3):
+        kernels = {}
+        mu = (k3**2 - k1**2 - k2**2)/(2*k1*k2)
+        kernels['F2'] = 5.0/7.0 + mu/2 * (k1/k2 + k2/k1) + 2.0/7.0 * mu**2
+        kernels['K'] = mu**2 - 1.0
+        return kernels
+
+    def kernels_redshift_space(self, k1, k2, k3):
+        kernels = {}
+        mu = (k3**2 - k1**2 - k2**2)/(2*k1*k2)
+
+        kernels['F2'] = 5.0/7.0 + mu/2 * (k1/k2 + k2/k1) + 2.0/7.0 * mu**2
+        kernels['G2'] = 3.0/7.0 + mu/2 * (k1/k2 + k2/k1) + 4.0/7.0 * mu**2
+        kernels['K'] = mu**2 - 1.0
+        kernels['k31'] = k3/k1
+        kernels['k32'] = k3/k2
+
+        kernels['dF2_dlnk1'] = -0.5 - k1**2/(2.0*k2**2) - (4.0*k1*mu)/(7.0*k2) \
+                               - (k2*mu)/k1 - (4.0*mu**2)/7.0
+        kernels['dF2_dlnk2'] = -0.5 - k2**2/(2.0*k1**2) - (k1*mu)/k2 \
+                               - (4.0*k2*mu)/(7.0*k1) - (4.0*mu**2)/7.0
+        kernels['dF2_dlnk3'] = (k3**2*(7.0*(k1**2 + k2**2) + 8.0*k1*k2*mu)) \
+                               / (14.0*k1**2*k2**2)
+
+        kernels['dG2_dlnk1'] = -0.5 - k1**2/(2.0*k2**2) - (8.0*k1*mu)/(7.0*k2) \
+                               - (k2*mu)/k1 - (8.0*mu**2)/7.0
+        kernels['dG2_dlnk2'] = -0.5 - k2**2/(2.0*k1**2) - (k1*mu)/k2 \
+                               - (8.0*k2*mu)/(7.0*k1) - (8.0*mu**2)/7.0
+        kernels['dG2_dlnk3'] = (k3**2*(7.0*(k1**2 + k2**2) + 16.0*k1*k2*mu)) \
+                               / (14.*k1**2*k2**2)
+
+        kernels['dK_dlnk1'] = (-2.0*mu*(k1 + k2*mu))/k2
+        kernels['dK_dlnk2'] = (-2.0*mu*(k2 + k1*mu))/k1
+        kernels['dK_dlnk3'] = 2.0*mu*(k1/k2 + k2/k1 + 2.0*mu)
+
+        kernels['dk31_dlnk1'] = -kernels['k31']
+        kernels['dk31_dlnk2'] = 0.0
+        kernels['dk31_dlnk3'] = kernels['k31']
+
+        kernels['dk32_dlnk1'] = 0.0
+        kernels['dk32_dlnk2'] = -kernels['k32']
+        kernels['dk32_dlnk3'] = kernels['k32']
+
     def compute_kernels(self):
-        self.F2_fixed = np.zeros([self.tri_fixed.shape[0],3])
-        self.K_fixed = np.zeros([self.tri_fixed.shape[0],3])
+        for kk in self.kernel_names:
+            self.kernels_fixed[kk] = np.zeros([self.tri_fixed.shape[0],3])
 
         for i in range(3):
-            self.F2_fixed[:,i] = self.F2(*np.roll(self.tri_fixed, -i, axis=1).T)
-            self.K_fixed[:,i] = self.K(*np.roll(self.tri_fixed, -i, axis=1).T)
+            k123_perm = np.roll(self.tri_fixed, -i, axis=1).T
+            if self.real_space:
+                kernels = self.kernels_real_space(*k123_perm)
+                for kk in self.kernel_names:
+                    self.kernels_fixed[kk][:,i] = kernels[kk]
+            else:
+                kernels = self.kernels_redshift_space(*k123_perm)
+                for kk in self.kernel_names:
+                    self.kernels_fixed[kk][:,i] = kernels[kk]
 
     def generate_index_arrays(self, round_decimals=2):
         self.tri_fixed_rounded = np.around(self.tri_fixed/self.kfun,
