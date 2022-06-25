@@ -1,7 +1,7 @@
 """Main PTEmu module."""
 
 import numpy as np
-from scipy.interpolate import interp1d
+from scipy.interpolate import UnivariateSpline
 from scipy.integrate import quad_vec
 from scipy.special import eval_legendre
 from astropy.io import fits
@@ -882,7 +882,8 @@ class PTEmu:
         """
         id_min = 0 if not ell == 6 else self.nk-self.nkloop
         if self.use_Mpc:
-            self.Pell_spline[ell] = interp1d(self.k_table, Pell, kind='cubic')
+            self.Pell_spline[ell] = UnivariateSpline(self.k_table, Pell,
+                                                     k=3, s=0)
             self.Pell_min[ell] = Pell[id_min]
             self.Pell_max[ell] = Pell[-1]
             self.k_table_min[ell] = self.k_table[id_min]
@@ -895,8 +896,8 @@ class PTEmu:
             self.neff_max[ell] = dlP_max/dlk_max
         else:
             Pell *= self.params['h']**3
-            self.Pell_spline[ell] = interp1d(self.k_table/self.params['h'],
-                                             Pell, kind='cubic')
+            self.Pell_spline[ell] = UnivariateSpline(
+                self.k_table/self.params['h'], Pell, k=3, s=0)
             self.Pell_min[ell] = Pell[id_min]
             self.Pell_max[ell] = Pell[-1]
             self.k_table_min[ell] = self.k_table[id_min]/self.params['h']
@@ -976,10 +977,11 @@ class PTEmu:
         self.eval_emulator(params, ell=[], de_model=de_model)
 
         if self.use_Mpc:
-            PL_spline = interp1d(self.k_table, self.Pk_lin, kind='cubic')
+            PL_spline = UnivariateSpline(self.k_table, self.Pk_lin, k=3, s=0)
         else:
-            PL_spline = interp1d(self.k_table/self.params['h'],
-                                 self.Pk_lin*self.params['h']**3, kind='cubic')
+            PL_spline = UnivariateSpline(self.k_table/self.params['h'],
+                                         self.Pk_lin*self.params['h']**3,
+                                         k=3, s=0)
 
         return PL_spline(k)
 
@@ -1054,12 +1056,13 @@ class PTEmu:
         Pdw_spline = {}
         for i, ell in enumerate(ell_for_recon):
             if self.use_Mpc:
-                Pdw_spline[ell] = interp1d(self.k_table, Pdw_ell[:, i],
-                                           kind='cubic')
+                Pdw_spline[ell] = UnivariateSpline(self.k_table, Pdw_ell[:, i],
+                                                   k=3, s=0)
             else:
-                Pdw_spline[ell] = interp1d(self.k_table/self.params['h'],
-                                           Pdw_ell[:, i]*self.params['h']**3,
-                                           kind='cubic')
+                Pdw_spline[ell] = UnivariateSpline(
+                    self.k_table/self.params['h'],
+                    Pdw_ell[:, i]*self.params['h']**3,
+                    k=3, s=0)
 
         Pdw_2d = 0.0
         for ell in ell_for_recon:
@@ -1469,8 +1472,9 @@ class PTEmu:
         Pell_dict = {}
         if k != self.data[obs_id].bins_mixing_matrix[:, 0]:
             for i, m in enumerate(ell):
-                spline = interp1d(self.data[obs_id].bins_mixing_matrix[:, 0],
-                                  Pell_convolved[:, i], kind='cubic')
+                spline = UnivariateSpline(
+                    self.data[obs_id].bins_mixing_matrix[:, 0],
+                    Pell_convolved[:, i], k=3, s=0)
                 Pell_dict['ell{}'.format(m)] = spline(k_list[i])
         else:
             for i, m in enumerate(ell):
@@ -1538,12 +1542,14 @@ class PTEmu:
             PX_spline = {}
             for i, ell in enumerate(ell_for_recon):
                 if self.use_Mpc:
-                    PX_spline[ell] = interp1d(self.k_table, PX_ell[:, i],
-                                              kind='cubic')
+                    PX_spline[ell] = UnivariateSpline(self.k_table,
+                                                      PX_ell[:, i],
+                                                      k=3, s=0)
                 else:
-                    PX_spline[ell] = interp1d(self.k_table/self.params['h'],
-                                              PX_ell[:, i]*self.params['h']**3,
-                                              kind='cubic')
+                    PX_spline[ell] = UnivariateSpline(
+                        self.k_table/self.params['h'],
+                        PX_ell[:, i]*self.params['h']**3,
+                        k=3, s=0)
 
             PX_2d = 0.0
             for ell in ell_for_recon:
@@ -1776,15 +1782,14 @@ class PTEmu:
 
         for i, m in enumerate(ell_for_recon):
             if self.use_Mpc:
-                self.PX_ell_spline[X][m] = interp1d(self.k_table,
-                                                    PX_ell[:, i],
-                                                    kind='cubic')
+                self.PX_ell_spline[X][m] = UnivariateSpline(self.k_table,
+                                                            PX_ell[:, i],
+                                                            k=3, s=0)
             else:
-                self.PX_ell_spline[X][m] = interp1d(self.k_table /
-                                                    self.params['h'],
-                                                    PX_ell[:, i] *
-                                                    self.params['h']**3,
-                                                    kind='cubic')
+                self.PX_ell_spline[X][m] = UnivariateSpline(
+                    self.k_table/self.params['h'],
+                    PX_ell[:, i]*self.params['h']**3,
+                    k=3, s=0)
 
         self.X_splines_up_to_date[X] = True
 
