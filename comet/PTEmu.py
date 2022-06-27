@@ -3,6 +3,7 @@
 import numpy as np
 from scipy.interpolate import interp1d
 from scipy.integrate import quad_vec
+from scipy.integrate import quad,dblquad
 from scipy.special import eval_legendre
 from astropy.io import fits
 import pickle
@@ -1759,7 +1760,49 @@ class PTEmu:
     #     # evaluate kernels for all combinations of pairs of k_i
     #     # construct cyclic permutations
 
-    def Gaussian_covariance(self, l1, l2, k, dk, Pell, volume, Nmodes=None):
+    def Avg_covariance(self, l1, l2, k, Pl, sigma_d):
+
+        def kxx_int(th, ph,l1, l2, k, b, inv_nbar, Pl, sigma_d):
+
+            costh2 = np.sin(th)*np.cos(ph)
+            costh1 = np.cos(th)
+            sinth1 = np.sin(th)
+
+            f= self.cosmo.growth_rate(self.params["z"])
+            beta = f/b
+
+            func = sinth1*( b**2 * (1 + beta*costh1**2) * (1 + beta*costh2**2) * Pl + inv_nbar * np.exp(
+                -k**2 * ( costh1**2 + costh2**2) * f**2*sigma_d**2/2
+            ) )**2 * eval_legendre(l1, costh1)*eval_legendre(l2, costh2)
+
+            return func
+
+        def kll_int(th,l1, l2, k, b, inv_nbar, Pl, sigma_d):
+
+            sinth1 = np.sin(th)
+            costh1 = np.cos(th)
+
+            f= self.cosmo.growth_rate(self.params["z"])
+            beta = f/b
+
+            func = 2*np.pi* sinth1 * ( b**2*(1 + beta*costh1**2)**2*Pl +  inv_nbar )**2 \
+                    * eval_legendre(l1, costh1)*eval_legendre(l2,costh1)
+            return func
+
+        kxx_l1l2 = np.asarray([ dblquad(kxx_int, 0, 2*np.pi,
+            lambda ph: 0,
+            lambda th:
+            1*np.pi,
+            args=(l1,l2, k[i], self.params["b1"], 1/self.nbar, Pl[i], sigma_d))[0]
+            for i in range(len(k)) ])
+
+        kll_l1l2  = np.asarray([ quad(kll_int,0, np.pi,
+                  args=(l1,l2, k[i], self.params["b1"], 1/self.nbar, Pl[i], sigma_d))[0]
+                  for i in range(len(k)) ])
+
+        return (1+2*(kxx_l1l2/kll_l1l2))/3
+
+    def Gaussian_covariance(self, l1, l2, k, dk, Pell, volume, Nmodes=None, avg_cov=False):
         r"""Compute the gaussian covariance of the power spectrum multipoles.
 
         Returns the gaussian covariance predictions for the specified power
@@ -1821,13 +1864,20 @@ class PTEmu:
         else:
             cov = Pell['ell0']**2
 
-        cov *= 2.0/Nmodes
+        if avg_cov:
+            Pl = self.PL(k,self.params, de_model="lambda")
+            sigma_d = np.sqrt(quad(self.PL, np.min(k), np.max(k) , args=(self.params, "lambda") )[0] / (6*np.pi**2) )
+            avg = self.Avg_covariance(l1, l2, k, Pl, sigma_d)
+        else:
+            avg=1.
+
+        cov *= 2.0/Nmodes*avg
         return cov
 
     def Pell_covariance(self, k, params, ell, dk, de_model=None,
                         alpha_tr_lo=None, W_damping=None,
                         volume=None, zmin=None, zmax=None,
-                        fsky=15000.0/(360.0**2/np.pi), volfac=1.0):
+                        fsky=15000.0/(360.0**2/np.pi), volfac=1.0, avg_cov=False):
         r"""Compute the gaussian covariance of the power spectrum multipoles.
 
         Generates the selected power spectrum multipoles for the specified set
@@ -1932,7 +1982,7 @@ class PTEmu:
                                                    return_indices=True)
                     ids_ij = np.intersect1d(k_all, kij, return_indices=True)[1]
                     cov_l1l2 = self.Gaussian_covariance(
-                        l1, l2, k_all, dk, Pell, volume)[ids_ij]
+                        l1, l2, k_all, dk, Pell, volume, avg_cov=avg_cov)[ids_ij]
                     cov[sum(nbins[:i]):sum(nbins[:i+1]),
                         sum(nbins[:j]):sum(nbins[:j+1])][id1, id2] = cov_l1l2
                 else:
