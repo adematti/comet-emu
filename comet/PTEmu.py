@@ -1966,15 +1966,30 @@ class PTEmu:
 
         return PX_ell_dict
 
-    # def Bell(self, tri, params, ell, de_model=None, alpha_tr_lo=None):
-    #     def kernels(k1, k2, k3):
-    #         mu = (k3**2-k1**2-k2**2)/(2*k1*k2)
-    #         F2 = 5./7 + mu/2*(k1/k2 + k2/k1) + 2./7*mu**2
-    #         K = mu**2 - 1
-    #         return np.array([F2, 1., K])
-    #
-    #     # evaluate kernels for all combinations of pairs of k_i
-    #     # construct cyclic permutations
+    def Bell(self, tri, params, ell, de_model=None, kfun=None,
+             alpha_tr_lo=None, ell_for_recon=None):
+        ell = [ell] if not isinstance(ell, list) else ell
+
+        if not np.all(self.Bisp.tri == tri):
+            if kfun is None:
+                kfun = tri[0,0]
+                print('kfun not specified. Using kfun = {}'.format(kfun))
+            self.Bisp.set_tri(tri, kfun)
+
+        Pdw = self.Pdw(self.Bisp.tri_unique, params, de_model=de_model,
+                       ell_for_recon=ell_for_recon)
+
+        if self.real_space:
+            neff = None
+        else:
+            neff = self.Bisp.tri_unique * self.Pdw_spline.derivative(n=1)(
+                       self.Bisp.tri_unique) / Pdw
+
+        self.update_AP_params(params, de_model=de_model,
+                              alpha_tr_lo=alpha_tr_lo)
+
+        Bell_dict = self.Bisp.Bell(Pdw, self.params, ell, neff)
+        return Bell_dict
 
     def Gaussian_covariance(self, l1, l2, k, dk, Pell, volume, Nmodes=None):
         r"""Compute the gaussian covariance of the power spectrum multipoles.
@@ -2230,14 +2245,14 @@ class PTEmu:
                     [kmax[oi] for i in range(self.data[oi].n_ell)])):
                         self.data[oi].set_kmax(kmax[oi])
                         if self.data[oi].stat == 'bispectrum':
-                            self.Bisp.set_tri_fixed(self.data[oi].bins_kmax[0],
-                                                    self.data[oi].kfun)
+                            self.Bisp.set_tri(self.data[oi].bins_kmax[0],
+                                              self.data[oi].kfun)
                         self.chi2_decomposition = None
             else:
                 if self.data[oi].stat == 'bispectrum' and \
-                    self.Bisp.tri_fixed is None:
-                        self.Bisp.set_tri_fixed(self.data[oi].bins_kmax[0],
-                                                self.data[oi].kfun)
+                    self.Bisp.tri is None:
+                        self.Bisp.set_tri(self.data[oi].bins_kmax[0],
+                                          self.data[oi].kfun)
             if self.data[oi].stat == 'bispectrum':
                 chi2_decomposition = False # currently only implemented for Pk
 
@@ -2260,16 +2275,16 @@ class PTEmu:
                     chi2 += diff @ self.data[oi].inverse_cov_kmax @ diff.T
                 elif self.data[oi].stat == 'bispectrum':
                     # currently only for real-space without AP
-                    Pdw = self.Pdw(self.Bisp.tri_fixed_unique,
+                    Pdw = self.Pdw(self.Bisp.tri_unique,
                                    params, de_model=de_model,
                                    ell_for_recon=ell_for_recon)
                     if self.real_space:
-                        neff=None
+                        neff = None
                     else:
-                        neff = self.Bisp.tri_fixed_unique * \
+                        neff = self.Bisp.tri_unique * \
                                self.Pdw_spline.derivative(n=1)(
-                                   self.Bisp.tri_fixed_unique) / Pdw
-                    Bell = self.Bisp.Bell_fixed(Pdw, self.params, ell[oi], neff)
+                                   self.Bisp.tri_unique) / Pdw
+                    Bell = self.Bisp.Bell(Pdw, self.params, ell[oi], neff)
                     Bell_list = np.hstack([Bell[m] for m in Bell.keys()])
 
                     diff = Bell_list - self.data[oi].signal_kmax
