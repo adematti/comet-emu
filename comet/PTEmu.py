@@ -2260,10 +2260,16 @@ class PTEmu:
                     chi2 += diff @ self.data[oi].inverse_cov_kmax @ diff.T
                 elif self.data[oi].stat == 'bispectrum':
                     # currently only for real-space without AP
-                    Pdw = self.Pdw(self.Bisp.tri_fixed_unique, 0.0,
+                    Pdw = self.Pdw(self.Bisp.tri_fixed_unique,
                                    params, de_model=de_model,
                                    ell_for_recon=ell_for_recon)
-                    Bell = self.Bisp.Bell_fixed(Pdw[:,0], params, ell[oi])
+                    if self.real_space:
+                        neff=None
+                    else:
+                        neff = self.Bisp.tri_fixed_unique * \
+                               self.Pdw_spline.derivative(n=1)(
+                                   self.Bisp.tri_fixed_unique) / Pdw
+                    Bell = self.Bisp.Bell_fixed(Pdw, self.params, ell[oi], neff)
                     Bell_list = np.hstack([Bell[m] for m in Bell.keys()])
 
                     diff = Bell_list - self.data[oi].signal_kmax
