@@ -320,7 +320,7 @@ class Bispectrum:
 
         return DeltaB_K
 
-    def Bell(self, PL_dw, params, ell=[0], neff=None):
+    def Bell(self, PL_dw, neff, params, ell=[0]):
         if self.real_space:
             b1sq = params['b1']**2
             kernel = 2*b1sq * (params['b1']*self.kernels['F2']
@@ -378,13 +378,13 @@ class Bispectrum:
                                   * self.I[2+l,0,0][0,0])
 
             # normalisation????
-            if 2 in ell:
-                kernel[2] = 2.5 * (3*kernel[2] - kernel[0])
-                kernel_stoch[2] = 2.5 * (3*kernel_stoch[2] - kernel_stoch[0])
             if 4 in ell:
                 kernel[4] = 1.125 * (35*kernel[4] - 30*kernel[2] + 3*kernel[0])
                 kernel_stoch[4] = 1.125 * (35*kernel_stoch[4] \
                                   - 30*kernel_stoch[2] + 3*kernel_stoch[0])
+            if 2 in ell:
+                kernel[2] = 2.5 * (3*kernel[2] - kernel[0])
+                kernel_stoch[2] = 2.5 * (3*kernel_stoch[2] - kernel_stoch[0])
 
         P2 = PL_dw[self.ki]*PL_dw[self.kj]
         alpha6 = params['alpha_tr']**4 * params['alpha_lo']**2

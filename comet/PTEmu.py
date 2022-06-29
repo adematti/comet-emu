@@ -1969,6 +1969,13 @@ class PTEmu:
     def Bell(self, tri, params, ell, de_model=None, kfun=None,
              alpha_tr_lo=None, ell_for_recon=None):
         ell = [ell] if not isinstance(ell, list) else ell
+        if tri.ndim == 1:
+            tri = tri[None,:]
+        tri_sorted = np.flip(np.sort(tri, axis=1), axis=1)
+        if np.any(tri != tri_sorted):
+            tri = tri_sorted
+            print('Warning. Triangle configurations sorted such that '
+                  'k1 >= k2 >= k3.')
 
         if not np.all(self.Bisp.tri == tri):
             if kfun is None:
@@ -1988,7 +1995,7 @@ class PTEmu:
         self.update_AP_params(params, de_model=de_model,
                               alpha_tr_lo=alpha_tr_lo)
 
-        Bell_dict = self.Bisp.Bell(Pdw, self.params, ell, neff)
+        Bell_dict = self.Bisp.Bell(Pdw, neff, self.params, ell)
         return Bell_dict
 
     def Gaussian_covariance(self, l1, l2, k, dk, Pell, volume, Nmodes=None):
