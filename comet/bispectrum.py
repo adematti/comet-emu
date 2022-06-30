@@ -321,12 +321,14 @@ class Bispectrum:
         return DeltaB_K
 
     def Bell(self, PL_dw, neff, params, ell=[0]):
+        kernel = {}
+        kernel_stoch = {}
         if self.real_space:
             b1sq = params['b1']**2
-            kernel = 2*b1sq * (params['b1']*self.kernels['F2']
-                               + 0.5*params['b2'] +
-                               params['g2']*self.kernels['K'])
-            kernel_stoch = b1sq/self.nbar
+            kernel[0] = 2*b1sq * (params['b1']*self.kernels['F2'] \
+                                  + 0.5*params['b2'] + \
+                                  params['g2']*self.kernels['K'])
+            kernel_stoch[0] = b1sq/self.nbar
         else:
             b1sq = params['b1']**2
             f2b1 = params['f']**2/params['b1']
@@ -340,10 +342,6 @@ class Bispectrum:
             params_mixed = [params['f'], f2b1, 2*f2b1, f3b1sq, 2*f3b1sq,
                             f3b1sq*params['f']/params['b1']]
 
-
-
-            kernel = {}
-            kernel_stoch = {}
             for l in np.arange(0, max(ell)+1, 2):
                 tuples_list_1 = [(l,0,0),(2+l,0,0),(l,2,0),(2+l,2,0)]
                 tuples_list_2 = [(l,0,2),(2+l,0,2),(l,2,2),(2+l,2,2)]

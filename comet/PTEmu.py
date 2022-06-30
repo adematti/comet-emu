@@ -816,7 +816,8 @@ class PTEmu:
                     if not self.use_Mpc:
                         self.params['sv'] *= self.params['h']
 
-            params_all = np.array([self.params[p] for p in self.params_list])
+            params_all = np.array([self.params[p] for p in self.params_list],
+                                  dtype=object)
 
             for m in ell:
                 if self.Pk_ratios[m] is None or emu_params_updated:
@@ -2281,7 +2282,6 @@ class PTEmu:
                     diff = Pell_list - self.data[oi].signal_kmax
                     chi2 += diff @ self.data[oi].inverse_cov_kmax @ diff.T
                 elif self.data[oi].stat == 'bispectrum':
-                    # currently only for real-space without AP
                     Pdw = self.Pdw(self.Bisp.tri_unique,
                                    params, de_model=de_model,
                                    ell_for_recon=ell_for_recon)
@@ -2291,7 +2291,7 @@ class PTEmu:
                         neff = self.Bisp.tri_unique * \
                                self.Pdw_spline.derivative(n=1)(
                                    self.Bisp.tri_unique) / Pdw
-                    Bell = self.Bisp.Bell(Pdw, self.params, ell[oi], neff)
+                    Bell = self.Bisp.Bell(Pdw, neff, self.params, ell[oi])
                     Bell_list = np.hstack([Bell[m] for m in Bell.keys()])
 
                     diff = Bell_list - self.data[oi].signal_kmax
