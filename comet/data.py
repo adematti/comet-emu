@@ -210,10 +210,12 @@ class MeasuredData:
         self.bins_kmax = []
         self.signal_kmax = np.array([])
         for ell in range(self.n_ell):
-            self.bins_kmax.append(self.bins[ids_kmax[ell]])
-            self.signal_kmax = np.concatenate(
-                (self.signal_kmax, self.signal[ids_kmax[ell], ell])) \
-                if self.signal_kmax.size else self.signal[ids_kmax[ell], ell]
+            if len(ids_kmax[ell]) > 0:
+                self.bins_kmax.append(self.bins[ids_kmax[ell]])
+                self.signal_kmax = np.concatenate(
+                    (self.signal_kmax, self.signal[ids_kmax[ell], ell])) \
+                    if self.signal_kmax.size else self.signal[ids_kmax[ell],
+                                                              ell]
 
         self.cov_kmax = np.zeros([sum(self.nbins), sum(self.nbins)])
         for ell1 in range(self.n_ell):
@@ -223,7 +225,8 @@ class MeasuredData:
                     sum(self.nbins[:ell2]):sum(self.nbins[:ell2+1])] = \
                     self.cov[tuple(
                         np.meshgrid(ell1*nbin_total + ids_kmax[ell1],
-                                    ell2*nbin_total + ids_kmax[ell2]))]
+                                    ell2*nbin_total + ids_kmax[ell2],
+                                    indexing='ij'))]
         self.inverse_cov_kmax = np.linalg.inv(self.cov_kmax)
         self.inverse_cov_kmax *= self.AHfactor(sum(self.nbins))
 
