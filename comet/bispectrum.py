@@ -3,8 +3,22 @@
 import numpy as np
 
 class Bispectrum:
+    r"""Main class for the emulator of the bispectrum multipoles.
+    """
 
     def __init__(self, real_space, use_Mpc):
+        r"""Class constructor
+
+        Parameters
+        ----------
+        real_space: bool
+            Flag that determines if the model bispectrum is computed in real-
+            (**False**) or redshift-space (**True**).
+        use_Mpc: bool
+            Flag that determines if the input and output quantities are
+            specified in :math:`\mathrm{Mpc}` (**True**) or
+            :math:`h^{-1}\mathrm{Mpc}` (**False**) units. Defaults to **True**.
+        """
         self.real_space = real_space
         self.use_Mpc = use_Mpc
         self.nbar = 1.0 # in units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
@@ -36,12 +50,52 @@ class Bispectrum:
         self.I = {}
 
     def define_units(self, use_Mpc):
+        r"""Define units for the bispectrum.
+
+        Sets the internal class attribute **use_Mpc**.
+
+        Parameters
+        ----------
+        use_Mpc: bool
+            Flag that determines if the input and output quantities are
+            specified in :math:`\mathrm{Mpc}` (**True**) or
+            :math:`h^{-1}\,\mathrm{Mpc}` (**False**) units.
+        """
         self.use_Mpc = use_Mpc
 
     def define_nbar(self, nbar):
+        r"""Define the number density of the sample.
+
+        Sets the internal class attribute **nbar** to the value provided as
+        input. The latter is intended to be in the set of units currently used
+        by the emulator, that can be specified at class instanciation, or using
+        the method **define_units**.
+
+        Parameters
+        ----------
+        nbar: float
+            Number density of the sample, in units of
+            :math:`\mathrm{Mpc}^{-3}` or :math:`h^3\,\mathrm{Mpc}^{-3}`,
+            depending on the value of the class attribute **use_Mpc**.
+        """
         self.nbar = np.copy(nbar)
 
     def set_tri(self, tri, kfun):
+        r"""Define triangular configurations and compute kernels.
+
+        Reads the list of triangular configurations and the request fundamental
+        frequency, and sotres them into class attributes. Additionaly computes
+        the necessary kernels (and the angular integrals if working in
+        redshift-space).
+
+        Parameters
+        ----------
+        tri:
+            List of triangular configurations.
+        kfun: float
+            Fundamental frequency.
+
+        """
         self.tri = tri
         self.kfun = kfun
         self.generate_index_arrays()
@@ -50,18 +104,105 @@ class Bispectrum:
             self.compute_mu123_integrals()
 
     def F2(self, k1, k2, k3):
+        r"""Compute the second-order density kernel.
+
+        Computes the second order density kernel :math:`F_2` on the triangular
+        configuration defined by the input wavemodes :math:`(k_1,k_2,k_3)`,
+        using the angle between :math:`k_1` and :math:`k_2`.
+
+        Parameters
+        ----------
+        k1: float
+            Wavemode :math:`k_1`.
+        k2: float
+            Wavemode :math:`k_2`.
+        k3: float
+            Wavemode :math:`k_3`.
+
+        Returns
+        -------
+        F2: float
+            Second-order density kernel :math:`F_2` between the wavemodes
+            :math:`k_1` and :math:`k_2`.
+        """
         mu = (k3**2 - k1**2 - k2**2)/(2*k1*k2)
         return 5.0/7.0 + mu/2 * (k1/k2 + k2/k1) + 2.0/7.0 * mu**2
 
     def G2(self, k1, k2, k3):
+        r"""Compute the second-order velocity divergence kernel.
+
+        Computes the second order velocity divergence kernel :math:`G_2` on
+        the triangular configuration defined by the input wavemodes
+        :math:`(k_1,k_2,k_3)`, using the angle between :math:`k_1` and
+        :math:`k_2`.
+
+        Parameters
+        ----------
+        k1: float
+            Wavemode :math:`k_1`.
+        k2: float
+            Wavemode :math:`k_2`.
+        k3: float
+            Wavemode :math:`k_3`.
+
+        Returns
+        -------
+        G2: float
+            Second-order velocity divergence kernel :math:`G_2` between the
+            wavemodes :math:`k_1` and :math:`k_2`.
+        """
         mu = (k3**2 - k1**2 - k2**2)/(2*k1*k2)
         return 3.0/7.0 + mu/2 * (k1/k2 + k2/k1) + 4.0/7.0 * mu**2
 
     def K(self, k1, k2, k3):
+        r"""Compute the Fourier-space kernel of the second-order Galileon.
+
+        Computes the Fourier-space kernel of the second-order Galileon
+        :math:`K` on the triangular configuration defined by the input
+        wavemodes :math:`(k_1,k_2,k_3)`, using the angle between :math:`k_1`
+        and :math:`k_2`.
+
+        Parameters
+        ----------
+        k1: float
+            Wavemode :math:`k_1`.
+        k2: float
+            Wavemode :math:`k_2`.
+        k3: float
+            Wavemode :math:`k_3`.
+
+        Returns
+        -------
+        K: float
+            Fourier-space kernel of the second-order Galileon :math:`K`
+            between the wavemodes :math:`k_1` and :math:`k_2`.
+        """
         mu = (k3**2 - k1**2 - k2**2)/(2*k1*k2)
         return mu**2 - 1.0
 
     def kernels_real_space(self, k1, k2, k3):
+        r"""Compute the kernels for the real-space bispectrum.
+
+        Computes the kernels required for the real-space bispectrum, and
+        returns them in a dictionary format. This includes only the
+        second-order density kernel :math:`F_2` and the Fourier-space kernel
+        of the second-order galileon :math:`K`
+
+        Parameters
+        ----------
+        k1: float
+            Wavemode :math:`k_1`.
+        k2: float
+            Wavemode :math:`k_2`.
+        k3: float
+            Wavemode :math:`k_3`.
+
+        Returns
+        -------
+        kernels: dict
+            Dictionary containing the kernels required to model the real-space
+            bispectrum.
+        """
         kernels = {}
         mu = (k3**2 - k1**2 - k2**2)/(2*k1*k2)
         kernels['F2'] = 5.0/7.0 + mu/2 * (k1/k2 + k2/k1) + 2.0/7.0 * mu**2
@@ -69,6 +210,31 @@ class Bispectrum:
         return kernels
 
     def kernels_redshift_space(self, k1, k2, k3):
+        r"""Compute the kernels for the redshift-space bispectrum.
+
+        Computes the kernels required for the redshift-space bispectrum, and
+        returns them in a dictionary format. This includes the second-order
+        density and velocity divergence kernels, :math:`F_2` and :math:`G_2`,
+        the Fourier-space kernel of the second-order galileon :math:`K`, the
+        ratios of :math:`k_3` to the other two wavemodes, and the logarithmic
+        derivatives of the previous kernels with respect to :math:`k_1`,
+        :math:`k_2` and :math:`k_3`.
+
+        Parameters
+        ----------
+        k1: float
+            Wavemode :math:`k_1`.
+        k2: float
+            Wavemode :math:`k_2`.
+        k3: float
+            Wavemode :math:`k_3`.
+
+        Returns
+        -------
+        kernels: dict
+            Dictionary containing the kernels required to model the
+            redshift-space bispectrum.
+        """
         kernels = {}
         mu = (k3**2 - k1**2 - k2**2)/(2*k1*k2)
 
@@ -106,6 +272,47 @@ class Bispectrum:
         return kernels
 
     def mu123_integrals(self, n1, n2, n3, k1, k2, k3):
+        r"""Angular integration.
+
+        Computes the integral
+
+        .. math::
+            \frac{1}/{4\pi} \int {\rm{d}}\mu \int {\rm{d}}\phi \
+            \mu_1^{n_1}\mu_2^{n_2}\mu_3^{n_3},
+
+        where
+
+        .. math::
+            \begin{flalign*}
+                & \mu_1 = \mu, \\
+                & \mu_2 = \mu\nu - \sqrt(1-\mu^2)\sqrt(1-\nu^2)\cos(\phi), \\
+                & \mu_3 = -\frac{k_1}{k_3}\mu_1 - \frac{k_2}{k_3}\mu_2,
+            \end{flalign*}
+
+        and :math:`\mu_n` is the cosinus of the angle bewteen the wavemode
+        :math:`k_n` and the line of sight, and :math:`\nu` is the cosinus of
+        the angle between :math:`k_1` and :math:`k_2`.
+
+        Parameters
+        ----------
+        n1: int
+            Power of wavemode :math:`k_1`.
+        n2: int
+            Power of wavemode :math:`k_2`.
+        n3: int
+            Power of wavemode :math:`k_3`.
+        k1: float
+            Wavemode :math:`k_1`.
+        k2: float
+            Wavemode :math:`k_2`.
+        k3: float
+            Wavemode :math:`k_3`.
+
+        Returns
+        -------
+        I: float
+            Angular integration of the different powers of the input angles.
+        """
         if n2 == 0 and n3 == 0:
             I = 1.0/(1.0 + n1)
         elif n2 == 1 and n3 == 0:
@@ -214,6 +421,12 @@ class Bispectrum:
         return I
 
     def compute_kernels(self):
+        r"""Compute kernels for all triangle configurations.
+
+        Computes the kernels for the various triangle configurations, by
+        calling the corresponding class method (depending if the model is
+        in real- or redshift-space), and stores them into a class attribute.
+        """
         for kk in self.kernel_names:
             self.kernels[kk] = np.zeros([self.tri.shape[0],3])
 
@@ -233,6 +446,12 @@ class Bispectrum:
                 self.kernels['db2_dlnk3'] = 0.0
 
     def compute_mu123_integrals(self):
+        """Compute angular integrals for all triangle configurations.
+
+        Computes the angular integrals for the various triangle configurations,
+        by calling the class method **mu123_integrals**, and stores them into
+        a class attribute.
+        """
         for n123 in self.I_tuples_ell0 + self.I_tuples_ell2 \
                 + self.I_tuples_ell4:
             self.I[n123] = np.zeros([self.tri.shape[0],3])
@@ -263,6 +482,18 @@ class Bispectrum:
                                                     axis=1)
 
     def generate_index_arrays(self, round_decimals=2):
+        r"""Generate arrays of indeces of triangular configurations.
+
+        Determines the unique wavemode bins in the triangle configurations,
+        approximating them to the ratio with respect to a given fundamental
+        frequency.
+
+        Parameters
+        ----------
+        round_decimals: int, optional
+            Number of decimal digits used in the approximation of the ratios
+            with respect to the fundamental frequency. Deafults to 2.
+        """
         self.tri_rounded = np.around(self.tri/self.kfun,
                                            decimals=round_decimals)
         self.tri_unique = np.unique(self.tri_rounded)
