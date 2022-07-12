@@ -250,13 +250,13 @@ class Tables:
             self.flip = {}
             self.offset = {}
             for ell in [0, 2, 4]:
-                temp = np.zeros([self.n_samples, 7*self.nk + 10*self.nkloop])
+                temp = np.zeros([self.n_samples, 9*self.nk + 10*self.nkloop])
                 cnt = 0
                 # only include the cell_ell counterterm
                 # (the others are negligible without AP)
                 for diagram in ['P0L_b1b1', 'PNL_b1', 'PNL_id',
-                                'Pctr_c{}'.format(ell), 'Pctr_b1b1cnlo',
-                                'Pctr_b1cnlo', 'Pctr_cnlo']:
+                                'Pctr_c0', 'Pctr_c2', 'Pctr_c4',
+                                'Pctr_b1b1cnlo', 'Pctr_b1cnlo', 'Pctr_cnlo']:
                     diagram_full = '{}_ell{}'.format(diagram, ell)
                     temp[:, cnt*self.nk:(cnt+1)*self.nk] = \
                         self.model[diagram_full]/self.model['PL']
@@ -267,7 +267,7 @@ class Tables:
                                 'P1L_g2g2', 'P1L_b2', 'P1L_g2', 'P1L_g21']:
                     diagram_full = '{}_ell{}'.format(diagram, ell)
                     temp[:,
-                         7*self.nk + cnt*self.nkloop:7*self.nk +
+                         9*self.nk + cnt*self.nkloop:9*self.nk +
                          (cnt+1)*self.nkloop] = (
                             self.model[diagram_full][:,
                                                      (self.nk-self.nkloop):] /

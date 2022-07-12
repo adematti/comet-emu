@@ -91,7 +91,8 @@ class PTEmu:
             'w0wa': ['h', 'As', 'Ok', 'w0', 'wa', 'z']}
 
         self.n_diagrams = 19
-        self.diagrams_emulated = ['P0L_b1b1', 'PNL_b1', 'PNL_id', 'Pctr_clo',
+        self.diagrams_emulated = ['P0L_b1b1', 'PNL_b1', 'PNL_id',
+                                  'Pctr_c0', 'Pctr_c2', 'Pctr_c4',
                                   'Pctr_b1b1cnlo', 'Pctr_b1cnlo', 'Pctr_cnlo',
                                   'P1L_b1b1', 'P1L_b1b2', 'P1L_b1g2',
                                   'P1L_b1g21', 'P1L_b2b2', 'P1L_b2g2',
@@ -101,8 +102,8 @@ class PTEmu:
                              'Pctr_b1cnlo', 'Pctr_cnlo', 'P1L_b1b1',
                              'P1L_b1b2', 'P1L_b1g2', 'P1L_b1g21', 'P1L_b2b2',
                              'P1L_b2g2', 'P1L_g2g2', 'P1L_b2', 'P1L_g2',
-                             'P1L_g21', 'Pnoise_N0', 'Pnoise_N20',
-                             'Pnoise_N22']
+                             'P1L_g21', 'Pnoise_NP0', 'Pnoise_NP20',
+                             'Pnoise_NP22']
 
         self.use_Mpc = use_Mpc
         self.nbar = 1.0  # in units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
@@ -522,20 +523,12 @@ class PTEmu:
             self.params['alpha_lo'] = params['alpha_lo']
             self.params['alpha_tr'] = params['alpha_tr']
 
-    def get_bias_coeff(self, ell):
-        r"""Get bias coefficients for the emulated terms of a given multipole.
+    def get_bias_coeff(self):
+        r"""Get bias coefficients for the emulated terms.
 
         Each term of the :math:`P_{\ell}` expansion is multiplied by a
         combination of bias parameters. This method returns such
         combinations in an array format.
-
-        Parameters
-        ----------
-        ell: int
-            Specific multipole order :math:`\ell`.
-            Can be chosen from the list [0,2,4], whose entries correspond to
-            monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`) and
-            hexadecapole (:math:`\ell=4`).
 
         Returns
         -------
@@ -553,7 +546,8 @@ class PTEmu:
                         \rightarrow b_1 \\
                         & P_{\theta\theta}^\mathrm{tree+1\mbox{-}loop} \
                         \rightarrow 1 \\
-                        & P_{\mathrm{ctr},k^2} \rightarrow c_\ell \\
+                        & P_{\mathrm{ctr},k^2} \rightarrow \
+                        [c_0,\: c_2,\: c_4] \\
                         & P_{\mathrm{ctr},k^4} \rightarrow \
                         [b_1^2c_\mathrm{nlo},\: b_1c_\mathrm{nlo},\: \
                         c_\mathrm{nlo}] \\
@@ -570,13 +564,17 @@ class PTEmu:
         b2 = self.params['b2']
         g2 = self.params['g2']
         g21 = self.params['g21']
-        cell = self.params['c{}'.format(ell)] if self.use_Mpc \
-            else self.params['c{}'.format(ell)]/self.params['h']**2
+        c0 = self.params['c0'] if self.use_Mpc \
+            else self.params['c0']/self.params['h']**2
+        c2 = self.params['c2'] if self.use_Mpc \
+            else self.params['c2']/self.params['h']**2
+        c4 = self.params['c4'] if self.use_Mpc \
+            else self.params['c4']/self.params['h']**2
         cnlo = self.params['cnlo'] if self.use_Mpc \
             else self.params['cnlo']/self.params['h']**4
         b1sq = b1**2
 
-        return np.array([b1sq, b1, 1., cell, b1sq*cnlo, b1*cnlo,
+        return np.array([b1sq, b1, 1., c0, c2, c4, b1sq*cnlo, b1*cnlo,
                          cnlo, b1sq, b1*b2, b1*g2, b1*g21, b2**2,
                          b2*g2, g2**2, b2, g2, g21])
 
@@ -1271,20 +1269,17 @@ class PTEmu:
             pass
         self.eval_emulator(params, ell_eval_emu, de_model=de_model)
 
-        bij = self.get_bias_coeff(0)
+        bij = self.get_bias_coeff()
 
         Pell = np.zeros([self.nk, len(ell)])
         for i, m in enumerate(ell):
             if m != 6:
-                bij[3] = self.params['c{}'.format(m)] if self.use_Mpc \
-                     else self.params['c{}'.format(m)]/self.params['h']**2
-
-                Pk_bij = np.zeros([self.nk, self.n_diagrams-2])
-                Pk_bij[:, :7] = np.multiply(
-                    self.Pk_ratios[m][:7*self.nk].reshape((7, self.nk)),
+                Pk_bij = np.zeros([self.nk, self.n_diagrams])
+                Pk_bij[:, :9] = np.multiply(
+                    self.Pk_ratios[m][:9*self.nk].reshape((9, self.nk)),
                     self.Pk_lin).T
-                Pk_bij[(self.nk-self.nkloop):, 7:17] = np.multiply(
-                    self.Pk_ratios[m][7*self.nk:].reshape((10, self.nkloop)),
+                Pk_bij[(self.nk-self.nkloop):, 9:19] = np.multiply(
+                    self.Pk_ratios[m][9*self.nk:].reshape((10, self.nkloop)),
                     self.Pk_lin[(self.nk-self.nkloop):]).T
 
                 Pell[:, i] = np.dot(bij, Pk_bij.T)
@@ -1665,7 +1660,8 @@ class PTEmu:
         X: str
             Identifier of the contribution to the galaxy power spectrum. Can
             be chosen from the list [`"P0L_b1b1"`, `"PNL_b1"`, `"PNL_id"`,
-            `"Pctr_clo"`, `"Pctr_b1b1cnlo"`, `"Pctr_b1cnlo"`, `"Pctr_cnlo"`,
+            `"Pctr_c0"`, `"Pctr_c2"`, `"Pctr_c4"`,
+            `"Pctr_b1b1cnlo"`, `"Pctr_b1cnlo"`, `"Pctr_cnlo"`,
             `"P1L_b1b1"`, `"P1L_b1b2"`, `"P1L_b1g2"`, `"P1L_b1g21"`,
             `"P1L_b2b2"`, `"P1L_b2g2"`, `"P1L_g2g2"`, `"P1L_b2"`, `"P1L_g2"`,
             `"P1L_g21"`].
@@ -1684,11 +1680,11 @@ class PTEmu:
         ids = None
         for n, diagram in enumerate(self.diagrams_emulated):
             if diagram == X:
-                if n < 7:
+                if n < 9:
                     ids = [n*self.nk, (n+1)*self.nk]
                 else:
-                    ids = [7*self.nk + (n-7)*self.nkloop,
-                           7*self.nk + (n-6)*self.nkloop]
+                    ids = [9*self.nk + (n-9)*self.nkloop,
+                           9*self.nk + (n-8)*self.nkloop]
 
         if ids is not None:
             ell_for_recon = [0, 2, 4] if not self.real_space else [0]
@@ -1816,10 +1812,11 @@ class PTEmu:
         X: str
             Identifier of the contribution to the galaxy power spectrum. Can
             be chosen from the list [`"P0L_b1b1"`, `"PNL_b1"`, `"PNL_id"`,
-            `"Pctr_clo"`, `"Pctr_b1b1cnlo"`, `"Pctr_b1cnlo"`, `"Pctr_cnlo"`,
+            `"Pctr_c0"`, `"Pctr_c2"`, `"Pctr_c4"`,
+            `"Pctr_b1b1cnlo"`, `"Pctr_b1cnlo"`, `"Pctr_cnlo"`,
             `"P1L_b1b1"`, `"P1L_b1b2"`, `"P1L_b1g2"`, `"P1L_b1g21"`,
             `"P1L_b2b2"`, `"P1L_b2g2"`, `"P1L_g2g2"`, `"P1L_b2"`, `"P1L_g2"`,
-            `"P1L_g21"`, `"Pnoise_N0"`, `"Pnoise_N20"`, `"Pnoise_N22"`].
+            `"P1L_g21"`, `"Pnoise_NP0"`, `"Pnoise_NP20"`, `"Pnoise_NP22"`].
         de_model: str, optional
             String that determines the dark energy equation of state. Can be
             chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
@@ -1906,24 +1903,21 @@ class PTEmu:
             k_list = [k]*len(ell)
 
         PX_ell = np.zeros([self.nk, len(ell_for_recon)])
-        if X in ['Pctr_c0', 'Pctr_c2', 'Pctr_c4']:
-            ell_clo = int(X[-1])
-            X_emu = 'Pctr_clo'
-        else:
-            X_emu = X
+        X_emu = X
         if X_emu in self.diagrams_emulated:
             for n, diagram in enumerate(self.diagrams_emulated):
                 if diagram == X_emu:
-                    if n < 7:
+                    if n < 9:
                         ids = [n*self.nk, (n+1)*self.nk]
                     else:
-                        ids = [7*self.nk + (n-7)*self.nkloop,
-                               7*self.nk + (n-6)*self.nkloop]
+                        ids = [9*self.nk + (n-9)*self.nkloop,
+                               9*self.nk + (n-8)*self.nkloop]
 
             self.eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
-            if X_emu == 'Pctr_clo':
-                PX_ell[self.nk - (ids[1]-ids[0]):, int(ell_clo/2)] = \
-                    self.Pk_ratios[ell_clo][ids[0]:ids[1]]
+            if X_emu in ['Pctr_c0', 'Pctr_c2', 'Pctr_c4']:
+                for i, m in enumerate(ell_eval_emu):
+                    PX_ell[self.nk - (ids[1]-ids[0]):, i] = \
+                        self.Pk_ratios[m][ids[0]:ids[1]]
             else:
                 for i, m in enumerate(ell_for_recon):
                     if m != 6:
@@ -1934,11 +1928,11 @@ class PTEmu:
             PX_ell[:, :len(ell_eval_emu)] = (PX_ell[:, :len(ell_eval_emu)].T *
                                              self.Pk_lin).T
         else:
-            if X_emu == 'Pnoise_N0':
+            if X_emu == 'Pnoise_NP0':
                 PX_ell[:, 0] = np.ones_like(self.k_table)
-            elif X_emu == 'Pnoise_N20':
+            elif X_emu == 'Pnoise_NP20':
                 PX_ell[:, 0] = self.k_table**2
-            elif X_emu == 'Pnoise_N22' and len(ell_for_recon) > 1:
+            elif X_emu == 'Pnoise_NP22' and len(ell_for_recon) > 1:
                 PX_ell[:, 1] = self.k_table**2
 
         for i, m in enumerate(ell_for_recon):
@@ -2299,52 +2293,55 @@ class PTEmu:
                     Ldiff = self.data[oi].inverse_cov_kmax_cholesky @ diff
                     chi2 += np.sum(Ldiff**2)
         else:
-            # check if cosmological + RSD parameters have changed, if so,
-            # re-evaluate chi2 decomposition
-            if de_model is None and self.use_Mpc:
-                check_params = self.params_list + self.RSD_params_list
-            elif de_model is None and not self.use_Mpc:
-                check_params = self.params_list + ['h'] + self.RSD_params_list
-            else:
-                check_params = self.params_shape_list \
-                               + self.de_model_params_list[de_model] \
-                               + self.RSD_params_list
-                if 'Ok' not in params:
-                    check_params.remove('Ok')
-
-            if (any(params[p] != self.params[p] for p in check_params) or
-                    self.chi2_decomposition is None):
-                PX_ell_list = np.zeros([sum(self.data[obs_id].nbins),
-                                        len(self.diagrams_all)])
-                for i, X in enumerate(self.diagrams_all):
-                    PX_ell = self.PX_ell(self.data[obs_id].bins_kmax, params,
-                                         ell, X, de_model=de_model,
-                                         alpha_tr_lo=alpha_tr_lo,
-                                         W_damping=W_damping,
-                                         ell_for_recon=ell_for_recon)
-                    PX_ell_list[:, i] = np.hstack([PX_ell[m] for m
-                                                   in PX_ell.keys()])
-
-                self.chi2_decomposition = {}
-                self.chi2_decomposition['DD'] = self.data[obs_id].SN_kmax
-                self.chi2_decomposition['XD'] = PX_ell_list.T \
-                    @ self.data[obs_id].inverse_cov_kmax \
-                    @ self.data[obs_id].signal_kmax
-                self.chi2_decomposition['XX'] = PX_ell_list.T \
-                    @ self.data[obs_id].inverse_cov_kmax \
-                    @ PX_ell_list
-
-            for p in self.bias_params_list:
-                if p in params.keys():
-                    self.params[p] = params[p]
+            chi2 = 0.0
+            for oi in obs_id:
+                # check if cosmological + RSD parameters have changed, if so,
+                # re-evaluate chi2 decomposition
+                if de_model is None and self.use_Mpc:
+                    check_params = self.params_list + self.RSD_params_list
+                elif de_model is None and not self.use_Mpc:
+                    check_params = self.params_list + ['h'] + \
+                                   self.RSD_params_list
                 else:
-                    self.params[p] = 0.
-            self.splines_up_to_date = False
-            self.dw_spline_up_to_date = False
+                    check_params = self.params_shape_list \
+                                   + self.de_model_params_list[de_model] \
+                                   + self.RSD_params_list
+                    if 'Ok' not in params:
+                        check_params.remove('Ok')
 
-            bX = self.get_bias_coeff_for_chi2_decomposition()
-            chi2 = (bX @ self.chi2_decomposition['XX'] @ bX -
-                    2*bX @ self.chi2_decomposition['XD'] +
-                    self.chi2_decomposition['DD'])
+                if (any(params[p] != self.params[p] for p in check_params) or
+                        self.chi2_decomposition is None):
+                    PX_ell_list = np.zeros([sum(self.data[oi].nbins),
+                                            len(self.diagrams_all)])
+                    for i, X in enumerate(self.diagrams_all):
+                        PX_ell = self.PX_ell(self.data[oi].bins_kmax,
+                                             params, ell[oi], X,
+                                             de_model=de_model,
+                                             alpha_tr_lo=alpha_tr_lo,
+                                             W_damping=W_damping,
+                                             ell_for_recon=ell_for_recon)
+                        PX_ell_list[:, i] = np.hstack([PX_ell[m] for m
+                                                       in PX_ell.keys()])
+
+                    self.chi2_decomposition = {}
+                    self.chi2_decomposition['DD'] = self.data[oi].SN_kmax
+                    self.chi2_decomposition['XD'] = PX_ell_list.T \
+                        @ self.data[oi].inverse_cov_kmax \
+                        @ self.data[oi].signal_kmax
+                    self.chi2_decomposition['XX'] = PX_ell_list.T \
+                        @ self.data[oi].inverse_cov_kmax @ PX_ell_list
+
+                for p in self.bias_params_list:
+                    if p in params.keys():
+                        self.params[p] = params[p]
+                    else:
+                        self.params[p] = 0.
+                self.splines_up_to_date = False
+                self.dw_spline_up_to_date = False
+
+                bX = self.get_bias_coeff_for_chi2_decomposition()
+                chi2 += (bX @ self.chi2_decomposition['XX'] @ bX -
+                         2*bX @ self.chi2_decomposition['XD'] +
+                         self.chi2_decomposition['DD'])
 
         return chi2
