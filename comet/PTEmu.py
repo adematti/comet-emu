@@ -70,14 +70,15 @@ class PTEmu:
 
         if self.bias_basis == 'EggScoSmi':
             self.bias_params_list = ['b1', 'b2', 'g2', 'g21', 'c0', 'c2', 'c4',
-                                     'cnlo', 'N0', 'N20', 'N22', 'NB0', 'MB0']
+                                     'cnlo', 'NP0', 'NP20', 'NP22', 'NB0',
+                                     'MB0']
         elif self.bias_basis == 'AssBauGre':
             self.bias_params_list = ['b1', 'b2', 'bG2', 'bGam3', 'c0', 'c2',
-                                     'c4', 'cnlo', 'N0', 'N20', 'N22',
+                                     'c4', 'cnlo', 'NP0', 'NP20', 'NP22',
                                      'NB0', 'MB0']
         elif self.bias_basis == 'AmiGleKok':
             self.bias_params_list = ['b1t', 'b2t', 'b3t', 'b4t', 'c0', 'c2',
-                                     'c4', 'cnlo', 'N0', 'N20', 'N22',
+                                     'c4', 'cnlo', 'NP0', 'NP20', 'NP22',
                                      'NB0', 'MB0']
         else:
             print('Warning. Bias basis not recognised, defaulting to '
@@ -695,12 +696,12 @@ class PTEmu:
             else self.params['c4']/self.params['h']**2
         cnlo = self.params['cnlo'] if self.use_Mpc \
             else self.params['cnlo']/self.params['h']**4
-        N0 = self.params['N0'] if self.use_Mpc \
-            else self.params['N0']/self.params['h']**3
-        N20 = self.params['N20'] if self.use_Mpc \
-            else self.params['N20']/self.params['h']**5
-        N22 = self.params['N22'] if self.use_Mpc \
-            else self.params['N22']/self.params['h']**5
+        N0 = self.params['NP0'] if self.use_Mpc \
+            else self.params['NP0']/self.params['h']**3
+        N20 = self.params['NP20'] if self.use_Mpc \
+            else self.params['NP20']/self.params['h']**5
+        N22 = self.params['NP22'] if self.use_Mpc \
+            else self.params['NP22']/self.params['h']**5
         b1sq = b1**2
 
         return np.array([b1sq, b1, 1., c0, c2, c4, b1sq*cnlo, b1*cnlo, cnlo,
@@ -1290,15 +1291,15 @@ class PTEmu:
 
                 # add shot noise
                 if m == 0:
-                    N0 = self.params['N0'] if self.use_Mpc \
-                        else self.params['N0']/self.params['h']**3
-                    N20 = self.params['N20'] if self.use_Mpc \
-                        else self.params['N20']/self.params['h']**5
+                    N0 = self.params['NP0'] if self.use_Mpc \
+                        else self.params['NP0']/self.params['h']**3
+                    N20 = self.params['NP20'] if self.use_Mpc \
+                        else self.params['NP20']/self.params['h']**5
                     Pell[:, i] += (np.ones_like(self.k_table)*N0/self.nbar +
                                    self.k_table**2*N20/self.nbar)
                 elif m == 2:
-                    N22 = self.params['N22'] if self.use_Mpc \
-                        else self.params['N22']/self.params['h']**5
+                    N22 = self.params['NP22'] if self.use_Mpc \
+                        else self.params['NP22']/self.params['h']**5
                     Pell[:, i] += self.k_table**2*N22/self.nbar
             else:
                 bij_for_P6 = self.get_bias_coeff_for_P6()
