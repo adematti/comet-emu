@@ -452,9 +452,9 @@ class Cosmology:
                 Dp = dic['y'][1, :]
                 f = np.float(a_eval*Dp/D)
 
-                return [D, f]
+                return [D[0], f]
             else:
-                return D
+                return D[0]
 
         if self.de_model == 'lambda':
             if self.flat and not self.relspecies:

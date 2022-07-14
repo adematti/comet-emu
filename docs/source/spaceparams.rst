@@ -108,11 +108,11 @@ not explicitly included in the parameter dictionary.
 +--------------------------+---------------------------------------------------------------------------------------+---------+
 | :math:`c_{\mathrm{nlo}}` | Next-to-leading order counterterm parameter, in units of :math:`L^4`                  | ``cnlo``|
 +--------------------------+---------------------------------------------------------------------------------------+---------+
-| :math:`N_0`              | Constant shot noise, in units of :math:`L^3`                                          | ``N0``  |
+| :math:`N^P_0`            | Constant shot noise, in units of :math:`L^3`                                          | ``NP0`` |
 +--------------------------+---------------------------------------------------------------------------------------+---------+
-| :math:`N_{20}`           | Scale-dependent shot noise, in units of :math:`L^5`                                   | ``N20`` |
+| :math:`N^P_{20}`         | Scale-dependent shot noise, in units of :math:`L^5`                                   | ``NP20``|
 +--------------------------+---------------------------------------------------------------------------------------+---------+
-| :math:`N_{22}`           | Scale-dependent shot noise, prop. to :math:`{\cal L}_2(\mu)`, in units of :math:`L^5` | ``N22`` |
+| :math:`N^P_{22}`         | Scale-dependent shot noise, prop. to :math:`{\cal L}_2(\mu)`, in units of :math:`L^5` | ``NP22``|
 +--------------------------+---------------------------------------------------------------------------------------+---------+
 
 where :math:`L` either stands for :math:`\mathrm{Mpc}` or

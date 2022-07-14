@@ -38,11 +38,25 @@ class MeasuredData:
         """
         if 'bins' in kwargs:
             self.bins = kwargs.get('bins')
+            if 'stat' in kwargs and \
+                kwargs.get('stat') in ['powerspectrum', 'bispectrum']:
+                    self.stat = kwargs.get('stat')
+            elif 'stat' not in kwargs and self.bins.ndim == 1:
+                self.stat = 'powerspectrum'
+            elif 'stat' not in kwargs and self.bins.shape[1] == 3:
+                self.stat = 'bispectrum'
+            else:
+                print('Warning! Type of statistic not recognised.')
+                self.stat = 'unknown'
         if 'signal' in kwargs:
             self.signal = kwargs.get('signal')
+            if self.signal.ndim == 1:
+                self.signal = self.signal[:,None]
             self.n_ell = self.signal.shape[1]
         if 'cov' in kwargs:
             self.cov = kwargs.get('cov')
+            if self.cov.ndim == 1:
+                self.cov = np.diag(self.cov)
         if 'bins_mixing_matrix' in kwargs:
             self.bins_mixing_matrix = kwargs.get('bins_mixing_matrix')
         if 'W_mixing_matrix' in kwargs:
@@ -51,6 +65,19 @@ class MeasuredData:
             self.theory_cov = kwargs.get('theory_cov')
         else:
             self.theory_cov = True
+
+        if self.stat == 'bispectrum':
+            if 'kfun' in kwargs:
+                self.kfun = kwargs.get('kfun')
+            else:
+                try:
+                    self.kfun = self.bins[0,0]
+                    print('kfun not specified. Using kfun = {}'.format(
+                        self.kfun))
+                except NameError:
+                    self.kfun = 1.0
+                    print('Warning. Neither kfun nor bins specified,' +
+                          'setting kfun = 1.0')
 
         if not self.theory_cov:
             if 'n_realizations' in kwargs:
@@ -91,11 +118,25 @@ class MeasuredData:
         """
         if 'bins' in kwargs:
             self.bins = kwargs.get('bins')
+            if 'stat' in kwargs and \
+                kwargs.get('stat') in ['powerspectrum', 'bispectrum']:
+                    self.stat = kwargs.get('stat')
+            elif 'stat' not in kwargs and self.bins.ndim == 1:
+                self.stat = 'powerspectrum'
+            elif 'stat' not in kwargs and self.bins.shape[1] == 3:
+                self.stat = 'bispectrum'
+            else:
+                print('Warning! Type of statistic not recognised.')
+                self.stat = 'unknown'
         if 'signal' in kwargs:
             self.signal = kwargs.get('signal')
+            if self.signal.ndim == 1:
+                self.signal = self.signal[:,None]
             self.n_ell = self.signal.shape[1]
         if 'cov' in kwargs:
             self.cov = kwargs.get('cov')
+            if self.cov.ndim == 1:
+                self.cov = np.diag(self.cov)
         if 'bins_mixing_matrix' in kwargs:
             self.bins_mixing_matrix = kwargs.get('bins_mixing_matrix')
         if 'W_mixing_matrix' in kwargs:
@@ -104,6 +145,8 @@ class MeasuredData:
             self.theory_cov = kwargs.get('theory_cov')
         else:
             self.theory_cov = True
+        if 'kfun' in kwargs:
+            self.kfun = kwargs.get('kfun')
 
         if not self.theory_cov:
             if 'n_realizations' in kwargs:
@@ -153,21 +196,26 @@ class MeasuredData:
         nbin_total = self.bins.shape[0]
 
         self.nbins = [0 for i in range(self.n_ell)]
+        ids_kmax = []
         for ell in range(self.n_ell):
-            for i in range(nbin_total):
-                if self.bins[i] < self.kmax[ell]:
-                    self.nbins[ell] += 1
-                else:
-                    break
+            ids_kmax.append(np.where(
+                np.all(self.bins[:,None] < self.kmax[ell], axis=-1))[0])
+            self.nbins[ell] = len(ids_kmax[ell])
+            # for i in range(nbin_total):
+            #     if np.all(self.bins[i] < self.kmax[ell]):
+            #         self.nbins[ell] += 1
+            #     else:
+            #         break
 
         self.bins_kmax = []
         self.signal_kmax = np.array([])
         for ell in range(self.n_ell):
-            self.bins_kmax.append(self.bins[:self.nbins[ell]])
-            self.signal_kmax = np.concatenate(
-                (self.signal_kmax, self.signal[:self.nbins[ell], ell])) \
-                if self.signal_kmax.size else self.signal[:self.nbins[ell],
-                                                          ell]
+            if len(ids_kmax[ell]) > 0:
+                self.bins_kmax.append(self.bins[ids_kmax[ell]])
+                self.signal_kmax = np.concatenate(
+                    (self.signal_kmax, self.signal[ids_kmax[ell], ell])) \
+                    if self.signal_kmax.size else self.signal[ids_kmax[ell],
+                                                              ell]
 
         self.cov_kmax = np.zeros([sum(self.nbins), sum(self.nbins)])
         for ell1 in range(self.n_ell):
@@ -175,10 +223,16 @@ class MeasuredData:
                 self.cov_kmax[
                     sum(self.nbins[:ell1]):sum(self.nbins[:ell1+1]),
                     sum(self.nbins[:ell2]):sum(self.nbins[:ell2+1])] = \
-                    self.cov[ell1*nbin_total:ell1*nbin_total+self.nbins[ell1],
-                             ell2*nbin_total:ell2*nbin_total+self.nbins[ell2]]
+                    self.cov[tuple(
+                        np.meshgrid(ell1*nbin_total + ids_kmax[ell1],
+                                    ell2*nbin_total + ids_kmax[ell2],
+                                    indexing='ij'))]
         self.inverse_cov_kmax = np.linalg.inv(self.cov_kmax)
         self.inverse_cov_kmax *= self.AHfactor(sum(self.nbins))
+
+        if self.stat == 'bispectrum':
+            self.inverse_cov_kmax_cholesky = np.linalg.cholesky(
+                self.inverse_cov_kmax)
 
         self.SN_kmax = (self.signal_kmax @ self.inverse_cov_kmax @
                         self.signal_kmax)

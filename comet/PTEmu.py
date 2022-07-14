@@ -1,7 +1,7 @@
 """Main PTEmu module."""
 
 import numpy as np
-from scipy.interpolate import interp1d
+from scipy.interpolate import UnivariateSpline
 from scipy.integrate import quad_vec
 from scipy.integrate import quad,dblquad
 from scipy.special import eval_legendre
@@ -10,6 +10,7 @@ import pickle
 from comet.cosmology import Cosmology
 from comet.data import MeasuredData
 from comet.tables import Tables
+from comet.bispectrum import Bispectrum
 import os
 
 base_dir = os.path.join(os.path.dirname(__file__))
@@ -54,7 +55,7 @@ class PTEmu:
     projecting again over the Legendre polynomials.
     """
 
-    def __init__(self, model, use_Mpc=True):
+    def __init__(self, model, use_Mpc=True, bias_basis='EggScoSmi'):
         r"""Class constructor.
 
         Parameters
@@ -66,8 +67,24 @@ class PTEmu:
             specified in :math:`\mathrm{Mpc}` (**True**) or
             :math:`h^{-1}\mathrm{Mpc}` (**False**) units. Defaults to **True**.
         """
-        self.bias_params_list = ['b1', 'b2', 'g2', 'g21', 'c0', 'c2', 'c4',
-                                 'cnlo', 'N0', 'N20', 'N22']
+        self.bias_basis = bias_basis
+
+        if self.bias_basis == 'EggScoSmi':
+            self.bias_params_list = ['b1', 'b2', 'g2', 'g21', 'c0', 'c2', 'c4',
+                                     'cnlo', 'NP0', 'NP20', 'NP22', 'NB0',
+                                     'MB0']
+        elif self.bias_basis == 'AssBauGre':
+            self.bias_params_list = ['b1', 'b2', 'bG2', 'bGam3', 'c0', 'c2',
+                                     'c4', 'cnlo', 'NP0', 'NP20', 'NP22',
+                                     'NB0', 'MB0']
+        elif self.bias_basis == 'AmiGleKok':
+            self.bias_params_list = ['b1t', 'b2t', 'b3t', 'b4t', 'c0', 'c2',
+                                     'c4', 'cnlo', 'NP0', 'NP20', 'NP22',
+                                     'NB0', 'MB0']
+        else:
+            print('Warning. Bias basis not recognised, defaulting to '
+                  '"EggScoSmi".')
+
         self.RSD_params_list = []
         self.de_model_params_list = {
             'lambda': ['h', 'As', 'Ok', 'z'],
@@ -75,7 +92,8 @@ class PTEmu:
             'w0wa': ['h', 'As', 'Ok', 'w0', 'wa', 'z']}
 
         self.n_diagrams = 19
-        self.diagrams_emulated = ['P0L_b1b1', 'PNL_b1', 'PNL_id', 'Pctr_clo',
+        self.diagrams_emulated = ['P0L_b1b1', 'PNL_b1', 'PNL_id',
+                                  'Pctr_c0', 'Pctr_c2', 'Pctr_c4',
                                   'Pctr_b1b1cnlo', 'Pctr_b1cnlo', 'Pctr_cnlo',
                                   'P1L_b1b1', 'P1L_b1b2', 'P1L_b1g2',
                                   'P1L_b1g21', 'P1L_b2b2', 'P1L_b2g2',
@@ -85,8 +103,8 @@ class PTEmu:
                              'Pctr_b1cnlo', 'Pctr_cnlo', 'P1L_b1b1',
                              'P1L_b1b2', 'P1L_b1g2', 'P1L_b1g21', 'P1L_b2b2',
                              'P1L_b2g2', 'P1L_g2g2', 'P1L_b2', 'P1L_g2',
-                             'P1L_g21', 'Pnoise_N0', 'Pnoise_N20',
-                             'Pnoise_N22']
+                             'P1L_g21', 'Pnoise_NP0', 'Pnoise_NP20',
+                             'Pnoise_NP22']
 
         self.use_Mpc = use_Mpc
         self.nbar = 1.0  # in units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
@@ -118,6 +136,7 @@ class PTEmu:
         self.data = {}
 
         self.splines_up_to_date = False
+        self.dw_spline_up_to_date = False
         self.X_splines_up_to_date = {X: False for X in self.diagrams_all}
         self.emu_params_updated = False
 
@@ -212,6 +231,8 @@ class PTEmu:
             self.s12_for_P6 = hdul['MODEL_Pell6'].header['SIG12']
             self.P6 = hdul['MODEL_Pell6'].data['P_all']
 
+        self.Bisp = Bispectrum(self.real_space, self.use_Mpc)
+
     def load_emulator(self, fname_base, data_type=None):
         r"""Load the emulator from pickle file.
 
@@ -272,6 +293,9 @@ class PTEmu:
             for obs_id in self.data.keys():
                 self.data[obs_id].clear_data()
             self.splines_up_to_date = False
+            self.dw_spline_up_to_date = False
+            self.Bisp.define_units(self.use_Mpc)
+            self.Bisp.define_nbar(self.nbar)
             nbar_unit = '(1/Mpc)^3' if self.use_Mpc else '(h/Mpc)^3'
             print("Number density resetted to nbar = 1 {}. Data set (if "
                   "defined) cleared.".format(nbar_unit))
@@ -292,6 +316,7 @@ class PTEmu:
             depending on the value of the class attribute **use_Mpc**.
         """
         self.nbar = np.copy(nbar)
+        self.Bisp.define_nbar(self.nbar)
         self.splines_up_to_date = False
 
     def define_data_set(self, obs_id, **kwargs):
@@ -384,6 +409,13 @@ class PTEmu:
             the standard cosmological parameters, or be left undefined to use
             only :math:`\sigma_{12}`. Defaults to **None**.
         """
+        def check_ranges(params_list):
+            for p in params_list:
+                if not self.params_ranges[p][0] <= self.params[p] \
+                    <= self.params_ranges[p][1]:
+                        print('Warning! Leaving emulator range' + \
+                              'for parameter {}'.format(p))
+
         try:
             if de_model is None and self.use_Mpc:
                 emu_params_updated = any([params[p] != self.params[p] for p
@@ -392,6 +424,7 @@ class PTEmu:
                     self.params[p] = params[p]
                 self.params['As'] = 0.0
                 self.params['z'] = 0.0
+                check_ranges(self.params_list)
             elif de_model is None and not self.use_Mpc:
                 emu_params_updated = any([params[p] != self.params[p] for p
                                           in self.params_list+['h']])
@@ -399,6 +432,7 @@ class PTEmu:
                     self.params[p] = params[p]
                 self.params['As'] = 0.0
                 self.params['z'] = 0.0
+                check_ranges(self.params_list)
             else:
                 expected_params = self.params_shape_list \
                                   + self.de_model_params_list[de_model]
@@ -408,11 +442,16 @@ class PTEmu:
                                           in expected_params])
                 for p in expected_params:
                     self.params[p] = params[p]
+                check_ranges(self.params_shape_list)
         except KeyError:
             print('Not all required parameter values have been defined.')
 
         if emu_params_updated:
             self.Pk_ratios = {0: None, 2: None, 4: None}
+            self.splines_up_to_date = False
+            self.dw_spline_up_to_date = False
+            self.X_splines_up_to_date = {X: False for X
+                                         in self.diagrams_all}
             self.chi2_decomposition = None
 
         for p in self.bias_params_list + self.RSD_params_list:
@@ -420,6 +459,23 @@ class PTEmu:
                 self.params[p] = params[p]
             else:
                 self.params[p] = 0.0
+
+        if self.RSD_model == 'VDG_infty':
+            self.params['cnlo'] = 0.0
+
+        if self.bias_basis == 'AssBauGre':
+            self.params['g2'] = self.params['bG2']
+            self.params['g21'] = -4.0/7.0 * (self.params['bG2']
+                                             + self.params['bGam3'])
+        elif self.bias_basis == 'AmiGleKok':
+            self.params['b1'] = self.params['b1t']
+            self.params['b2'] = 2.0 * (-self.params['b1t'] + self.params['b2t']
+                                       + self.params['b4t'])
+            self.params['g2'] = -2.0/7.0 * (self.params['b1t']
+                                            - self.params['b2t'])
+            self.params['g21'] = -2.0/147.0 * (11*self.params['b1t']
+                                               - 18*self.params['b2t']
+                                               + 9*self.params['b3t'])
 
         return emu_params_updated
 
@@ -468,20 +524,12 @@ class PTEmu:
             self.params['alpha_lo'] = params['alpha_lo']
             self.params['alpha_tr'] = params['alpha_tr']
 
-    def get_bias_coeff(self, ell):
-        r"""Get bias coefficients for the emulated terms of a given multipole.
+    def get_bias_coeff(self):
+        r"""Get bias coefficients for the emulated terms.
 
         Each term of the :math:`P_{\ell}` expansion is multiplied by a
         combination of bias parameters. This method returns such
         combinations in an array format.
-
-        Parameters
-        ----------
-        ell: int
-            Specific multipole order :math:`\ell`.
-            Can be chosen from the list [0,2,4], whose entries correspond to
-            monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`) and
-            hexadecapole (:math:`\ell=4`).
 
         Returns
         -------
@@ -499,7 +547,8 @@ class PTEmu:
                         \rightarrow b_1 \\
                         & P_{\theta\theta}^\mathrm{tree+1\mbox{-}loop} \
                         \rightarrow 1 \\
-                        & P_{\mathrm{ctr},k^2} \rightarrow c_\ell \\
+                        & P_{\mathrm{ctr},k^2} \rightarrow \
+                        [c_0,\: c_2,\: c_4] \\
                         & P_{\mathrm{ctr},k^4} \rightarrow \
                         [b_1^2c_\mathrm{nlo},\: b_1c_\mathrm{nlo},\: \
                         c_\mathrm{nlo}] \\
@@ -516,13 +565,17 @@ class PTEmu:
         b2 = self.params['b2']
         g2 = self.params['g2']
         g21 = self.params['g21']
-        cell = self.params['c{}'.format(ell)] if self.use_Mpc \
-            else self.params['c{}'.format(ell)]/self.params['h']**2
+        c0 = self.params['c0'] if self.use_Mpc \
+            else self.params['c0']/self.params['h']**2
+        c2 = self.params['c2'] if self.use_Mpc \
+            else self.params['c2']/self.params['h']**2
+        c4 = self.params['c4'] if self.use_Mpc \
+            else self.params['c4']/self.params['h']**2
         cnlo = self.params['cnlo'] if self.use_Mpc \
             else self.params['cnlo']/self.params['h']**4
         b1sq = b1**2
 
-        return np.array([b1sq, b1, 1., cell, b1sq*cnlo, b1*cnlo,
+        return np.array([b1sq, b1, 1., c0, c2, c4, b1sq*cnlo, b1*cnlo,
                          cnlo, b1sq, b1*b2, b1*g2, b1*g21, b2**2,
                          b2*g2, g2**2, b2, g2, g21])
 
@@ -642,12 +695,12 @@ class PTEmu:
             else self.params['c4']/self.params['h']**2
         cnlo = self.params['cnlo'] if self.use_Mpc \
             else self.params['cnlo']/self.params['h']**4
-        N0 = self.params['N0'] if self.use_Mpc \
-            else self.params['N0']/self.params['h']**3
-        N20 = self.params['N20'] if self.use_Mpc \
-            else self.params['N20']/self.params['h']**5
-        N22 = self.params['N22'] if self.use_Mpc \
-            else self.params['N22']/self.params['h']**5
+        N0 = self.params['NP0'] if self.use_Mpc \
+            else self.params['NP0']/self.params['h']**3
+        N20 = self.params['NP20'] if self.use_Mpc \
+            else self.params['NP20']/self.params['h']**5
+        N22 = self.params['NP22'] if self.use_Mpc \
+            else self.params['NP22']/self.params['h']**5
         b1sq = b1**2
 
         return np.array([b1sq, b1, 1., c0, c2, c4, b1sq*cnlo, b1*cnlo, cnlo,
@@ -749,6 +802,12 @@ class PTEmu:
                 self.params['s12'] = sigma12[0]*amplitude_scaling
                 self.params['f'] = f
 
+                for p in list(set(['s12','f']) & set(self.params_list)):
+                    if not self.params_ranges[p][0] <= self.params[p] \
+                        <= self.params_ranges[p][1]:
+                            print('Warning! Leaving emulator range' + \
+                                  'for parameter {}'.format(p))
+
                 if self.RSD_model == 'VDG_infty':
                     self.params['sv'] = self.training['SHAPE'].transform_inv(
                         self.emu['sv'].predict(params_shape[None, :])[0][0],
@@ -757,7 +816,8 @@ class PTEmu:
                     if not self.use_Mpc:
                         self.params['sv'] *= self.params['h']
 
-            params_all = np.array([self.params[p] for p in self.params_list])
+            params_all = np.array([self.params[p] for p in self.params_list],
+                                  dtype=object)
 
             for m in ell:
                 if self.Pk_ratios[m] is None or emu_params_updated:
@@ -830,7 +890,8 @@ class PTEmu:
         """
         id_min = 0 if not ell == 6 else self.nk-self.nkloop
         if self.use_Mpc:
-            self.Pell_spline[ell] = interp1d(self.k_table, Pell, kind='cubic')
+            self.Pell_spline[ell] = UnivariateSpline(self.k_table, Pell,
+                                                     k=3, s=0)
             self.Pell_min[ell] = Pell[id_min]
             self.Pell_max[ell] = Pell[-1]
             self.k_table_min[ell] = self.k_table[id_min]
@@ -843,8 +904,8 @@ class PTEmu:
             self.neff_max[ell] = dlP_max/dlk_max
         else:
             Pell *= self.params['h']**3
-            self.Pell_spline[ell] = interp1d(self.k_table/self.params['h'],
-                                             Pell, kind='cubic')
+            self.Pell_spline[ell] = UnivariateSpline(
+                self.k_table/self.params['h'], Pell, k=3, s=0)
             self.Pell_min[ell] = Pell[id_min]
             self.Pell_max[ell] = Pell[-1]
             self.k_table_min[ell] = self.k_table[id_min]/self.params['h']
@@ -855,6 +916,48 @@ class PTEmu:
             dlk_max = np.log10(self.k_table[-1]/self.k_table[-3])
             self.neff_min[ell] = dlP_min/dlk_min
             self.neff_max[ell] = dlP_max/dlk_max
+
+    def build_Pdw_spline(self, Pdw):
+        r"""Build spline object for multipoles of linear de-wiggled power
+        spectrum.
+
+        Generates a cubic spline object for the linear de-wiggled power
+        spectrum, including the computation of effective indexes for the low-
+        and high-:math:`k` tails, and stores it as class attribute.
+
+        Parameters
+        ----------
+        Pdw: list or numpy.ndarray
+            Array containing the de-wiggled linear power spectrum evaluated at
+            the wavemodes defined by the class attribute **k_table**.
+        """
+        id_min = 0
+        if self.use_Mpc:
+            self.Pdw_spline = UnivariateSpline(self.k_table, Pdw, k=3, s=0)
+            self.Pdw_min = Pdw[id_min]
+            self.Pdw_max = Pdw[-1]
+            self.k_table_min[0] = self.k_table[id_min]
+            self.k_table_max[0] = self.k_table[-1]
+            dlP_min = np.log10(np.abs(Pdw[id_min+2]/Pdw[id_min]))
+            dlP_max = np.log10(np.abs(Pdw[-1]/Pdw[-3]))
+            dlk_min = np.log10(self.k_table[id_min+2]/self.k_table[id_min])
+            dlk_max = np.log10(self.k_table[-1]/self.k_table[-3])
+            self.neff_dw_min = dlP_min/dlk_min
+            self.neff_dw_max = dlP_max/dlk_max
+        else:
+            Pdw *= self.params['h']**3
+            self.Pdw_spline = UnivariateSpline(self.k_table/self.params['h'],
+                                               Pdw, k=3, s=0)
+            self.Pdw_min = Pdw[id_min]
+            self.Pdw_max = Pdw[-1]
+            self.k_table_min[0] = self.k_table[id_min]/self.params['h']
+            self.k_table_max[0] = self.k_table[-1]/self.params['h']
+            dlP_min = np.log10(np.abs(Pdw[id_min+2]/Pdw[id_min]))
+            dlP_max = np.log10(np.abs(Pdw[-1]/Pdw[-3]))
+            dlk_min = np.log10(self.k_table[id_min+2]/self.k_table[id_min])
+            dlk_max = np.log10(self.k_table[-1]/self.k_table[-3])
+            self.neff_dw_min = dlP_min/dlk_min
+            self.neff_dw_max = dlP_max/dlk_max
 
     def eval_Pell_spline(self, k, ell):
         r"""Evaluate the spline of the specified power spectrum multipole.
@@ -893,6 +996,37 @@ class PTEmu:
             )
         return spline
 
+    def eval_Pdw_spline(self, k):
+        r"""Evaluate the spline of the linear de-wiggled power spectrum.
+
+        Calls the spline object stored as class attribute for the linear
+        de-wiggled power spectrum on the input wavemodes :math:`k`. The called
+        interpolator results in a cubic spline or in a power-law extrapolation,
+        depending if the value of :math:`k` is within or outside the original
+        boundary spcified by the training table.
+
+        Parameters
+        ----------
+        k: numpy.ndarray
+            Values of the requested wavemodes :math:`k`.
+
+        Returns
+        -------
+        spline: numpy.ndarray
+            Interpolated linear de-wiggled power spectrum at the requested
+            wavemodes :math:`k`.
+        """
+        mask_low = k < self.k_table_min[0]
+        mask_high = k > self.k_table_max[0]
+        spline = np.hstack(
+            [self.Pdw_min *
+             (k[mask_low]/self.k_table_min[0])**self.neff_dw_min,
+             self.Pdw_spline(k[np.invert(mask_low) & np.invert(mask_high)]),
+             self.Pdw_max *
+             (k[mask_high]/self.k_table_max[0])**self.neff_dw_max]
+            )
+        return spline
+
     def PL(self, k, params, de_model=None):
         r"""Compute the linear power spectrum predictions.
 
@@ -924,14 +1058,15 @@ class PTEmu:
         self.eval_emulator(params, ell=[], de_model=de_model)
 
         if self.use_Mpc:
-            PL_spline = interp1d(self.k_table, self.Pk_lin, kind='cubic')
+            PL_spline = UnivariateSpline(self.k_table, self.Pk_lin, k=3, s=0)
         else:
-            PL_spline = interp1d(self.k_table/self.params['h'],
-                                 self.Pk_lin*self.params['h']**3, kind='cubic')
+            PL_spline = UnivariateSpline(self.k_table/self.params['h'],
+                                         self.Pk_lin*self.params['h']**3,
+                                         k=3, s=0)
 
         return PL_spline(k)
 
-    def Pdw(self, k, mu, params, de_model=None, ell_for_recon=None):
+    def Pdw_2d(self, k, mu, params, de_model=None, ell_for_recon=None):
         r"""Compute the anisotropic leading order IR-resummed power spectrum.
 
         Evaluates the emulator calling **eval_emulator**, and returns the
@@ -1002,18 +1137,97 @@ class PTEmu:
         Pdw_spline = {}
         for i, ell in enumerate(ell_for_recon):
             if self.use_Mpc:
-                Pdw_spline[ell] = interp1d(self.k_table, Pdw_ell[:, i],
-                                           kind='cubic')
+                Pdw_spline[ell] = UnivariateSpline(self.k_table, Pdw_ell[:, i],
+                                                   k=3, s=0)
             else:
-                Pdw_spline[ell] = interp1d(self.k_table/self.params['h'],
-                                           Pdw_ell[:, i]*self.params['h']**3,
-                                           kind='cubic')
+                Pdw_spline[ell] = UnivariateSpline(
+                    self.k_table/self.params['h'],
+                    Pdw_ell[:, i]*self.params['h']**3,
+                    k=3, s=0)
 
         Pdw_2d = 0.0
         for ell in ell_for_recon:
             Pdw_2d += np.outer(Pdw_spline[ell](k), eval_legendre(ell, mu))
 
         return Pdw_2d
+
+    def Pdw(self, k, params, de_model=None, ell_for_recon=None):
+        r"""Compute the real space leading order IR-resummed power spectrum.
+
+        Evaluates the emulator calling **eval_emulator**, and returns the
+        real space (:math:`\mu = 0`) leading order IR-resummed power spectrum
+        :math:`P_\mathrm{IR-res}^\mathrm{LO}(k,\mu)`, defined as
+
+        .. math::
+            P_\mathrm{IR-res}^\mathrm{LO}(k,\mu) = P_\mathrm{nw}(k) + \
+            e^{-k^2\Sigma^2(f,\mu)}P_\mathrm{w}(k),
+
+        where :math:`P_\mathrm{nw}` and :math:`P_\mathrm{w}` are the no-wiggle
+        and wiggle-only component of the linear matter power spectrum, and
+        :math:`\Sigma(f,\mu)` is the anisotropic BAO damping factor due to
+        infrared modes.
+
+        Notice how this function does not include the leading order Kaiser
+        effect due to the impact of the velocity field on the amplitude of
+        the power spectrum.
+
+        Parameters
+        ----------
+        k: float or numpy.ndarray
+            Value of the requested wavemodes :math:`k`.
+        mu: float or numpy.ndarray
+            Value of the cosine :math:`\mu` of the angle between
+            the pair separation and the line of sight.
+        params: dict
+            Dictionary containing the list of total model parameters which are
+            internally used by the emulator. The keyword/value pairs of the
+            dictionary specify the names and the values of the parameters,
+            respectively.
+        de_model: str, optional
+            String that determines the dark energy equation of state. Can be
+            chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
+            the standard cosmological parameters, or be left undefined to use
+            only :math:`\sigma_{12}`. Defaults to **None**.
+        ell_for_recon: list, optional
+            List of :math:`\ell` values used for the reconstruction of the
+            2d leading-order IR-resummed power spectrum. If **None**, all the
+            even multipoles up to :math:`\ell=6` are used in the
+            reconstruction. Defaults to **None**.
+
+        Returns
+        -------
+        Pdw_2d: numpy.ndarray
+            Leading-order infrared resummed power spectrum
+            :math:`P_\mathrm{IR-res}^\mathrm{LO}(k,\mu)` evaluated at the
+            input wavemodes :math:`k` and angles :math:`\mu`.
+        """
+        if ell_for_recon is None:
+            ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
+        ell_eval_emu = ell_for_recon.copy()
+        try:
+            ell_eval_emu.remove(6)
+        except Exception:
+            pass
+        self.eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
+
+        if not self.dw_spline_up_to_date:
+            Pdw_ell = np.zeros([self.nk, len(ell_for_recon)])
+            for i, ell in enumerate(ell_for_recon):
+                if ell != 6:
+                    Pdw_ell[:, i] = self.Pk_ratios[ell][:self.nk]
+                else:
+                    Pdw_ell[:, i] = self.P6[:, 0]
+            Pdw_ell[:, :len(ell_eval_emu)] = (Pdw_ell[:, :len(ell_eval_emu)].T *
+                                              self.Pk_lin).T
+
+            Pdw = 0.0
+            for i, ell in enumerate(ell_for_recon):
+                Pdw += Pdw_ell[:,i]*eval_legendre(ell, 0.0)
+            self.build_Pdw_spline(Pdw)
+            self.dw_spline_up_to_date = True
+
+        Pdw = self.eval_Pdw_spline(k)
+        return Pdw
 
     def Pell_fid_ktable(self, params, ell, de_model=None):
         r"""Compute the power spectrum multipoles at the training wavemodes.
@@ -1056,35 +1270,32 @@ class PTEmu:
             pass
         self.eval_emulator(params, ell_eval_emu, de_model=de_model)
 
-        bij = self.get_bias_coeff(0)
+        bij = self.get_bias_coeff()
 
         Pell = np.zeros([self.nk, len(ell)])
         for i, m in enumerate(ell):
             if m != 6:
-                bij[3] = self.params['c{}'.format(m)] if self.use_Mpc \
-                     else self.params['c{}'.format(m)]/self.params['h']**2
-
-                Pk_bij = np.zeros([self.nk, self.n_diagrams-2])
-                Pk_bij[:, :7] = np.multiply(
-                    self.Pk_ratios[m][:7*self.nk].reshape((7, self.nk)),
+                Pk_bij = np.zeros([self.nk, self.n_diagrams])
+                Pk_bij[:, :9] = np.multiply(
+                    self.Pk_ratios[m][:9*self.nk].reshape((9, self.nk)),
                     self.Pk_lin).T
-                Pk_bij[(self.nk-self.nkloop):, 7:17] = np.multiply(
-                    self.Pk_ratios[m][7*self.nk:].reshape((10, self.nkloop)),
+                Pk_bij[(self.nk-self.nkloop):, 9:19] = np.multiply(
+                    self.Pk_ratios[m][9*self.nk:].reshape((10, self.nkloop)),
                     self.Pk_lin[(self.nk-self.nkloop):]).T
 
                 Pell[:, i] = np.dot(bij, Pk_bij.T)
 
                 # add shot noise
                 if m == 0:
-                    N0 = self.params['N0'] if self.use_Mpc \
-                        else self.params['N0']/self.params['h']**3
-                    N20 = self.params['N20'] if self.use_Mpc \
-                        else self.params['N20']/self.params['h']**5
+                    N0 = self.params['NP0'] if self.use_Mpc \
+                        else self.params['NP0']/self.params['h']**3
+                    N20 = self.params['NP20'] if self.use_Mpc \
+                        else self.params['NP20']/self.params['h']**5
                     Pell[:, i] += (np.ones_like(self.k_table)*N0/self.nbar +
                                    self.k_table**2*N20/self.nbar)
                 elif m == 2:
-                    N22 = self.params['N22'] if self.use_Mpc \
-                        else self.params['N22']/self.params['h']**5
+                    N22 = self.params['NP22'] if self.use_Mpc \
+                        else self.params['NP22']/self.params['h']**5
                     Pell[:, i] += self.k_table**2*N22/self.nbar
             else:
                 bij_for_P6 = self.get_bias_coeff_for_P6()
@@ -1206,8 +1417,8 @@ class PTEmu:
             for i, m in enumerate(ell_for_recon):
                 self.build_Pell_spline(Pell[:, i], m)
             self.splines_up_to_date = True
-            self.X_splines_up_to_date = {X: False for X in self.diagrams_all}
-            self.chi2_decomposition = None
+            # self.X_splines_up_to_date = {X: False for X in self.diagrams_all}
+            # self.chi2_decomposition = None
 
         self.update_AP_params(params, de_model=de_model,
                               alpha_tr_lo=alpha_tr_lo)
@@ -1325,7 +1536,8 @@ class PTEmu:
                 self.params[p] = params[p]
             else:
                 self.params[p] = 0.0
-        self.splines_up_to_date = False
+        # self.splines_up_to_date = False
+        # self.dw_spline_up_to_date = False
         bX = self.get_bias_coeff_for_chi2_decomposition()
 
         Pell_dict = {}
@@ -1417,8 +1629,9 @@ class PTEmu:
         Pell_dict = {}
         if k != self.data[obs_id].bins_mixing_matrix[:, 0]:
             for i, m in enumerate(ell):
-                spline = interp1d(self.data[obs_id].bins_mixing_matrix[:, 0],
-                                  Pell_convolved[:, i], kind='cubic')
+                spline = UnivariateSpline(
+                    self.data[obs_id].bins_mixing_matrix[:, 0],
+                    Pell_convolved[:, i], k=3, s=0)
                 Pell_dict['ell{}'.format(m)] = spline(k_list[i])
         else:
             for i, m in enumerate(ell):
@@ -1448,7 +1661,8 @@ class PTEmu:
         X: str
             Identifier of the contribution to the galaxy power spectrum. Can
             be chosen from the list [`"P0L_b1b1"`, `"PNL_b1"`, `"PNL_id"`,
-            `"Pctr_clo"`, `"Pctr_b1b1cnlo"`, `"Pctr_b1cnlo"`, `"Pctr_cnlo"`,
+            `"Pctr_c0"`, `"Pctr_c2"`, `"Pctr_c4"`,
+            `"Pctr_b1b1cnlo"`, `"Pctr_b1cnlo"`, `"Pctr_cnlo"`,
             `"P1L_b1b1"`, `"P1L_b1b2"`, `"P1L_b1g2"`, `"P1L_b1g21"`,
             `"P1L_b2b2"`, `"P1L_b2g2"`, `"P1L_g2g2"`, `"P1L_b2"`, `"P1L_g2"`,
             `"P1L_g21"`].
@@ -1467,11 +1681,11 @@ class PTEmu:
         ids = None
         for n, diagram in enumerate(self.diagrams_emulated):
             if diagram == X:
-                if n < 7:
+                if n < 9:
                     ids = [n*self.nk, (n+1)*self.nk]
                 else:
-                    ids = [7*self.nk + (n-7)*self.nkloop,
-                           7*self.nk + (n-6)*self.nkloop]
+                    ids = [9*self.nk + (n-9)*self.nkloop,
+                           9*self.nk + (n-8)*self.nkloop]
 
         if ids is not None:
             ell_for_recon = [0, 2, 4] if not self.real_space else [0]
@@ -1486,12 +1700,14 @@ class PTEmu:
             PX_spline = {}
             for i, ell in enumerate(ell_for_recon):
                 if self.use_Mpc:
-                    PX_spline[ell] = interp1d(self.k_table, PX_ell[:, i],
-                                              kind='cubic')
+                    PX_spline[ell] = UnivariateSpline(self.k_table,
+                                                      PX_ell[:, i],
+                                                      k=3, s=0)
                 else:
-                    PX_spline[ell] = interp1d(self.k_table/self.params['h'],
-                                              PX_ell[:, i]*self.params['h']**3,
-                                              kind='cubic')
+                    PX_spline[ell] = UnivariateSpline(
+                        self.k_table/self.params['h'],
+                        PX_ell[:, i]*self.params['h']**3,
+                        k=3, s=0)
 
             PX_2d = 0.0
             for ell in ell_for_recon:
@@ -1597,10 +1813,11 @@ class PTEmu:
         X: str
             Identifier of the contribution to the galaxy power spectrum. Can
             be chosen from the list [`"P0L_b1b1"`, `"PNL_b1"`, `"PNL_id"`,
-            `"Pctr_clo"`, `"Pctr_b1b1cnlo"`, `"Pctr_b1cnlo"`, `"Pctr_cnlo"`,
+            `"Pctr_c0"`, `"Pctr_c2"`, `"Pctr_c4"`,
+            `"Pctr_b1b1cnlo"`, `"Pctr_b1cnlo"`, `"Pctr_cnlo"`,
             `"P1L_b1b1"`, `"P1L_b1b2"`, `"P1L_b1g2"`, `"P1L_b1g21"`,
             `"P1L_b2b2"`, `"P1L_b2g2"`, `"P1L_g2g2"`, `"P1L_b2"`, `"P1L_g2"`,
-            `"P1L_g21"`, `"Pnoise_N0"`, `"Pnoise_N20"`, `"Pnoise_N22"`].
+            `"P1L_g21"`, `"Pnoise_NP0"`, `"Pnoise_NP20"`, `"Pnoise_NP22"`].
         de_model: str, optional
             String that determines the dark energy equation of state. Can be
             chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
@@ -1687,24 +1904,21 @@ class PTEmu:
             k_list = [k]*len(ell)
 
         PX_ell = np.zeros([self.nk, len(ell_for_recon)])
-        if X in ['Pctr_c0', 'Pctr_c2', 'Pctr_c4']:
-            ell_clo = int(X[-1])
-            X_emu = 'Pctr_clo'
-        else:
-            X_emu = X
+        X_emu = X
         if X_emu in self.diagrams_emulated:
             for n, diagram in enumerate(self.diagrams_emulated):
                 if diagram == X_emu:
-                    if n < 7:
+                    if n < 9:
                         ids = [n*self.nk, (n+1)*self.nk]
                     else:
-                        ids = [7*self.nk + (n-7)*self.nkloop,
-                               7*self.nk + (n-6)*self.nkloop]
+                        ids = [9*self.nk + (n-9)*self.nkloop,
+                               9*self.nk + (n-8)*self.nkloop]
 
             self.eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
-            if X_emu == 'Pctr_clo':
-                PX_ell[self.nk - (ids[1]-ids[0]):, int(ell_clo/2)] = \
-                    self.Pk_ratios[ell_clo][ids[0]:ids[1]]
+            if X_emu in ['Pctr_c0', 'Pctr_c2', 'Pctr_c4']:
+                for i, m in enumerate(ell_eval_emu):
+                    PX_ell[self.nk - (ids[1]-ids[0]):, i] = \
+                        self.Pk_ratios[m][ids[0]:ids[1]]
             else:
                 for i, m in enumerate(ell_for_recon):
                     if m != 6:
@@ -1715,24 +1929,23 @@ class PTEmu:
             PX_ell[:, :len(ell_eval_emu)] = (PX_ell[:, :len(ell_eval_emu)].T *
                                              self.Pk_lin).T
         else:
-            if X_emu == 'Pnoise_N0':
+            if X_emu == 'Pnoise_NP0':
                 PX_ell[:, 0] = np.ones_like(self.k_table)
-            elif X_emu == 'Pnoise_N20':
+            elif X_emu == 'Pnoise_NP20':
                 PX_ell[:, 0] = self.k_table**2
-            elif X_emu == 'Pnoise_N22' and len(ell_for_recon) > 1:
+            elif X_emu == 'Pnoise_NP22' and len(ell_for_recon) > 1:
                 PX_ell[:, 1] = self.k_table**2
 
         for i, m in enumerate(ell_for_recon):
             if self.use_Mpc:
-                self.PX_ell_spline[X][m] = interp1d(self.k_table,
-                                                    PX_ell[:, i],
-                                                    kind='cubic')
+                self.PX_ell_spline[X][m] = UnivariateSpline(self.k_table,
+                                                            PX_ell[:, i],
+                                                            k=3, s=0)
             else:
-                self.PX_ell_spline[X][m] = interp1d(self.k_table /
-                                                    self.params['h'],
-                                                    PX_ell[:, i] *
-                                                    self.params['h']**3,
-                                                    kind='cubic')
+                self.PX_ell_spline[X][m] = UnivariateSpline(
+                    self.k_table/self.params['h'],
+                    PX_ell[:, i]*self.params['h']**3,
+                    k=3, s=0)
 
         self.X_splines_up_to_date[X] = True
 
@@ -1750,15 +1963,37 @@ class PTEmu:
 
         return PX_ell_dict
 
-    # def Bell(self, tri, params, ell, de_model=None, alpha_tr_lo=None):
-    #     def kernels(k1, k2, k3):
-    #         mu = (k3**2-k1**2-k2**2)/(2*k1*k2)
-    #         F2 = 5./7 + mu/2*(k1/k2 + k2/k1) + 2./7*mu**2
-    #         K = mu**2 - 1
-    #         return np.array([F2, 1., K])
-    #
-    #     # evaluate kernels for all combinations of pairs of k_i
-    #     # construct cyclic permutations
+    def Bell(self, tri, params, ell, de_model=None, kfun=None,
+             alpha_tr_lo=None, ell_for_recon=None):
+        ell = [ell] if not isinstance(ell, list) else ell
+        if tri.ndim == 1:
+            tri = tri[None,:]
+        tri_sorted = np.flip(np.sort(tri, axis=1), axis=1)
+        if np.any(tri != tri_sorted):
+            tri = tri_sorted
+            print('Warning. Triangle configurations sorted such that '
+                  'k1 >= k2 >= k3.')
+
+        if not np.all(self.Bisp.tri == tri):
+            if kfun is None:
+                kfun = tri[0,0]
+                print('kfun not specified. Using kfun = {}'.format(kfun))
+            self.Bisp.set_tri(tri, kfun)
+
+        Pdw = self.Pdw(self.Bisp.tri_unique, params, de_model=de_model,
+                       ell_for_recon=ell_for_recon)
+
+        if self.real_space:
+            neff = None
+        else:
+            neff = self.Bisp.tri_unique * self.Pdw_spline.derivative(n=1)(
+                       self.Bisp.tri_unique) / Pdw
+
+        self.update_AP_params(params, de_model=de_model,
+                              alpha_tr_lo=alpha_tr_lo)
+
+        Bell_dict = self.Bisp.Bell(Pdw, neff, self.params, ell)
+        return Bell_dict
 
     def Avg_covariance(self, l1, l2, k, Pl, sigma_d):
 
@@ -2049,70 +2284,114 @@ class PTEmu:
         chi2: float
             Value of the :math:`\chi^2`.
         """
-        if (not self.data[obs_id].kmax_is_set or
-            (self.data[obs_id].kmax != kmax and
-             self.data[obs_id].kmax !=
-             [kmax for i in range(self.data[obs_id].n_ell)])):
-            self.data[obs_id].set_kmax(kmax)
-            self.chi2_decomposition = None
+        obs_id = [obs_id] if not isinstance(obs_id, list) else obs_id
 
-        ell = [2*m for m in range(self.data[obs_id].n_ell)
-               if self.data[obs_id].nbins[m] > 0]
+        if not isinstance(kmax, dict):
+            kmax_dict = {}
+            for oi in obs_id:
+                kmax_dict[oi] = kmax
+            kmax = kmax_dict
+
+        for oi in obs_id:
+            if (not self.data[oi].kmax_is_set or
+                (self.data[oi].kmax != kmax[oi] and self.data[oi].kmax !=
+                    [kmax[oi] for i in range(self.data[oi].n_ell)])):
+                        self.data[oi].set_kmax(kmax[oi])
+                        if self.data[oi].stat == 'bispectrum':
+                            self.Bisp.set_tri(self.data[oi].bins_kmax[0],
+                                              self.data[oi].kfun)
+                        self.chi2_decomposition = None
+            else:
+                if self.data[oi].stat == 'bispectrum' and \
+                    self.Bisp.tri is None:
+                        self.Bisp.set_tri(self.data[oi].bins_kmax[0],
+                                          self.data[oi].kfun)
+            if self.data[oi].stat == 'bispectrum':
+                chi2_decomposition = False # currently only implemented for Pk
+
+        ell = {}
+        for oi in obs_id:
+            ell[oi] = [2*m for m in range(self.data[oi].n_ell)
+                       if self.data[oi].nbins[m] > 0]
 
         if not chi2_decomposition:
-            Pell = self.Pell(self.data[obs_id].bins_kmax, params, ell,
-                             de_model=de_model, alpha_tr_lo=alpha_tr_lo,
-                             W_damping=W_damping, ell_for_recon=ell_for_recon)
-            Pell_list = np.hstack([Pell[m] for m in Pell.keys()])
+            chi2 = 0.0
+            for oi in obs_id:
+                if self.data[oi].stat == 'powerspectrum':
+                    Pell = self.Pell(self.data[oi].bins_kmax, params, ell[oi],
+                                     de_model=de_model, alpha_tr_lo=alpha_tr_lo,
+                                     W_damping=W_damping,
+                                     ell_for_recon=ell_for_recon)
+                    Pell_list = np.hstack([Pell[m] for m in Pell.keys()])
 
-            diff = Pell_list - self.data[obs_id].signal_kmax
-            chi2 = diff @ self.data[obs_id].inverse_cov_kmax @ diff.T
+                    diff = Pell_list - self.data[oi].signal_kmax
+                    chi2 += diff @ self.data[oi].inverse_cov_kmax @ diff.T
+                elif self.data[oi].stat == 'bispectrum':
+                    Pdw = self.Pdw(self.Bisp.tri_unique,
+                                   params, de_model=de_model,
+                                   ell_for_recon=ell_for_recon)
+                    if self.real_space:
+                        neff = None
+                    else:
+                        neff = self.Bisp.tri_unique * \
+                               self.Pdw_spline.derivative(n=1)(
+                                   self.Bisp.tri_unique) / Pdw
+                    Bell = self.Bisp.Bell(Pdw, neff, self.params, ell[oi])
+                    Bell_list = np.hstack([Bell[m] for m in Bell.keys()])
+
+                    diff = Bell_list - self.data[oi].signal_kmax
+                    Ldiff = self.data[oi].inverse_cov_kmax_cholesky @ diff
+                    chi2 += np.sum(Ldiff**2)
         else:
-            # check if cosmological + RSD parameters have changed, if so,
-            # re-evaluate chi2 decomposition
-            if de_model is None and self.use_Mpc:
-                check_params = self.params_list + self.RSD_params_list
-            elif de_model is None and not self.use_Mpc:
-                check_params = self.params_list + ['h'] + self.RSD_params_list
-            else:
-                check_params = self.params_shape_list \
-                               + self.de_model_params_list[de_model] \
-                               + self.RSD_params_list
-                if 'Ok' not in params:
-                    check_params.remove('Ok')
-
-            if (any(params[p] != self.params[p] for p in check_params) or
-                    self.chi2_decomposition is None):
-                PX_ell_list = np.zeros([sum(self.data[obs_id].nbins),
-                                        len(self.diagrams_all)])
-                for i, X in enumerate(self.diagrams_all):
-                    PX_ell = self.PX_ell(self.data[obs_id].bins_kmax, params,
-                                         ell, X, de_model=de_model,
-                                         alpha_tr_lo=alpha_tr_lo,
-                                         W_damping=W_damping,
-                                         ell_for_recon=ell_for_recon)
-                    PX_ell_list[:, i] = np.hstack([PX_ell[m] for m
-                                                   in PX_ell.keys()])
-
-                self.chi2_decomposition = {}
-                self.chi2_decomposition['DD'] = self.data[obs_id].SN_kmax
-                self.chi2_decomposition['XD'] = PX_ell_list.T \
-                    @ self.data[obs_id].inverse_cov_kmax \
-                    @ self.data[obs_id].signal_kmax
-                self.chi2_decomposition['XX'] = PX_ell_list.T \
-                    @ self.data[obs_id].inverse_cov_kmax \
-                    @ PX_ell_list
-
-            for p in self.bias_params_list:
-                if p in params.keys():
-                    self.params[p] = params[p]
+            chi2 = 0.0
+            for oi in obs_id:
+                # check if cosmological + RSD parameters have changed, if so,
+                # re-evaluate chi2 decomposition
+                if de_model is None and self.use_Mpc:
+                    check_params = self.params_list + self.RSD_params_list
+                elif de_model is None and not self.use_Mpc:
+                    check_params = self.params_list + ['h'] + \
+                                   self.RSD_params_list
                 else:
-                    self.params[p] = 0.
-            self.splines_up_to_date = False
+                    check_params = self.params_shape_list \
+                                   + self.de_model_params_list[de_model] \
+                                   + self.RSD_params_list
+                    if 'Ok' not in params:
+                        check_params.remove('Ok')
 
-            bX = self.get_bias_coeff_for_chi2_decomposition()
-            chi2 = (bX @ self.chi2_decomposition['XX'] @ bX -
-                    2*bX @ self.chi2_decomposition['XD'] +
-                    self.chi2_decomposition['DD'])
+                if (any(params[p] != self.params[p] for p in check_params) or
+                        self.chi2_decomposition is None):
+                    PX_ell_list = np.zeros([sum(self.data[oi].nbins),
+                                            len(self.diagrams_all)])
+                    for i, X in enumerate(self.diagrams_all):
+                        PX_ell = self.PX_ell(self.data[oi].bins_kmax,
+                                             params, ell[oi], X,
+                                             de_model=de_model,
+                                             alpha_tr_lo=alpha_tr_lo,
+                                             W_damping=W_damping,
+                                             ell_for_recon=ell_for_recon)
+                        PX_ell_list[:, i] = np.hstack([PX_ell[m] for m
+                                                       in PX_ell.keys()])
+
+                    self.chi2_decomposition = {}
+                    self.chi2_decomposition['DD'] = self.data[oi].SN_kmax
+                    self.chi2_decomposition['XD'] = PX_ell_list.T \
+                        @ self.data[oi].inverse_cov_kmax \
+                        @ self.data[oi].signal_kmax
+                    self.chi2_decomposition['XX'] = PX_ell_list.T \
+                        @ self.data[oi].inverse_cov_kmax @ PX_ell_list
+
+                for p in self.bias_params_list:
+                    if p in params.keys():
+                        self.params[p] = params[p]
+                    else:
+                        self.params[p] = 0.
+                self.splines_up_to_date = False
+                self.dw_spline_up_to_date = False
+
+                bX = self.get_bias_coeff_for_chi2_decomposition()
+                chi2 += (bX @ self.chi2_decomposition['XX'] @ bX -
+                         2*bX @ self.chi2_decomposition['XD'] +
+                         self.chi2_decomposition['DD'])
 
         return chi2
