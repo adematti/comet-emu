@@ -40,7 +40,7 @@ params['alpha_tr'] = 1.2
 params['g2']       = -0.3
 params['c0']       = -4.
 params['cnlo']     = 6.
-params['N0']       = 0.6
+params['NP0']       = 0.6
 Pell_Mpc_2 = EFT.Pell(k_Mpc, params, ell=[0,2,4])
 
 # Plot the results!
@@ -59,7 +59,7 @@ ax.semilogx(k_Mpc, k_Mpc**0.5*Pell_Mpc_2['ell4'],c='C2',ls='--')
 ax.set_xlabel('$k$ [1/Mpc]',fontsize=12)
 ax.set_ylabel(r'$k^{1/2}\,P_{\ell}(k)$ [$(\mathrm{Mpc})^{5/2}$]',fontsize=12)
 ax.legend(fontsize=12)
-plt.savefig("docs/source/imgs/EFT_Multipoles.png")
+#plt.savefig("docs/source/imgs/EFT_Multipoles.png")
 
 EFT.define_units(use_Mpc=False)
 EFT.define_nbar(nbar=3.95898e-4)
@@ -84,7 +84,7 @@ ax.set_xlabel('$k$ [h/Mpc]',fontsize=12)
 ax.set_ylabel(r'$k^{1/2}\,P_{\ell}(k)$ [$(\mathrm{Mpc}/h)^{5/2}$]',fontsize=12)
 ax.legend(fontsize=12)
 
-plt.savefig("docs/source/imgs/EFT_Multipoles_hMpc.png")
+#plt.savefig("docs/source/imgs/EFT_Multipoles_hMpc.png")
 
 params_fid_Minerva = {'h':0.695, 'wc':0.11544, 'wb':0.0222191, 'z':0.57}
 
@@ -117,7 +117,7 @@ ax.set_xlabel('$k$ [h/Mpc]',fontsize=12)
 ax.set_ylabel(r'$k^{1/2}\,P_{\ell}(k)$ [$(\mathrm{Mpc}/h)^{5/2}$]',fontsize=12)
 ax.legend(fontsize=12)
 
-plt.savefig("docs/source/imgs/EFT_Multipoles_LCDM.png")
+#plt.savefig("docs/source/imgs/EFT_Multipoles_LCDM.png")
 
 print(EFT.params_ranges)
 
