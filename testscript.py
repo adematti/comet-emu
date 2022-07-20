@@ -39,7 +39,7 @@ fidutial_params["g21"] = -0.010824734433118266#0.4114#-4/7.*(0.4114 + fidutial_p
 fidutial_params["c0"] = 0.2104184561082434#2.8042*0.4**2
 fidutial_params["c2"] = 0*1.2104184561082434#2.8042*0.4**2
 fidutial_params["c4"] = 0*1.2104184561082434#2.8042*0.4**2
-fidutial_params["N0"] = 0*0.7634175841445507#0.72792*0.4**3
+fidutial_params["NP0"] = 0*0.7634175841445507#0.72792*0.4**3
 
 k_table = np.logspace(-3,np.log10(0.3),100)
 Pell_LCDM = Pell.Pell(k=k_table, params=fidutial_params, ell=[0,2,4], de_model="lambda")

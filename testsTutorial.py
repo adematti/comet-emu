@@ -15,8 +15,8 @@ params['ns'] = 0.9632
 
 # For predictions using the RSD parameter space we also need to specify values for the following four parameters, e.g.
 params['s12']      = 0.6
-params['alpha_lo'] = 1.1
-params['alpha_tr'] = 0.9
+params['q_lo'] = 1.1
+params['q_tr'] = 0.9
 params['f']        = 0.7
 
 # Finally, the bias parameters: any parameters from {b1, b2, g2, g21, c0, c2, c4, cnlo, N0, N20, N22} can be specified.
@@ -36,7 +36,7 @@ k_Mpc = np.logspace(-3,np.log10(0.3),100)
 Pell_Mpc_1 = EFT.Pell(k_Mpc, params, ell=[0,2,4])
 
 # Now, let's add/change some parameter values and obtain a second set of predictions
-params['alpha_tr'] = 1.2
+params['q_tr'] = 1.2
 params['g2']       = -0.3
 params['c0']       = -4.
 params['cnlo']     = 6.
@@ -95,10 +95,10 @@ params['As'] = 2.3
 params['z']  = 0.6
 
 Pell_LCDM_hMpc_1 = EFT.Pell(k_hMpc, params, ell=[0,2,4], de_model='lambda') # E.g., this is for a flat LCDM cosmology
-# s12, alpha_tr, alpha_lo and f are different now!
+# s12, q_tr, q_lo and f are different now!
 print(EFT.params)
 
-Pell_LCDM_hMpc_2 = EFT.Pell(k_hMpc, params, ell=[0,2,4], de_model='lambda', alpha_tr_lo=[1,1])
+Pell_LCDM_hMpc_2 = EFT.Pell(k_hMpc, params, ell=[0,2,4], de_model='lambda', q_tr_lo=[1,1])
 
  # The results differ accordingly!
 f = plt.figure()

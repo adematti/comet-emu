@@ -167,8 +167,8 @@ class PTEmu:
                        self.bias_params_list +
                        self.de_model_params_list['w0wa']}
         self.params['w0'] = -1.0
-        self.params['alpha_tr'] = 1.0
-        self.params['alpha_lo'] = 1.0
+        self.params['q_tr'] = 1.0
+        self.params['q_lo'] = 1.0
 
     def load_emulator_data(self, fname):
         r"""Load tables of the emulator.
@@ -479,7 +479,7 @@ class PTEmu:
 
         return emu_params_updated
 
-    def update_AP_params(self, params, de_model=None, alpha_tr_lo=None):
+    def update_AP_params(self, params, de_model=None, q_tr_lo=None):
         r"""Update AP parameters.
 
         Sets the internal attributes of the class to store the AP parameters.
@@ -496,33 +496,33 @@ class PTEmu:
             chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
             the standard cosmological parameters, or be left undefined to use
             only :math:`\sigma_{12}`. Defaults to **None**.
-        alpha_tr_lo: list or numpy.ndarray, optional
+        q_tr_lo: list or numpy.ndarray, optional
             List containing the user-provided AP parameters, in the form
-            :math:`(\alpha_\perp, \alpha_\parallel)`. If provided, prevents
+            :math:`(q_\perp, q_\parallel)`. If provided, prevents
             computation from correct formulas (ratios of expansion factors and
             angular diameter distance). Defaults to **None**.
         """
-        if de_model is not None and alpha_tr_lo is None:
+        if de_model is not None and q_tr_lo is None:
             Om0 = (self.params['wc']+self.params['wb'])/self.params['h']**2
             H0 = 100.0*self.params['h']
             self.cosmo.update_cosmology(
                 Om0=Om0, H0=H0, Ok0=self.params['Ok'],
                 de_model=de_model, w0=self.params['w0'], wa=self.params['wa'])
-            self.params['alpha_lo'] = \
+            self.params['q_lo'] = \
                 self.H_fid/self.cosmo.Hz(self.params['z'])
-            self.params['alpha_tr'] = self.cosmo.comoving_transverse_distance(
+            self.params['q_tr'] = self.cosmo.comoving_transverse_distance(
                 self.params['z'])/self.Dm_fid
             if not self.use_Mpc:
-                self.params['alpha_lo'] *= (self.params['h']/self.h_fid)
-                self.params['alpha_tr'] *= (self.params['h']/self.h_fid)
+                self.params['q_lo'] *= (self.params['h']/self.h_fid)
+                self.params['q_tr'] *= (self.params['h']/self.h_fid)
         elif de_model is not None:
-            self.params['alpha_lo'] = alpha_tr_lo[1]
-            self.params['alpha_tr'] = alpha_tr_lo[0]
+            self.params['q_lo'] = q_tr_lo[1]
+            self.params['q_tr'] = q_tr_lo[0]
         elif (de_model is None and
-              'alpha_lo' in params and
-              'alpha_tr' in params):
-            self.params['alpha_lo'] = params['alpha_lo']
-            self.params['alpha_tr'] = params['alpha_tr']
+              'q_lo' in params and
+              'q_tr' in params):
+            self.params['q_lo'] = params['q_lo']
+            self.params['q_tr'] = params['q_tr']
 
     def get_bias_coeff(self):
         r"""Get bias coefficients for the emulated terms.
@@ -1303,7 +1303,7 @@ class PTEmu:
 
         return Pell
 
-    def Pell(self, k, params, ell, de_model=None, alpha_tr_lo=None,
+    def Pell(self, k, params, ell, de_model=None, q_tr_lo=None,
              W_damping=None, ell_for_recon=None):
         r"""Compute the power spectrum multipoles.
 
@@ -1331,9 +1331,9 @@ class PTEmu:
             chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
             the standard cosmological parameters, or be left undefined to use
             only :math:`\sigma_{12}`. Defaults to **None**.
-        alpha_tr_lo: list or numpy.ndarray, optional
+        q_tr_lo: list or numpy.ndarray, optional
             List containing the user-provided AP parameters, in the form
-            :math:`(\alpha_\perp, \alpha_\parallel)`. If provided, prevents
+            :math:`(q_\perp, q_\parallel)`. If provided, prevents
             computation from correct formulas (ratios of angular diameter
             distances and expansion factors wrt to the corresponding quantities
             of the fiducial cosmology). Defaults to **None**.
@@ -1371,10 +1371,10 @@ class PTEmu:
 
             def integrand(mu):
                 mu2 = mu**2
-                APfac = np.sqrt(mu2/self.params['alpha_lo']**2 +
-                                (1.0 - mu2)/self.params['alpha_tr']**2)
+                APfac = np.sqrt(mu2/self.params['q_lo']**2 +
+                                (1.0 - mu2)/self.params['q_tr']**2)
                 kp = k*APfac
-                mup = mu/self.params['alpha_lo']/APfac
+                mup = mu/self.params['q_lo']/APfac
                 return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
 
         elif self.RSD_model == 'VDG_infty':
@@ -1383,10 +1383,10 @@ class PTEmu:
 
             def integrand(mu):
                 mu2 = mu**2
-                APfac = np.sqrt(mu2/self.params['alpha_lo']**2 +
-                                (1.0 - mu2)/self.params['alpha_tr']**2)
+                APfac = np.sqrt(mu2/self.params['q_lo']**2 +
+                                (1.0 - mu2)/self.params['q_tr']**2)
                 kp = k*APfac
-                mup = mu/self.params['alpha_lo']/APfac
+                mup = mu/self.params['q_lo']/APfac
                 P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
                 return np.outer(P2d_damped, eval_legendre(ell, mu))
 
@@ -1421,11 +1421,11 @@ class PTEmu:
             # self.chi2_decomposition = None
 
         self.update_AP_params(params, de_model=de_model,
-                              alpha_tr_lo=alpha_tr_lo)
-        alpha3 = self.params['alpha_tr']**2 * self.params['alpha_lo']
+                              q_tr_lo=q_tr_lo)
+        q3 = self.params['q_tr']**2 * self.params['q_lo']
 
         Pell_model = quad_vec(integrand, 0.0, 1.0)[0]
-        Pell_model *= (2.0*np.array(ell)+1.0) / alpha3
+        Pell_model *= (2.0*np.array(ell)+1.0) / q3
 
         Pell_dict = {}
         for i, m in enumerate(ell):
@@ -1435,7 +1435,7 @@ class PTEmu:
         return Pell_dict
 
     def Pell_fixed_cosmo_boost(self, k, params, ell, de_model=None,
-                               alpha_tr_lo=None, W_damping=None,
+                               q_tr_lo=None, W_damping=None,
                                ell_for_recon=None):
         r"""Compute the power spectrum multipoles (fast for fixed cosmology).
 
@@ -1467,9 +1467,9 @@ class PTEmu:
             chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
             the standard cosmological parameters, or be left undefined to use
             only :math:`\sigma_{12}`. Defaults to **None**.
-        alpha_tr_lo: list or numpy.ndarray, optional
+        q_tr_lo: list or numpy.ndarray, optional
             List containing the user-provided AP parameters, in the form
-            :math:`(\alpha_\perp, \alpha_\parallel)`. If provided, prevents
+            :math:`(q_\perp, q_\parallel)`. If provided, prevents
             computation from correct formulas (ratios of angular diameter
             distances and expansion factors wrt to the corresponding quantities
             of the fiducial cosmology). Defaults to **None**.
@@ -1525,7 +1525,7 @@ class PTEmu:
                 for i, m in enumerate(ell)}
             for i, X in enumerate(self.diagrams_all):
                 PX_ell = self.PX_ell(k_list, params, ell, X, de_model=de_model,
-                                     alpha_tr_lo=alpha_tr_lo,
+                                     q_tr_lo=q_tr_lo,
                                      W_damping=W_damping,
                                      ell_for_recon=ell_for_recon)
                 for m in PX_ell.keys():
@@ -1548,7 +1548,7 @@ class PTEmu:
         return Pell_dict
 
     def Pell_convolved(self, k, params, ell, obs_id, de_model=None,
-                       alpha_tr_lo=None, W_damping=None, ell_for_recon=None):
+                       q_tr_lo=None, W_damping=None, ell_for_recon=None):
         r"""Compute the convolved power spectrum multipoles.
 
         Main method to compute the galaxy power spectrum multipoles convolved
@@ -1579,9 +1579,9 @@ class PTEmu:
             chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
             the standard cosmological parameters, or be left undefined to use
             only :math:`\sigma_{12}`. Defaults to **None**.
-        alpha_tr_lo: list or numpy.ndarray, optional
+        q_tr_lo: list or numpy.ndarray, optional
             List containing the user-provided AP parameters, in the form
-            :math:`(\alpha_\perp, \alpha_\parallel)`. If provided, prevents
+            :math:`(q_\perp, q_\parallel)`. If provided, prevents
             computation from correct formulas (ratios of angular diameter
             distances and expansion factors wrt to the corresponding quantities
             of the fiducial cosmology). Defaults to **None**.
@@ -1608,7 +1608,7 @@ class PTEmu:
         """
         ell_for_mixing_matrix = [0, 2, 4] if not self.real_space else [0]
         Pell = self.Pell(self.data[obs_id].bins_mixing_matrix[:, 1], params,
-                         ell_for_mixing_matrix, de_model, alpha_tr_lo,
+                         ell_for_mixing_matrix, de_model, q_tr_lo,
                          W_damping, ell_for_recon)
         Pell_list = np.hstack([Pell['ell{}'.format(m)] for m
                                in ell_for_mixing_matrix])
@@ -1786,7 +1786,7 @@ class PTEmu:
             P6X = f**6*self.P6[:, 27]*s12ratio
         return P6X
 
-    def PX_ell(self, k, params, ell, X, de_model=None, alpha_tr_lo=None,
+    def PX_ell(self, k, params, ell, X, de_model=None, q_tr_lo=None,
                W_damping=None, ell_for_recon=None):
         r"""Get the individual contribution to the power spectrum multipoles.
 
@@ -1823,9 +1823,9 @@ class PTEmu:
             chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
             the standard cosmological parameters, or be left undefined to use
             only :math:`\sigma_{12}`. Defaults to **None**.
-        alpha_tr_lo: list or numpy.ndarray, optional
+        q_tr_lo: list or numpy.ndarray, optional
             List containing the user-provided AP parameters, in the form
-            :math:`(\alpha_\perp, \alpha_\parallel)`. If provided, prevents
+            :math:`(q_\perp, q_\parallel)`. If provided, prevents
             computation from correct formulas (ratios of angular diameter
             distances and expansion factors wrt to the corresponding quantities
             of the fiducial cosmology). Defaults to **None**.
@@ -1869,10 +1869,10 @@ class PTEmu:
 
             def integrand(mu):
                 mu2 = mu**2
-                APfac = np.sqrt(mu2/self.params['alpha_lo']**2 +
-                                (1.0 - mu2)/self.params['alpha_tr']**2)
+                APfac = np.sqrt(mu2/self.params['q_lo']**2 +
+                                (1.0 - mu2)/self.params['q_tr']**2)
                 kp = k*APfac
-                mup = mu/self.params['alpha_lo']/APfac
+                mup = mu/self.params['q_lo']/APfac
                 return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
 
         elif self.RSD_model == 'VDG_infty':
@@ -1881,10 +1881,10 @@ class PTEmu:
 
             def integrand(mu):
                 mu2 = mu**2
-                APfac = np.sqrt(mu2/self.params['alpha_lo']**2 +
-                                (1.0 - mu2)/self.params['alpha_tr']**2)
+                APfac = np.sqrt(mu2/self.params['q_lo']**2 +
+                                (1.0 - mu2)/self.params['q_tr']**2)
                 kp = k*APfac
-                mup = mu/self.params['alpha_lo']/APfac
+                mup = mu/self.params['q_lo']/APfac
                 P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
                 return np.outer(P2d_damped, eval_legendre(ell, mu))
 
@@ -1950,11 +1950,11 @@ class PTEmu:
         self.X_splines_up_to_date[X] = True
 
         self.update_AP_params(params, de_model=de_model,
-                              alpha_tr_lo=alpha_tr_lo)
-        alpha3 = self.params['alpha_tr']**2 * self.params['alpha_lo']
+                              q_tr_lo=q_tr_lo)
+        q3 = self.params['q_tr']**2 * self.params['q_lo']
 
         PX_ell_model = quad_vec(integrand, 0.0, 1.0)[0]
-        PX_ell_model *= (2.0*np.array(ell)+1.0) / alpha3
+        PX_ell_model *= (2.0*np.array(ell)+1.0) / q3
 
         PX_ell_dict = {}
         for i, m in enumerate(ell):
@@ -1964,7 +1964,7 @@ class PTEmu:
         return PX_ell_dict
 
     def Bell(self, tri, params, ell, de_model=None, kfun=None,
-             alpha_tr_lo=None, ell_for_recon=None):
+             q_tr_lo=None, ell_for_recon=None):
         ell = [ell] if not isinstance(ell, list) else ell
         if tri.ndim == 1:
             tri = tri[None,:]
@@ -1990,7 +1990,7 @@ class PTEmu:
                        self.Bisp.tri_unique) / Pdw
 
         self.update_AP_params(params, de_model=de_model,
-                              alpha_tr_lo=alpha_tr_lo)
+                              q_tr_lo=q_tr_lo)
 
         Bell_dict = self.Bisp.Bell(Pdw, neff, self.params, ell)
         return Bell_dict
@@ -2127,11 +2127,11 @@ class PTEmu:
             avg=1.
 
         cov *= 2.0/Nmodes*avg
-        
+
         return cov
 
     def Pell_covariance(self, k, params, ell, dk, de_model=None,
-                        alpha_tr_lo=None, W_damping=None,
+                        q_tr_lo=None, W_damping=None,
                         volume=None, zmin=None, zmax=None,
                         fsky=15000.0/(360.0**2/np.pi), volfac=1.0,
                         avg_cov=False, avg_los=3):
@@ -2164,9 +2164,9 @@ class PTEmu:
             chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
             the standard cosmological parameters, or be left undefined to use
             only :math:`\sigma_{12}`. Defaults to **None**.
-        alpha_tr_lo: list or numpy.ndarray, optional
+        q_tr_lo: list or numpy.ndarray, optional
             List containing the user-provided AP parameters, in the form
-            :math:`(\alpha_\perp, \alpha_\parallel)`. If provided, prevents
+            :math:`(q_\perp, q_\parallel)`. If provided, prevents
             computation from correct formulas (ratios of angular diameter
             distances and expansion factors wrt to the corresponding quantities
             of the fiducial cosmology). Defaults to **None**.
@@ -2215,7 +2215,7 @@ class PTEmu:
         k_all = np.unique(np.hstack(k))
         ell_for_cov = [0, 2, 4] if not self.real_space else 0
         Pell = self.Pell(k_all, params, ell=ell_for_cov, de_model=de_model,
-                         alpha_tr_lo=alpha_tr_lo, W_damping=W_damping)
+                         q_tr_lo=q_tr_lo, W_damping=W_damping)
         Pell['ell0'] += 1.0/self.nbar
 
         if de_model is not None and volume is None:
@@ -2251,7 +2251,7 @@ class PTEmu:
 
         return cov
 
-    def chi2(self, obs_id, params, kmax, de_model=None, alpha_tr_lo=None,
+    def chi2(self, obs_id, params, kmax, de_model=None, q_tr_lo=None,
              W_damping=None, chi2_decomposition=False, ell_for_recon=None):
         r"""Compute the :math:`\chi^2 for the given configurations`.
 
@@ -2277,9 +2277,9 @@ class PTEmu:
             chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
             the standard cosmological parameters, or be left undefined to use
             only :math:`\sigma_{12}`. Defaults to **None**.
-        alpha_tr_lo: list or numpy.ndarray, optional
+        q_tr_lo: list or numpy.ndarray, optional
             List containing the user-provided AP parameters, in the form
-            :math:`(\alpha_\perp, \alpha_\parallel)`. If provided, prevents
+            :math:`(q_\perp, q_\parallel)`. If provided, prevents
             computation from correct formulas (ratios of angular diameter
             distances and expansion factors wrt to the corresponding quantities
             of the fiducial cosmology). Defaults to **None**.
@@ -2342,7 +2342,7 @@ class PTEmu:
             for oi in obs_id:
                 if self.data[oi].stat == 'powerspectrum':
                     Pell = self.Pell(self.data[oi].bins_kmax, params, ell[oi],
-                                     de_model=de_model, alpha_tr_lo=alpha_tr_lo,
+                                     de_model=de_model, q_tr_lo=q_tr_lo,
                                      W_damping=W_damping,
                                      ell_for_recon=ell_for_recon)
                     Pell_list = np.hstack([Pell[m] for m in Pell.keys()])
@@ -2390,7 +2390,7 @@ class PTEmu:
                         PX_ell = self.PX_ell(self.data[oi].bins_kmax,
                                              params, ell[oi], X,
                                              de_model=de_model,
-                                             alpha_tr_lo=alpha_tr_lo,
+                                             q_tr_lo=q_tr_lo,
                                              W_damping=W_damping,
                                              ell_for_recon=ell_for_recon)
                         PX_ell_list[:, i] = np.hstack([PX_ell[m] for m
