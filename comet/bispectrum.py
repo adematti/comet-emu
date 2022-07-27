@@ -527,24 +527,24 @@ class Bispectrum:
         self.tri_unique *= self.kfun
 
     def join_kernel_mu123_integral(self, K, n123_tuples, neff, coeff,
-                                   alpha_tr, alpha_lo):
+                                   q_tr, q_lo):
         K_neff1 = neff[self.tri_to_id]*self.kernels[K]
         K_neff2 = neff[self.tri_to_id[:,[1,2,0]]]*self.kernels[K]
         K_deriv_sum = np.sum([self.kernels['d{}_dlnk{}'.format(K,i+1)]
                               for i in range(3)])
         DeltaB_K = 0.0
         for i, n123 in enumerate(n123_tuples):
-            t1 = self.I[n123] * ((1.0 + (alpha_tr-alpha_lo)*sum(n123)) * \
+            t1 = self.I[n123] * ((1.0 + (q_tr-q_lo)*sum(n123)) * \
                                        self.kernels[K] \
-                                       + (1.0-alpha_tr) * K_deriv_sum \
-                                       + (1.0-alpha_tr) * (K_neff1 + K_neff2))
-            t2 = self.I[n123[0]+2,n123[1],n123[2]] * (alpha_tr - alpha_lo) \
+                                       + (1.0-q_tr) * K_deriv_sum \
+                                       + (1.0-q_tr) * (K_neff1 + K_neff2))
+            t2 = self.I[n123[0]+2,n123[1],n123[2]] * (q_tr - q_lo) \
                  * (self.kernels['d{}_dlnk1'.format(K)] + K_neff1 \
                     - n123[0]*self.kernels[K])
-            t3 = self.I[n123[0],n123[1]+2,n123[2]] * (alpha_tr - alpha_lo) \
+            t3 = self.I[n123[0],n123[1]+2,n123[2]] * (q_tr - q_lo) \
                  * (self.kernels['d{}_dlnk2'.format(K)] + K_neff2 \
                     - n123[1]*self.kernels[K])
-            t4 = self.I[n123[0],n123[1],n123[2]+2] * (alpha_tr - alpha_lo) \
+            t4 = self.I[n123[0],n123[1],n123[2]+2] * (q_tr - q_lo) \
                  * (self.kernels['d{}_dlnk3'.format(K)] \
                     - n123[2]*self.kernels[K])
             DeltaB_K += coeff[i] * (t1 + t2 + t3 + t4)
@@ -583,22 +583,22 @@ class Bispectrum:
 
                 kernel_F2 = 2*b1sq * self.join_kernel_mu123_integral(
                     'F2', tuples_list_1, neff, params_F2,
-                    params['alpha_tr'], params['alpha_lo'])
+                    params['q_tr'], params['q_lo'])
                 kernel_b2 = params['b1'] * self.join_kernel_mu123_integral(
                     'b2', tuples_list_1, neff, params_b2,
-                    params['alpha_tr'], params['alpha_lo'])
+                    params['q_tr'], params['q_lo'])
                 kernel_K = 2*params['b1'] * self.join_kernel_mu123_integral(
                     'K', tuples_list_1, neff, params_K,
-                    params['alpha_tr'], params['alpha_lo'])
+                    params['q_tr'], params['q_lo'])
                 kernel_G2 = 2*b1sq * self.join_kernel_mu123_integral(
                     'G2', tuples_list_2, neff, params_G2,
-                    params['alpha_tr'], params['alpha_lo'])
+                    params['q_tr'], params['q_lo'])
                 kernel_k31 = - self.join_kernel_mu123_integral(
                     'k31', tuples_list_k31, neff, params_mixed,
-                    params['alpha_tr'], params['alpha_lo'])
+                    params['q_tr'], params['q_lo'])
                 kernel_k32 = - self.join_kernel_mu123_integral(
                     'k32', tuples_list_k32, neff, params_mixed,
-                    params['alpha_tr'], params['alpha_lo'])
+                    params['q_tr'], params['q_lo'])
 
                 kernel[l] = kernel_F2 + kernel_b2 + kernel_K + kernel_G2 \
                             + kernel_k31 + kernel_k32
@@ -616,7 +616,7 @@ class Bispectrum:
                 kernel_stoch[2] = 2.5 * (3*kernel_stoch[2] - kernel_stoch[0])
 
         P2 = PL_dw[self.ki]*PL_dw[self.kj]
-        alpha6 = params['alpha_tr']**4 * params['alpha_lo']**2
+        q6 = params['q_tr']**4 * params['q_lo']**2
 
         Bell_dict = {}
         for l in ell:
@@ -626,6 +626,6 @@ class Bispectrum:
             if l == 0:
                 B_stoch += params['NB0']/self.nbar**2
 
-            Bell_dict['ell{}'.format(l)] = (B_SPT + B_stoch) / alpha6
+            Bell_dict['ell{}'.format(l)] = (B_SPT + B_stoch) / q6
 
         return Bell_dict

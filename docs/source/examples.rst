@@ -57,8 +57,8 @@ parameters.
 
   # For predictions using the RSD parameter space we also need to specify values for the following four parameters, e.g.
   params['s12']      = 0.6
-  params['alpha_lo'] = 1.1
-  params['alpha_tr'] = 0.9
+  params['q_lo'] = 1.1
+  params['q_tr'] = 0.9
   params['f']        = 0.7
 
   # Finally, the bias parameters: any parameters from {b1, b2, g2, g21, c0, c2, c4, cnlo, N0, N20, N22} can be specified.
@@ -101,7 +101,7 @@ values and plot the results:
   Pell_Mpc_1 = EFT.Pell(k_Mpc, params, ell=[0,2,4])
 
   # Now, let's add/change some parameter values and obtain a second set of predictions
-  params['alpha_tr'] = 1.2
+  params['q_tr'] = 1.2
   params['g2']       = -0.3
   params['c0']       = -4.
   params['cnlo']     = 6.
@@ -184,7 +184,7 @@ Let's check this is really the case:
 Using a specific cosmology parameter space
 ==============================================
 
-We don't have to specify parameters in terms of ``s12``, ``alpha_lo``, ``alpha_tr``
+We don't have to specify parameters in terms of ``s12``, ``q_lo``, ``q_tr``
 and ``f``, but instead we can provide the argument ``de_model`` in order to obtain
 predictions directly in terms of the corresponding cosmological parameters.
 Currently, ``de_model`` can either be ``lambda``, ``w0`` or ``w0wa``, in which cases
@@ -221,7 +221,7 @@ as above (remembering that the emulator is still configured in Mpc/h units):
 
   Pell_LCDM_hMpc_1 = EFT.Pell(k_hMpc, params, ell=[0,2,4], de_model='lambda') # E.g., this is for a flat LCDM cosmology
 
-This function call ignores the values of ``s12``, ``alpha_tr``, ``alpha_lo`` and ``f``
+This function call ignores the values of ``s12``, ``q_tr``, ``q_lo`` and ``f``
 in the parameter dictionary and instead converts the :math:``\Lambda CDM``
 parameters to the :math:`\sigma_{12}` parameter space. The internal values of
 those parameters (which can be accessed via ``EFT.params``) have therefore been
@@ -230,14 +230,14 @@ updated:
 
 ::
 
-  # s12, alpha_tr, alpha_lo and f are different now!
+  # s12, q_tr, q_lo and f are different now!
   >>> EFT.params
   {'wc': 0.11544,
  'wb': 0.0222191,
  'ns': 0.9632,
  's12': 0.5899231555066402,
- 'alpha_tr': 0.9351278483373812,
- 'alpha_lo': 0.907511539034901,
+ 'q_tr': 0.9351278483373812,
+ 'q_lo': 0.907511539034901,
  'f': 0.704307243777837,
  'b1': 2.0,
  'b2': -0.5,
@@ -258,12 +258,12 @@ updated:
  'z': 0.6}
 
 When using the function ``Pell`` for a specific cosmology model we can specify the
-additional argument ``alpha_tr_lo`` that sets the AP parameters explicitly. For
+additional argument ``q_tr_lo`` that sets the AP parameters explicitly. For
 example, if one intends to ignore AP distortions one can compute:
 
 ::
 
-  Pell_LCDM_hMpc_2 = EFT.Pell(k_hMpc, params, ell=[0,2,4], de_model='lambda', alpha_tr_lo=[1,1])
+  Pell_LCDM_hMpc_2 = EFT.Pell(k_hMpc, params, ell=[0,2,4], de_model='lambda', q_tr_lo=[1,1])
 
 ::
 
