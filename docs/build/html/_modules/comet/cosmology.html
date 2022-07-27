@@ -10,7 +10,7 @@
   <!--[if lt IE 9]>
     <script src="../../_static/js/html5shiv.min.js"></script>
   <![endif]-->
-
+  
         <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
         <script src="../../_static/jquery.js"></script>
         <script src="../../_static/underscore.js"></script>
@@ -19,10 +19,10 @@
         <script src="../../_static/twemoji.js"></script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
-    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
 </head>
 
-<body class="wy-body-for-nav">
+<body class="wy-body-for-nav"> 
   <div class="wy-grid-for-nav">
     <nav data-toggle="wy-nav-shift" class="wy-nav-side">
       <div class="wy-side-scroll">
@@ -40,13 +40,18 @@
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../Tutorial/example.html">Tutorials</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="../../Tutorial/example.html#quick-start">Quick-start</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../../Tutorial/example.html#in-depth-options-for-obtaining-multipoles">In-depth options for obtaining multipoles</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/example.html#an-alternative-dark-energy-model">An alternative Dark energy model.</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/example.html#the-f-sigma-12-parameter-space">The <span class="math notranslate nohighlight">\(f-\sigma_{12}\)</span> parameter space.</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/example.html#how-to-provide-different-k-scales">How to provide different k-scales.</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/example.html#speedup-when-changing-just-bias-parameters">Speedup when changing just bias parameters.</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../Tutorial/examples.html">Tutorials</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../Tutorial/examples.html#quick-start">Quick-start</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../Tutorial/examples.html#in-depth-options-for-obtaining-multipoles">In-depth options for obtaining multipoles</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#an-alternative-dark-energy-model">An alternative Dark energy model.</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#the-f-sigma-12-parameter-space">The <span class="math notranslate nohighlight">\(f-\sigma_{12}\)</span> parameter space.</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#how-to-provide-different-k-scales">How to provide different k-scales.</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#speedup-when-changing-just-bias-parameters">Speedup when changing just bias parameters.</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../Tutorial/examples.html#beyond-p-ell-predictions">Beyond <span class="math notranslate nohighlight">\(P_{\ell}\)</span> predictions.</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#computing-covariance-matrices">Computing covariance matrices</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#computing-the-chi-2">Computing the <span class="math notranslate nohighlight">\(\chi^2\)</span></a></li>
 </ul>
 </li>
 </ul>
@@ -99,7 +104,7 @@
 </div>
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
-
+             
   <h1>Source code for comet.cosmology</h1><div class="highlight"><pre>
 <span></span><span class="sd">&quot;&quot;&quot;Cosmology module.&quot;&quot;&quot;</span>
 
@@ -555,9 +560,9 @@
                 <span class="n">Dp</span> <span class="o">=</span> <span class="n">dic</span><span class="p">[</span><span class="s1">&#39;y&#39;</span><span class="p">][</span><span class="mi">1</span><span class="p">,</span> <span class="p">:]</span>
                 <span class="n">f</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float</span><span class="p">(</span><span class="n">a_eval</span><span class="o">*</span><span class="n">Dp</span><span class="o">/</span><span class="n">D</span><span class="p">)</span>
 
-                <span class="k">return</span> <span class="p">[</span><span class="n">D</span><span class="p">,</span> <span class="n">f</span><span class="p">]</span>
+                <span class="k">return</span> <span class="p">[</span><span class="n">D</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">f</span><span class="p">]</span>
             <span class="k">else</span><span class="p">:</span>
-                <span class="k">return</span> <span class="n">D</span>
+                <span class="k">return</span> <span class="n">D</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">de_model</span> <span class="o">==</span> <span class="s1">&#39;lambda&#39;</span><span class="p">:</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">flat</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">relspecies</span><span class="p">:</span>
@@ -663,7 +668,7 @@
   Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
     <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
     provided by <a href="https://readthedocs.org">Read the Docs</a>.
-
+   
 
 </footer>
         </div>
@@ -674,7 +679,7 @@
       jQuery(function () {
           SphinxRtdTheme.Navigation.enable(true);
       });
-  </script>
+  </script> 
 
 </body>
 </html>

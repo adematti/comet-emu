@@ -257,7 +257,7 @@ The :math:`f-\sigma_{12}` parameter space.
 .. container:: cell markdown
 
    The function called before ignores the values of ``s12``,
-   ``alpha_tr``, ``alpha_lo`` and ``f`` in the parameter dictionary and
+   ``q_tr``, ``q_lo`` and ``f`` in the parameter dictionary and
    instead converts the :math:`\Lambda`\ CDM parameters to the
    :math:`\sigma_{12}` parameter space. The internal values of those
    parameters (which can be accessed via ``EFT.params``) have therefore
@@ -267,7 +267,7 @@ The :math:`f-\sigma_{12}` parameter space.
 
    .. code:: python
 
-      # s12, alpha_tr, alpha_lo and f are computed internally!
+      # s12, q_tr, q_lo and f are computed internally!
       EFT.params
 
    .. container:: output execute_result
@@ -296,8 +296,8 @@ The :math:`f-\sigma_{12}` parameter space.
           'w0': -1.1,
           'wa': 0.1,
           'z': 0.6,
-          'alpha_tr': 1.0960392096062852,
-          'alpha_lo': 1.0718295294749038}
+          'q_tr': 1.0960392096062852,
+          'q_lo': 1.0718295294749038}
 
 .. container:: cell markdown
 
@@ -309,8 +309,8 @@ The :math:`f-\sigma_{12}` parameter space.
 
       # For predictions using the RSD parameter space we also need to specify values for the following four parameters, e.g.
       params['s12']      = 0.6
-      params['alpha_lo'] = 1.1
-      params['alpha_tr'] = 0.9
+      params['q_lo'] = 1.1
+      params['q_tr'] = 0.9
       params['f']        = 0.7
 
 .. container:: cell markdown
@@ -523,6 +523,19 @@ Computing covariance matrices
 
 .. container:: cell markdown
 
+   As a further extension, in the case when using measurements on a
+   cubic box along diferent line of sight an averaging them, we have
+   added the averaging corrections for the covariance. We have created
+   the flags ``avg_cov=False``, ``avg_los=3`` for the
+   ``Pell_covariance`` function, so that when you set the
+   ``avg_cov=True`` it by default will make the average along 3 axis,
+   but we have included the option to correct for averaging on only 2
+   directions. Note that this computation is quite slow since it
+   involves a different integral for each k-bin, maybe in the future it
+   can be optimised.
+
+.. container:: cell markdown
+
    For the :math:`\Lambda`\ CDM version, instead of providing a volume,
    we can provide minimum and maximum redshifts, ``zmin`` and ``zmax``,
    a sky fraction ``fsky``, and a volume scaling factor ``volfac`` (by
@@ -667,6 +680,89 @@ Computing the :math:`\chi^2`
 
          20.7 µs ± 470 ns per loop (mean ± std. dev. of 7 runs, 10000 loops each)
 
-.. container:: cell code
+Further features of the package
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-   .. code:: python
+ .. container:: cell markdown
+
+    .. rubric:: \
+       :name: further-features-of-the-package
+
+ .. container:: cell markdown
+
+    .. rubric:: the prediction of the linear matter power spectrum, with
+       or without application of infrared resummation (BAO damping)
+       :name: the-prediction-of-the-linear-matter-power-spectrum-with-or-without-application-of-infrared-resummation-bao-damping
+
+ .. container:: cell code
+
+    .. code:: python
+
+       PLO = EFT.Pdw(params=params, k=k_hMpc, de_model='lambda',)
+       PL = EFT.PL(params=params, k=k_hMpc, de_model='lambda',)
+
+ .. container:: cell code
+
+    .. code:: python
+
+       f = plt.figure(figsize=(10,5))
+       ax = f.add_subplot(111)
+
+       ax.semilogx(k_hMpc, PLO/PL,c='C0',ls='-')
+       ax.set_xlabel('$k$ [h/Mpc]',fontsize=15)
+       ax.set_ylabel(r'$P_{LO}(k)/P_{L}(k)$',fontsize=15)
+       plt.show()
+
+    .. container:: output display_data
+
+       .. image:: vertopal_83b93869a7aa46e5b70596e2b0c05533/4a1e74835b5f30c07fe09ca288df5d47dd3ffd78.png
+
+ .. container:: cell markdown
+
+    .. rubric:: the prediction of the real-space tree-level galaxy
+       bispectrum and the tree-level galaxy bispectrum multipoles in
+       redshift-space
+       :name: the-prediction-of-the-real-space-tree-level-galaxy-bispectrum-and-the-tree-level-galaxy-bispectrum-multipoles-in-redshift-space
+
+ .. container:: cell code
+
+    .. code:: python
+
+       tri =[]
+       for k1 in k_hMpc:
+           for k2 in k_hMpc:
+               for k3 in k_hMpc:
+                   if k1 >= k2 >=k3:
+                       tri.append([k1, k2, k3])
+       tri=np.asarray(tri)
+
+ .. container:: cell code
+
+    .. code:: python
+
+       Bell = EFT.Bell(tri, params=params, ell=[0,2,4], de_model='lambda')
+
+    .. container:: output stream stdout
+
+       ::
+
+          kfun not specified. Using kfun = 0.001
+
+ .. container:: cell code
+
+    .. code:: python
+
+       fig, axs = plt.subplots(3,1, figsize=(10,5), sharex=True,)
+
+       for i in range(3):
+           axs[i].semilogy(np.asarray(tri).T[0], Bell["ell"+str(2*i)],c='C'+str(2*i),ls='--')
+           axs[i].set_ylabel(f'$B_{i*2}(k)$',fontsize=15)
+
+       fig.tight_layout()
+       plt.subplots_adjust(wspace=0, hspace=0)
+       axs[-1].set_xlabel('$k$ [h/Mpc]',fontsize=15)
+       plt.show()
+
+    .. container:: output display_data
+
+       .. image:: vertopal_83b93869a7aa46e5b70596e2b0c05533/a8ed5461d1e99aa0c75c5d261c0c93422d986105.png

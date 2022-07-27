@@ -12,9 +12,9 @@ Welcome to COMET's documentation!
 ====================  =====
 **Contributors**:     Alex Eggemeier, Benjamin Camacho-Quevedo, Andrea Pezzotta,
                       Martin Crocce, Román Scoccimarro, Ariel Sánchez
-**Source**:           `Source code at GitLab <https://gitlab.com/aegge/pt-emulator/-/tree/main/notebooks>`_
-**Documentation**:    `Documentation at Readthedocs <https://gitlab.com/aegge/pt-emulator/-/tree/main/notebooks>`_
-**Installation**:     ``pip install comet``
+**Source**:           `Source code at GitLab <https://gitlab.com/aegge/comet-emu>`_
+**Documentation**:    `Documentation at Readthedocs <https://comet-emu.readthedocs.io/en/latest/>`_
+**Installation**:     ``pip install comet-emu``
 **References**:       `Sanchez 2020 <https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511>`_, `Sanchez et al. 2021 <https://arxiv.org/abs/2108.12710>`_,
 ====================  =====
 
@@ -65,7 +65,7 @@ Welcome to COMET's documentation!
 .. note::
   The COMET emulator is under constant development and new versions of the
   emulator become available as we improve them. Follow our `public repository
-  <https://gitlab.com/aegge/pt-emulator>`_ to make sure you are always up to
+  <https://gitlab.com/aegge/comet-emu>`_ to make sure you are always up to
   date with our latest release.
 
 .. toctree::
