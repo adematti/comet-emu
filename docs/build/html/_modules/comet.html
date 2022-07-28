@@ -6,6 +6,7 @@
   <title>comet &mdash; Comet 0.1 documentation</title>
       <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
       <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/twemoji.css" type="text/css" />
   <!--[if lt IE 9]>
     <script src="../_static/js/html5shiv.min.js"></script>
   <![endif]-->
@@ -14,6 +15,8 @@
         <script src="../_static/jquery.js"></script>
         <script src="../_static/underscore.js"></script>
         <script src="../_static/doctools.js"></script>
+        <script src="https://twemoji.maxcdn.com/v/latest/twemoji.min.js"></script>
+        <script src="../_static/twemoji.js"></script>
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" /> 
@@ -37,21 +40,51 @@
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="../examples.html#the-real-space-emulator">The Real space emulator</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../examples.html#id1">The Real space emulator</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../examples.html#id2">The Real space emulator</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Tutorial/examples.html">Tutorials</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../Tutorial/examples.html#quick-start">Quick-start</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../Tutorial/examples.html#in-depth-options-for-obtaining-multipoles">In-depth options for obtaining multipoles</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../Tutorial/examples.html#an-alternative-dark-energy-model">An alternative Dark energy model.</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../Tutorial/examples.html#the-f-sigma-12-parameter-space">The <span class="math notranslate nohighlight">\(f-\sigma_{12}\)</span> parameter space.</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../Tutorial/examples.html#how-to-provide-different-k-scales">How to provide different k-scales.</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../Tutorial/examples.html#speedup-when-changing-just-bias-parameters">Speedup when changing just bias parameters.</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../Tutorial/examples.html#beyond-p-ell-predictions">Beyond <span class="math notranslate nohighlight">\(P_{\ell}\)</span> predictions.</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../Tutorial/examples.html#computing-covariance-matrices">Computing covariance matrices</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../Tutorial/examples.html#computing-the-chi-2">Computing the <span class="math notranslate nohighlight">\(\chi^2\)</span></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../Tutorial/examples.html#further-features-of-the-package">Further features of the package</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../model.html">Model Description</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../model.html#real-space-matter-power-spectrum">Real-space matter power spectrum</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../model.html#real-space-galaxy-power-spectrum">Real-space galaxy power spectrum</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../model.html#redshift-space-galaxy-power-spectrum">Redshift-space galaxy power spectrum</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../model.html#legendre-multipoles-and-geometrical-distortions">Legendre multipoles and geometrical distortions</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../spaceparams.html">Parameter space</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../spaceparams.html#ranges-of-emulated-parameters">Ranges of emulated parameters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../spaceparams.html#cosmological-parameters">Cosmological parameters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../spaceparams.html#bias-parameters">Bias parameters</a></li>
 </ul>
 </li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Complete API:</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../modules.html">comet</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="../comet.html">comet.PTEmu</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../comet.html#module-comet.cosmology">comet.cosmology</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../comet.html#module-comet.data">comet.data</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../comet.html#module-comet.tables">comet.tables</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../comet.html#module-comet">Module contents</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../comet.html">comet package</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../comet.html#subpackages">Subpackages</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../comet.html#submodules">Submodules</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../comet.html#module-comet.PTEmu">comet.PTEmu module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../comet.html#module-comet.bispectrum">comet.bispectrum module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../comet.html#module-comet.cosmology">comet.cosmology module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../comet.html#module-comet.data">comet.data module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../comet.html#module-comet.tables">comet.tables module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../comet.html#module-comet">Module contents</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -81,9 +114,12 @@
            <div itemprop="articleBody">
              
   <h1>Source code for comet</h1><div class="highlight"><pre>
-<span></span><span class="kn">import</span> <span class="nn">os</span>
+<span></span><span class="sd">&quot;&quot;&quot;Init module.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">os</span>
 <span class="kn">from</span> <span class="nn">comet.PTEmu</span> <span class="kn">import</span> <span class="n">PTEmu</span> <span class="k">as</span> <span class="n">comet</span>
 <span class="n">base_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="vm">__file__</span><span class="p">))</span>
+
 
 <div class="viewcode-block" id="download_data"><a class="viewcode-back" href="../comet.html#comet.download_data">[docs]</a><span class="k">def</span> <span class="nf">download_data</span><span class="p">(</span><span class="n">download_dir</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
@@ -108,15 +144,17 @@
     <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">url</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">urls</span><span class="p">):</span>
 
         <span class="c1"># the download path</span>
-        <span class="c1">#filename = url.split(&#39;/&#39;)[-1]</span>
+        <span class="c1"># filename = url.split(&#39;/&#39;)[-1]</span>
         <span class="n">file_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">download_dir</span><span class="o">+</span><span class="s2">&quot;/data_dir&quot;</span><span class="p">,</span> <span class="n">filenames</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
         <span class="n">final_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">download_dir</span><span class="o">+</span><span class="s2">&quot;/data_dir&quot;</span><span class="p">,</span> <span class="n">out_filenames</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
 
         <span class="c1"># do not re-download</span>
 
         <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">final_path</span><span class="p">):</span>
-            <span class="k">if</span> <span class="n">i</span><span class="o">==</span><span class="mi">0</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2"> As it is the first instance of the emulator, we need to download some data, it can take a few seconds...</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">i</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2"> As it is the first instance of the emulator, &quot;</span>
+                      <span class="s2">&quot;we need to download some data, it can take a few &quot;</span>
+                      <span class="s2">&quot;seconds...</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
 
             <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Downloading </span><span class="si">%s</span><span class="s2">...</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">out_filenames</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
 
@@ -128,8 +166,7 @@
 
             <span class="c1"># unzip the file</span>
             <span class="n">shutil</span><span class="o">.</span><span class="n">unpack_archive</span><span class="p">(</span>
-            <span class="n">filename</span><span class="o">=</span><span class="n">file_path</span><span class="p">,</span> <span class="n">extract_dir</span><span class="o">=</span><span class="n">download_dir</span><span class="o">+</span><span class="s2">&quot;/data_dir&quot;</span>
-            <span class="p">)</span>
+                <span class="n">filename</span><span class="o">=</span><span class="n">file_path</span><span class="p">,</span> <span class="n">extract_dir</span><span class="o">=</span><span class="n">download_dir</span><span class="o">+</span><span class="s2">&quot;/data_dir&quot;</span><span class="p">)</span>
             <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span>
             <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Done.</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
@@ -139,7 +176,7 @@
 <span class="n">download_data</span><span class="p">(</span><span class="n">base_dir</span><span class="p">)</span>
 
 <span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
-    <span class="n">comet</span><span class="o">=</span><span class="n">comet</span><span class="p">()</span>
+    <span class="n">comet</span> <span class="o">=</span> <span class="n">comet</span><span class="p">()</span>
 </pre></div>
 
            </div>

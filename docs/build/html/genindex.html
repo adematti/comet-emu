@@ -75,6 +75,7 @@
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="modules.html">comet</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="comet.html">PTEmu</a></li>
+<li class="toctree-l2"><a class="reference internal" href="comet.html#module-comet.bispectrum">bispectrum</a></li>
 <li class="toctree-l2"><a class="reference internal" href="comet.html#module-comet.cosmology">cosmology</a></li>
 <li class="toctree-l2"><a class="reference internal" href="comet.html#module-comet.data">data</a></li>
 <li class="toctree-l2"><a class="reference internal" href="comet.html#module-comet.tables">tables</a></li>
@@ -114,9 +115,12 @@
  | <a href="#C"><strong>C</strong></a>
  | <a href="#D"><strong>D</strong></a>
  | <a href="#E"><strong>E</strong></a>
+ | <a href="#F"><strong>F</strong></a>
  | <a href="#G"><strong>G</strong></a>
  | <a href="#H"><strong>H</strong></a>
  | <a href="#I"><strong>I</strong></a>
+ | <a href="#J"><strong>J</strong></a>
+ | <a href="#K"><strong>K</strong></a>
  | <a href="#L"><strong>L</strong></a>
  | <a href="#M"><strong>M</strong></a>
  | <a href="#O"><strong>O</strong></a>
@@ -148,10 +152,16 @@
 <h2 id="B">B</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="comet.html#comet.PTEmu.PTEmu.Bell">Bell() (comet.PTEmu.PTEmu method)</a>
+      <li><a href="comet.html#comet.bispectrum.Bispectrum.Bell">Bell() (comet.bispectrum.Bispectrum method)</a>
+
+      <ul>
+        <li><a href="comet.html#comet.PTEmu.PTEmu.Bell">(comet.PTEmu.PTEmu method)</a>
 </li>
+      </ul></li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="comet.html#comet.bispectrum.Bispectrum">Bispectrum (class in comet.bispectrum)</a>
+</li>
       <li><a href="comet.html#comet.PTEmu.PTEmu.build_Pdw_spline">build_Pdw_spline() (comet.PTEmu.PTEmu method)</a>
 </li>
       <li><a href="comet.html#comet.PTEmu.PTEmu.build_Pell_spline">build_Pell_spline() (comet.PTEmu.PTEmu method)</a>
@@ -166,6 +176,13 @@
 </li>
       <li><a href="comet.html#comet.data.MeasuredData.clear_data">clear_data() (comet.data.MeasuredData method)</a>
 </li>
+      <li>
+    comet.bispectrum
+
+      <ul>
+        <li><a href="comet.html#module-comet.bispectrum">module</a>
+</li>
+      </ul></li>
       <li>
     comet.cosmology
 
@@ -207,6 +224,10 @@
 </li>
       <li><a href="comet.html#comet.cosmology.Cosmology.comoving_volume">comoving_volume() (comet.cosmology.Cosmology method)</a>
 </li>
+      <li><a href="comet.html#comet.bispectrum.Bispectrum.compute_kernels">compute_kernels() (comet.bispectrum.Bispectrum method)</a>
+</li>
+      <li><a href="comet.html#comet.bispectrum.Bispectrum.compute_mu123_integrals">compute_mu123_integrals() (comet.bispectrum.Bispectrum method)</a>
+</li>
       <li><a href="comet.html#comet.cosmology.Cosmology">Cosmology (class in comet.cosmology)</a>
 </li>
   </ul></td>
@@ -219,14 +240,22 @@
 </li>
       <li><a href="comet.html#comet.PTEmu.PTEmu.define_data_set">define_data_set() (comet.PTEmu.PTEmu method)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="comet.html#comet.PTEmu.PTEmu.define_fiducial_cosmology">define_fiducial_cosmology() (comet.PTEmu.PTEmu method)</a>
 </li>
-      <li><a href="comet.html#comet.PTEmu.PTEmu.define_nbar">define_nbar() (comet.PTEmu.PTEmu method)</a>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="comet.html#comet.bispectrum.Bispectrum.define_nbar">define_nbar() (comet.bispectrum.Bispectrum method)</a>
+
+      <ul>
+        <li><a href="comet.html#comet.PTEmu.PTEmu.define_nbar">(comet.PTEmu.PTEmu method)</a>
 </li>
-      <li><a href="comet.html#comet.PTEmu.PTEmu.define_units">define_units() (comet.PTEmu.PTEmu method)</a>
+      </ul></li>
+      <li><a href="comet.html#comet.bispectrum.Bispectrum.define_units">define_units() (comet.bispectrum.Bispectrum method)</a>
+
+      <ul>
+        <li><a href="comet.html#comet.PTEmu.PTEmu.define_units">(comet.PTEmu.PTEmu method)</a>
 </li>
+      </ul></li>
   </ul></td>
 </tr></table>
 
@@ -246,19 +275,31 @@
   </ul></td>
 </tr></table>
 
+<h2 id="F">F</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="comet.html#comet.bispectrum.Bispectrum.F2">F2() (comet.bispectrum.Bispectrum method)</a>
+</li>
+  </ul></td>
+</tr></table>
+
 <h2 id="G">G</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="comet.html#comet.bispectrum.Bispectrum.G2">G2() (comet.bispectrum.Bispectrum method)</a>
+</li>
       <li><a href="comet.html#comet.PTEmu.PTEmu.Gaussian_covariance">Gaussian_covariance() (comet.PTEmu.PTEmu method)</a>
+</li>
+      <li><a href="comet.html#comet.bispectrum.Bispectrum.generate_index_arrays">generate_index_arrays() (comet.bispectrum.Bispectrum method)</a>
 </li>
       <li><a href="comet.html#comet.PTEmu.PTEmu.get_bias_coeff">get_bias_coeff() (comet.PTEmu.PTEmu method)</a>
 </li>
       <li><a href="comet.html#comet.PTEmu.PTEmu.get_bias_coeff_for_chi2_decomposition">get_bias_coeff_for_chi2_decomposition() (comet.PTEmu.PTEmu method)</a>
 </li>
-      <li><a href="comet.html#comet.PTEmu.PTEmu.get_bias_coeff_for_P6">get_bias_coeff_for_P6() (comet.PTEmu.PTEmu method)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="comet.html#comet.PTEmu.PTEmu.get_bias_coeff_for_P6">get_bias_coeff_for_P6() (comet.PTEmu.PTEmu method)</a>
+</li>
       <li><a href="comet.html#comet.tables.Tables.get_flip_and_offset">get_flip_and_offset() (comet.tables.Tables method)</a>
 </li>
       <li><a href="comet.html#comet.data.MeasuredData.get_signal">get_signal() (comet.data.MeasuredData method)</a>
@@ -288,6 +329,28 @@
   </ul></td>
 </tr></table>
 
+<h2 id="J">J</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="comet.html#comet.bispectrum.Bispectrum.join_kernel_mu123_integral">join_kernel_mu123_integral() (comet.bispectrum.Bispectrum method)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="K">K</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="comet.html#comet.bispectrum.Bispectrum.K">K() (comet.bispectrum.Bispectrum method)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="comet.html#comet.bispectrum.Bispectrum.kernels_real_space">kernels_real_space() (comet.bispectrum.Bispectrum method)</a>
+</li>
+      <li><a href="comet.html#comet.bispectrum.Bispectrum.kernels_redshift_space">kernels_redshift_space() (comet.bispectrum.Bispectrum method)</a>
+</li>
+  </ul></td>
+</tr></table>
+
 <h2 id="L">L</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
@@ -309,6 +372,8 @@
     module
 
       <ul>
+        <li><a href="comet.html#module-comet.bispectrum">comet.bispectrum</a>
+</li>
         <li><a href="comet.html#module-comet.cosmology">comet.cosmology</a>
 </li>
         <li><a href="comet.html#module-comet.data">comet.data</a>
@@ -320,6 +385,10 @@
         <li><a href="comet.html#module-comet.tables">comet.tables</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="comet.html#comet.bispectrum.Bispectrum.mu123_integrals">mu123_integrals() (comet.bispectrum.Bispectrum method)</a>
+</li>
   </ul></td>
 </tr></table>
 
@@ -377,6 +446,8 @@
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="comet.html#comet.tables.Tables.set_param_ranges">set_param_ranges() (comet.tables.Tables method)</a>
+</li>
+      <li><a href="comet.html#comet.bispectrum.Bispectrum.set_tri">set_tri() (comet.bispectrum.Bispectrum method)</a>
 </li>
   </ul></td>
 </tr></table>

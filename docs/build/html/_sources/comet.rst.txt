@@ -6,6 +6,14 @@ PTEmu
    :undoc-members:
    :show-inheritance:
 
+bispectrum
+-----------------------
+
+.. automodule:: comet.bispectrum
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 cosmology
 ----------------------
 

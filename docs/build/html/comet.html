@@ -55,6 +55,7 @@
 <li class="toctree-l2"><a class="reference internal" href="Tutorial/examples.html#beyond-p-ell-predictions">Beyond <span class="math notranslate nohighlight">\(P_{\ell}\)</span> predictions.</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#computing-covariance-matrices">Computing covariance matrices</a></li>
 <li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#computing-the-chi-2">Computing the <span class="math notranslate nohighlight">\(\chi^2\)</span></a></li>
+<li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#further-features-of-the-package">Further features of the package</a></li>
 </ul>
 </li>
 </ul>
@@ -77,6 +78,7 @@
 <ul class="current">
 <li class="toctree-l1 current"><a class="reference internal" href="modules.html">comet</a><ul class="current">
 <li class="toctree-l2 current"><a class="current reference internal" href="#">PTEmu</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#module-comet.bispectrum">bispectrum</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#module-comet.cosmology">cosmology</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#module-comet.data">data</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#module-comet.tables">tables</a></li>
@@ -1223,6 +1225,291 @@ reconstruction. Defaults to <strong>None</strong>.</p></li>
 </dd>
 </dl>
 </dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-comet.bispectrum">
+<span id="bispectrum"></span><h1>bispectrum<a class="headerlink" href="#module-comet.bispectrum" title="Permalink to this headline"></a></h1>
+<p>Bispectrum module.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="comet.bispectrum.Bispectrum">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">comet.bispectrum.</span></span><span class="sig-name descname"><span class="pre">Bispectrum</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">real_space</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_Mpc</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/bispectrum.html#Bispectrum"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.bispectrum.Bispectrum" title="Permalink to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.10)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Main class for the emulator of the bispectrum multipoles.</p>
+<p>Class constructor</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>real_space</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.10)"><em>bool</em></a>) – Flag that determines if the model bispectrum is computed in real-
+(<strong>False</strong>) or redshift-space (<strong>True</strong>).</p></li>
+<li><p><strong>use_Mpc</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.10)"><em>bool</em></a>) – Flag that determines if the input and output quantities are
+specified in <span class="math notranslate nohighlight">\(\mathrm{Mpc}\)</span> (<strong>True</strong>) or
+<span class="math notranslate nohighlight">\(h^{-1}\mathrm{Mpc}\)</span> (<strong>False</strong>) units. Defaults to <strong>True</strong>.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="comet.bispectrum.Bispectrum.define_units">
+<span class="sig-name descname"><span class="pre">define_units</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">use_Mpc</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/bispectrum.html#Bispectrum.define_units"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.bispectrum.Bispectrum.define_units" title="Permalink to this definition"></a></dt>
+<dd><p>Define units for the bispectrum.</p>
+<p>Sets the internal class attribute <strong>use_Mpc</strong>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>use_Mpc</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.10)"><em>bool</em></a>) – Flag that determines if the input and output quantities are
+specified in <span class="math notranslate nohighlight">\(\mathrm{Mpc}\)</span> (<strong>True</strong>) or
+<span class="math notranslate nohighlight">\(h^{-1}\,\mathrm{Mpc}\)</span> (<strong>False</strong>) units.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="comet.bispectrum.Bispectrum.define_nbar">
+<span class="sig-name descname"><span class="pre">define_nbar</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">nbar</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/bispectrum.html#Bispectrum.define_nbar"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.bispectrum.Bispectrum.define_nbar" title="Permalink to this definition"></a></dt>
+<dd><p>Define the number density of the sample.</p>
+<p>Sets the internal class attribute <strong>nbar</strong> to the value provided as
+input. The latter is intended to be in the set of units currently used
+by the emulator, that can be specified at class instanciation, or using
+the method <strong>define_units</strong>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>nbar</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a>) – Number density of the sample, in units of
+<span class="math notranslate nohighlight">\(\mathrm{Mpc}^{-3}\)</span> or <span class="math notranslate nohighlight">\(h^3\,\mathrm{Mpc}^{-3}\)</span>,
+depending on the value of the class attribute <strong>use_Mpc</strong>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="comet.bispectrum.Bispectrum.set_tri">
+<span class="sig-name descname"><span class="pre">set_tri</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tri</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kfun</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/bispectrum.html#Bispectrum.set_tri"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.bispectrum.Bispectrum.set_tri" title="Permalink to this definition"></a></dt>
+<dd><p>Define triangular configurations and compute kernels.</p>
+<p>Reads the list of triangular configurations and the request fundamental
+frequency, and sotres them into class attributes. Additionaly computes
+the necessary kernels (and the angular integrals if working in
+redshift-space).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>tri</strong> – List of triangular configurations.</p></li>
+<li><p><strong>kfun</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a>) – Fundamental frequency.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="comet.bispectrum.Bispectrum.F2">
+<span class="sig-name descname"><span class="pre">F2</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">k1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k3</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/bispectrum.html#Bispectrum.F2"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.bispectrum.Bispectrum.F2" title="Permalink to this definition"></a></dt>
+<dd><p>Compute the second-order density kernel.</p>
+<p>Computes the second order density kernel <span class="math notranslate nohighlight">\(F_2\)</span> on the triangular
+configuration defined by the input wavemodes <span class="math notranslate nohighlight">\((k_1,k_2,k_3)\)</span>,
+using the angle between <span class="math notranslate nohighlight">\(k_1\)</span> and <span class="math notranslate nohighlight">\(k_2\)</span>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>k1</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a>) – Wavemode <span class="math notranslate nohighlight">\(k_1\)</span>.</p></li>
+<li><p><strong>k2</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a>) – Wavemode <span class="math notranslate nohighlight">\(k_2\)</span>.</p></li>
+<li><p><strong>k3</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a>) – Wavemode <span class="math notranslate nohighlight">\(k_3\)</span>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>F2</strong> – Second-order density kernel <span class="math notranslate nohighlight">\(F_2\)</span> between the wavemodes
+<span class="math notranslate nohighlight">\(k_1\)</span> and <span class="math notranslate nohighlight">\(k_2\)</span>.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="comet.bispectrum.Bispectrum.G2">
+<span class="sig-name descname"><span class="pre">G2</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">k1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k3</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/bispectrum.html#Bispectrum.G2"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.bispectrum.Bispectrum.G2" title="Permalink to this definition"></a></dt>
+<dd><p>Compute the second-order velocity divergence kernel.</p>
+<p>Computes the second order velocity divergence kernel <span class="math notranslate nohighlight">\(G_2\)</span> on
+the triangular configuration defined by the input wavemodes
+<span class="math notranslate nohighlight">\((k_1,k_2,k_3)\)</span>, using the angle between <span class="math notranslate nohighlight">\(k_1\)</span> and
+<span class="math notranslate nohighlight">\(k_2\)</span>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>k1</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a>) – Wavemode <span class="math notranslate nohighlight">\(k_1\)</span>.</p></li>
+<li><p><strong>k2</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a>) – Wavemode <span class="math notranslate nohighlight">\(k_2\)</span>.</p></li>
+<li><p><strong>k3</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a>) – Wavemode <span class="math notranslate nohighlight">\(k_3\)</span>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>G2</strong> – Second-order velocity divergence kernel <span class="math notranslate nohighlight">\(G_2\)</span> between the
+wavemodes <span class="math notranslate nohighlight">\(k_1\)</span> and <span class="math notranslate nohighlight">\(k_2\)</span>.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="comet.bispectrum.Bispectrum.K">
+<span class="sig-name descname"><span class="pre">K</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">k1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k3</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/bispectrum.html#Bispectrum.K"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.bispectrum.Bispectrum.K" title="Permalink to this definition"></a></dt>
+<dd><p>Compute the Fourier-space kernel of the second-order Galileon.</p>
+<p>Computes the Fourier-space kernel of the second-order Galileon
+<span class="math notranslate nohighlight">\(K\)</span> on the triangular configuration defined by the input
+wavemodes <span class="math notranslate nohighlight">\((k_1,k_2,k_3)\)</span>, using the angle between <span class="math notranslate nohighlight">\(k_1\)</span>
+and <span class="math notranslate nohighlight">\(k_2\)</span>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>k1</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a>) – Wavemode <span class="math notranslate nohighlight">\(k_1\)</span>.</p></li>
+<li><p><strong>k2</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a>) – Wavemode <span class="math notranslate nohighlight">\(k_2\)</span>.</p></li>
+<li><p><strong>k3</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a>) – Wavemode <span class="math notranslate nohighlight">\(k_3\)</span>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>K</strong> – Fourier-space kernel of the second-order Galileon <span class="math notranslate nohighlight">\(K\)</span>
+between the wavemodes <span class="math notranslate nohighlight">\(k_1\)</span> and <span class="math notranslate nohighlight">\(k_2\)</span>.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="comet.bispectrum.Bispectrum.kernels_real_space">
+<span class="sig-name descname"><span class="pre">kernels_real_space</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">k1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k3</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/bispectrum.html#Bispectrum.kernels_real_space"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.bispectrum.Bispectrum.kernels_real_space" title="Permalink to this definition"></a></dt>
+<dd><p>Compute the kernels for the real-space bispectrum.</p>
+<p>Computes the kernels required for the real-space bispectrum, and
+returns them in a dictionary format. This includes only the
+second-order density kernel <span class="math notranslate nohighlight">\(F_2\)</span> and the Fourier-space kernel
+of the second-order galileon <span class="math notranslate nohighlight">\(K\)</span></p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>k1</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a>) – Wavemode <span class="math notranslate nohighlight">\(k_1\)</span>.</p></li>
+<li><p><strong>k2</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a>) – Wavemode <span class="math notranslate nohighlight">\(k_2\)</span>.</p></li>
+<li><p><strong>k3</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a>) – Wavemode <span class="math notranslate nohighlight">\(k_3\)</span>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>kernels</strong> – Dictionary containing the kernels required to model the real-space
+bispectrum.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.10)">dict</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="comet.bispectrum.Bispectrum.kernels_redshift_space">
+<span class="sig-name descname"><span class="pre">kernels_redshift_space</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">k1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k3</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/bispectrum.html#Bispectrum.kernels_redshift_space"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.bispectrum.Bispectrum.kernels_redshift_space" title="Permalink to this definition"></a></dt>
+<dd><p>Compute the kernels for the redshift-space bispectrum.</p>
+<p>Computes the kernels required for the redshift-space bispectrum, and
+returns them in a dictionary format. This includes the second-order
+density and velocity divergence kernels, <span class="math notranslate nohighlight">\(F_2\)</span> and <span class="math notranslate nohighlight">\(G_2\)</span>,
+the Fourier-space kernel of the second-order galileon <span class="math notranslate nohighlight">\(K\)</span>, the
+ratios of <span class="math notranslate nohighlight">\(k_3\)</span> to the other two wavemodes, and the logarithmic
+derivatives of the previous kernels with respect to <span class="math notranslate nohighlight">\(k_1\)</span>,
+<span class="math notranslate nohighlight">\(k_2\)</span> and <span class="math notranslate nohighlight">\(k_3\)</span>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>k1</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a>) – Wavemode <span class="math notranslate nohighlight">\(k_1\)</span>.</p></li>
+<li><p><strong>k2</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a>) – Wavemode <span class="math notranslate nohighlight">\(k_2\)</span>.</p></li>
+<li><p><strong>k3</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a>) – Wavemode <span class="math notranslate nohighlight">\(k_3\)</span>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>kernels</strong> – Dictionary containing the kernels required to model the
+redshift-space bispectrum.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.10)">dict</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="comet.bispectrum.Bispectrum.mu123_integrals">
+<span class="sig-name descname"><span class="pre">mu123_integrals</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n3</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k3</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/bispectrum.html#Bispectrum.mu123_integrals"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.bispectrum.Bispectrum.mu123_integrals" title="Permalink to this definition"></a></dt>
+<dd><p>Angular integration.</p>
+<p>Computes the integral</p>
+<div class="math notranslate nohighlight">
+\[\frac{1}/{4\pi} \int {\rm{d}}\mu \int {\rm{d}}\phi \
+\mu_1^{n_1}\mu_2^{n_2}\mu_3^{n_3},\]</div>
+<p>where</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}\begin{flalign*}
+    &amp; \mu_1 = \mu, \\
+    &amp; \mu_2 = \mu\nu - \sqrt(1-\mu^2)\sqrt(1-\nu^2)\cos(\phi), \\
+    &amp; \mu_3 = -\frac{k_1}{k_3}\mu_1 - \frac{k_2}{k_3}\mu_2,
+\end{flalign*}\end{split}\]</div>
+<p>and <span class="math notranslate nohighlight">\(\mu_n\)</span> is the cosinus of the angle bewteen the wavemode
+<span class="math notranslate nohighlight">\(k_n\)</span> and the line of sight, and <span class="math notranslate nohighlight">\(\nu\)</span> is the cosinus of
+the angle between <span class="math notranslate nohighlight">\(k_1\)</span> and <span class="math notranslate nohighlight">\(k_2\)</span>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n1</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><em>int</em></a>) – Power of wavemode <span class="math notranslate nohighlight">\(k_1\)</span>.</p></li>
+<li><p><strong>n2</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><em>int</em></a>) – Power of wavemode <span class="math notranslate nohighlight">\(k_2\)</span>.</p></li>
+<li><p><strong>n3</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><em>int</em></a>) – Power of wavemode <span class="math notranslate nohighlight">\(k_3\)</span>.</p></li>
+<li><p><strong>k1</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a>) – Wavemode <span class="math notranslate nohighlight">\(k_1\)</span>.</p></li>
+<li><p><strong>k2</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a>) – Wavemode <span class="math notranslate nohighlight">\(k_2\)</span>.</p></li>
+<li><p><strong>k3</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><em>float</em></a>) – Wavemode <span class="math notranslate nohighlight">\(k_3\)</span>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>I</strong> – Angular integration of the different powers of the input angles.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="comet.bispectrum.Bispectrum.compute_kernels">
+<span class="sig-name descname"><span class="pre">compute_kernels</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/bispectrum.html#Bispectrum.compute_kernels"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.bispectrum.Bispectrum.compute_kernels" title="Permalink to this definition"></a></dt>
+<dd><p>Compute kernels for all triangle configurations.</p>
+<p>Computes the kernels for the various triangle configurations, by
+calling the corresponding class method (depending if the model is
+in real- or redshift-space), and stores them into a class attribute.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="comet.bispectrum.Bispectrum.compute_mu123_integrals">
+<span class="sig-name descname"><span class="pre">compute_mu123_integrals</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/bispectrum.html#Bispectrum.compute_mu123_integrals"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.bispectrum.Bispectrum.compute_mu123_integrals" title="Permalink to this definition"></a></dt>
+<dd><p>Compute angular integrals for all triangle configurations.</p>
+<p>Computes the angular integrals for the various triangle configurations,
+by calling the class method <strong>mu123_integrals</strong>, and stores them into
+a class attribute.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="comet.bispectrum.Bispectrum.generate_index_arrays">
+<span class="sig-name descname"><span class="pre">generate_index_arrays</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">round_decimals</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/bispectrum.html#Bispectrum.generate_index_arrays"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.bispectrum.Bispectrum.generate_index_arrays" title="Permalink to this definition"></a></dt>
+<dd><p>Generate arrays of indeces of triangular configurations.</p>
+<p>Determines the unique wavemode bins in the triangle configurations,
+approximating them to the ratio with respect to a given fundamental
+frequency.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>round_decimals</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><em>int</em></a><em>, </em><em>optional</em>) – Number of decimal digits used in the approximation of the ratios
+with respect to the fundamental frequency. Deafults to 2.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="comet.bispectrum.Bispectrum.join_kernel_mu123_integral">
+<span class="sig-name descname"><span class="pre">join_kernel_mu123_integral</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">K</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n123_tuples</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">neff</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">coeff</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">q_tr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">q_lo</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/bispectrum.html#Bispectrum.join_kernel_mu123_integral"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.bispectrum.Bispectrum.join_kernel_mu123_integral" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="comet.bispectrum.Bispectrum.Bell">
+<span class="sig-name descname"><span class="pre">Bell</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">PL_dw</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">neff</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ell</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[0]</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/comet/bispectrum.html#Bispectrum.Bell"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#comet.bispectrum.Bispectrum.Bell" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
 
 </dd></dl>
 
