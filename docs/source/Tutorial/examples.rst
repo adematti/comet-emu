@@ -688,81 +688,81 @@ Further features of the package
     .. rubric:: \
        :name: further-features-of-the-package
 
- .. container:: cell markdown
+.. container:: cell markdown
 
-    .. rubric:: the prediction of the linear matter power spectrum, with
-       or without application of infrared resummation (BAO damping)
-       :name: the-prediction-of-the-linear-matter-power-spectrum-with-or-without-application-of-infrared-resummation-bao-damping
+  .. rubric:: the prediction of the linear matter power spectrum, with
+     or without application of infrared resummation (BAO damping)
+     :name: the-prediction-of-the-linear-matter-power-spectrum-with-or-without-application-of-infrared-resummation-bao-damping
 
- .. container:: cell code
+.. container:: cell code
 
-    .. code:: python
+  .. code:: python
 
-       PLO = EFT.Pdw(params=params, k=k_hMpc, de_model='lambda',)
-       PL = EFT.PL(params=params, k=k_hMpc, de_model='lambda',)
+     PLO = EFT.Pdw(params=params, k=k_hMpc, de_model='lambda',)
+     PL = EFT.PL(params=params, k=k_hMpc, de_model='lambda',)
 
- .. container:: cell code
+.. container:: cell code
 
-    .. code:: python
+  .. code:: python
 
-       f = plt.figure(figsize=(10,5))
-       ax = f.add_subplot(111)
+     f = plt.figure(figsize=(10,5))
+     ax = f.add_subplot(111)
 
-       ax.semilogx(k_hMpc, PLO/PL,c='C0',ls='-')
-       ax.set_xlabel('$k$ [h/Mpc]',fontsize=15)
-       ax.set_ylabel(r'$P_{LO}(k)/P_{L}(k)$',fontsize=15)
-       plt.show()
+     ax.semilogx(k_hMpc, PLO/PL,c='C0',ls='-')
+     ax.set_xlabel('$k$ [h/Mpc]',fontsize=15)
+     ax.set_ylabel(r'$P_{LO}(k)/P_{L}(k)$',fontsize=15)
+     plt.show()
 
-    .. container:: output display_data
+  .. container:: output display_data
 
-       .. image:: vertopal_83b93869a7aa46e5b70596e2b0c05533/4a1e74835b5f30c07fe09ca288df5d47dd3ffd78.png
+     .. image:: vertopal_c56978800f1947cca8ee540f20f66295/4a1e74835b5f30c07fe09ca288df5d47dd3ffd78.png
 
- .. container:: cell markdown
+.. container:: cell markdown
 
-    .. rubric:: the prediction of the real-space tree-level galaxy
-       bispectrum and the tree-level galaxy bispectrum multipoles in
-       redshift-space
-       :name: the-prediction-of-the-real-space-tree-level-galaxy-bispectrum-and-the-tree-level-galaxy-bispectrum-multipoles-in-redshift-space
+  .. rubric:: the prediction of the real-space tree-level galaxy
+     bispectrum and the tree-level galaxy bispectrum multipoles in
+     redshift-space
+     :name: the-prediction-of-the-real-space-tree-level-galaxy-bispectrum-and-the-tree-level-galaxy-bispectrum-multipoles-in-redshift-space
 
- .. container:: cell code
+.. container:: cell code
 
-    .. code:: python
+  .. code:: python
 
-       tri =[]
-       for k1 in k_hMpc:
-           for k2 in k_hMpc:
-               for k3 in k_hMpc:
-                   if k1 >= k2 >=k3:
-                       tri.append([k1, k2, k3])
-       tri=np.asarray(tri)
+     tri =[]
+     for k1 in k_hMpc:
+         for k2 in k_hMpc:
+             for k3 in k_hMpc:
+                 if k1 >= k2 >=k3:
+                     tri.append([k1, k2, k3])
+     tri=np.asarray(tri)
 
- .. container:: cell code
+.. container:: cell code
 
-    .. code:: python
+  .. code:: python
 
-       Bell = EFT.Bell(tri, params=params, ell=[0,2,4], de_model='lambda')
+     Bell = EFT.Bell(tri, params=params, ell=[0,2,4], de_model='lambda')
 
-    .. container:: output stream stdout
+  .. container:: output stream stdout
 
-       ::
+     ::
 
-          kfun not specified. Using kfun = 0.001
+        kfun not specified. Using kfun = 0.001
 
- .. container:: cell code
+.. container:: cell code
 
-    .. code:: python
+  .. code:: python
 
-       fig, axs = plt.subplots(3,1, figsize=(10,5), sharex=True,)
+     fig, axs = plt.subplots(3,1, figsize=(10,5), sharex=True,)
+     #x_axis = tri = np.arange(tri.shape[0])
+     for i in range(3):
+         axs[i].semilogy(np.arange(tri.shape[0]), Bell["ell"+str(2*i)],c='C'+str(2*i),ls='--')
+         axs[i].set_ylabel(f'$B_{i*2}(k)$',fontsize=15)
 
-       for i in range(3):
-           axs[i].semilogy(np.asarray(tri).T[0], Bell["ell"+str(2*i)],c='C'+str(2*i),ls='--')
-           axs[i].set_ylabel(f'$B_{i*2}(k)$',fontsize=15)
+     fig.tight_layout()
+     plt.subplots_adjust(wspace=0, hspace=0)
+     axs[-1].set_xlabel('Triangle index - $k$ [h/Mpc]',fontsize=15)
+     plt.show()
 
-       fig.tight_layout()
-       plt.subplots_adjust(wspace=0, hspace=0)
-       axs[-1].set_xlabel('$k$ [h/Mpc]',fontsize=15)
-       plt.show()
+  .. container:: output display_data
 
-    .. container:: output display_data
-
-       .. image:: vertopal_83b93869a7aa46e5b70596e2b0c05533/a8ed5461d1e99aa0c75c5d261c0c93422d986105.png
+     .. image:: vertopal_c56978800f1947cca8ee540f20f66295/d9b7b299376e57aaa95e6ea8e276fc34c3918ce8.png
