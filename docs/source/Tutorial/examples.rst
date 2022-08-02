@@ -14,7 +14,7 @@ Quick-start
    In this tutorial we will show
 
    -  How to initialise the emulator.
-   -  How to obtain multipoles for the standard :math:`\Lambda`CDM
+   -  How to obtain multipoles for the standard :math:`\Lambda`\ CDM
       cosmology.
 
 .. container:: cell markdown
@@ -168,7 +168,8 @@ Quick-start
 
    .. container:: output display_data
 
-      .. image:: vertopal_6b101e0129fa46319571b7b03d7c7f71/89648b9b95f5070142015408254706e662deeb9b.png
+      .. image:: vertopal_3711143d19e0467e9ab9ccde543f54cd/89648b9b95f5070142015408254706e662deeb9b.png
+
 
 
 Exploring a few in-depth options
@@ -192,6 +193,7 @@ Exploring a few in-depth options
       np.array vs list and the corresponding outputs
    -  Description of the ``fixed_cosmo_boost`` function, i.e., speedup
       when just changing bias parameters
+
 
 Fiducial background cosmologies
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -233,9 +235,13 @@ Fiducial background cosmologies
    to set the fiducial cosmological parameter values. It cannot be used
    to set default parameter values for the evaluation of the model.
 
+
+Alcock-Paczynski parameters
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 .. container:: cell markdown
 
-   .. rubric:: Alcock-Paczynski parameters
+   .. rubric:: \
       :name: alcock-paczynski-parameters
 
 .. container:: cell markdown
@@ -261,9 +267,13 @@ Fiducial background cosmologies
    This can be useful when one would like to ignore Alcock-Paczynski
    distortions.
 
+
+Shot noise normalisation
+^^^^^^^^^^^^^^^^^^^^^^^^
+
 .. container:: cell markdown
 
-   .. rubric:: Shot noise normalisation
+   .. rubric:: \
       :name: shot-noise-normalisation
 
 .. container:: cell markdown
@@ -288,9 +298,14 @@ Fiducial background cosmologies
    In this case ``NP0`` is dimensionless, while ``NP20`` and ``NP22``
    have dimension :math:`L^2`.
 
+
+
+Non-flat and non-:math:`\Lambda` cosmologies
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 .. container:: cell markdown
 
-   .. rubric:: Non-flat and non-:math:`\Lambda` cosmologies
+   .. rubric:: \
       :name: non-flat-and-non-lambda-cosmologies
 
 .. container:: cell markdown
@@ -354,7 +369,12 @@ Fiducial background cosmologies
 
    .. container:: output display_data
 
-      .. image:: vertopal_6b101e0129fa46319571b7b03d7c7f71/0679e37f0d1a6ffb5045d4970263461a19a3cb56.png
+      .. image:: vertopal_3711143d19e0467e9ab9ccde543f54cd/0679e37f0d1a6ffb5045d4970263461a19a3cb56.png
+
+
+
+The :math:`f`-:math:`\sigma_{12}` parameter space
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. container:: cell markdown
 
@@ -458,11 +478,16 @@ Fiducial background cosmologies
 
    .. container:: output display_data
 
-      .. image:: vertopal_6b101e0129fa46319571b7b03d7c7f71/e48eee58e266daddc52fd930ded8589f754786c7.png
+      .. image:: vertopal_3711143d19e0467e9ab9ccde543f54cd/e48eee58e266daddc52fd930ded8589f754786c7.png
+
+
+
+Providing different :math:`k`-scales
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. container:: cell markdown
 
-   .. rubric:: Providing different :math:`k`-scales
+   .. rubric:: \
       :name: providing-different-k-scales
 
 .. container:: cell markdown
@@ -535,10 +560,14 @@ Fiducial background cosmologies
    and scales via the same function call (i.e., avoid calling ``Pell``
    for individual wavemodes).
 
+
+Speed-up for fixed cosmological parameters
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 .. container:: cell markdown
 
-   .. rubric:: Speedup when changing just bias parameters.
-      :name: speedup-when-changing-just-bias-parameters
+   .. rubric:: \
+      :name: speed-up-for-fixed-cosmological-parameters
 
 .. container:: cell markdown
 
@@ -581,6 +610,11 @@ Fiducial background cosmologies
    takes more time than the direct evaluation of the multipoles, this is
    really only useful at fixed cosmological parameters.*
 
+
+
+Beyond :math:`P_{\ell}` predictions
+-----------------------------------
+
 .. container:: cell markdown
 
    .. rubric:: Beyond :math:`P_{\ell}` predictions
@@ -594,6 +628,60 @@ Fiducial background cosmologies
    -  The linear power spectrum, with and without infra-red resummation
    -  The Gaussian covariance matrix for the power spectrum multipoles
    -  The tree-level bispectrum multipoles
+
+
+Linear power spectrum
+^^^^^^^^^^^^^^^^^^^^^
+
+.. container:: cell markdown
+
+   .. rubric:: \
+      :name: linear-power-spectrum
+
+.. container:: cell markdown
+
+   The linear power spectrum (no infra-red resummation; simply the
+   emulated CAMB output) can be obtained from the function ``PL``, while
+   the linear power spectrum with damped BAO wiggles (infra-red
+   resummation) can be obtained from the function ``Pdw`` (note: this is
+   not the smooth, no-wiggle power spectrum). The arguments are
+   identical to those of ``Pell`` with the exception that we no longer
+   need to specify a multipole number.
+
+.. container:: cell code
+
+   .. code:: python
+
+      k = np.logspace(-3,np.log10(0.4),300)
+      Pdw = EFT.Pdw(params=params, k=k, de_model='lambda')
+      PL = EFT.PL(params=params, k=k, de_model='lambda')
+
+.. container:: cell markdown
+
+   Let's plot the ratio of the de-wiggled linear power spectrum over the
+   linear power spectrum:
+
+.. container:: cell code
+
+   .. code:: python
+
+      f = plt.figure(figsize=(10,5))
+      ax = f.add_subplot(111)
+      ax.semilogx(k, Pdw/PL,c='C0',ls='-')
+      ax.set_xlabel('$k$ [h/Mpc]',fontsize=15)
+      ax.set_ylabel(r'$P_{\rm dw}(k)/P_{L}(k)$',fontsize=15)
+      plt.show()
+
+   .. container:: output display_data
+
+      .. image:: vertopal_3711143d19e0467e9ab9ccde543f54cd/49bb254d3fecaa462ffc7c16a29ae17ba82739fc.png
+
+   -  The linear power spectrum, with and without infra-red resummation
+   -  The Gaussian covariance matrix for the power spectrum multipoles
+   -  The tree-level bispectrum multipoles
+
+Computing covariance matrices
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. container:: cell markdown
 
@@ -682,7 +770,7 @@ Fiducial background cosmologies
 
    .. container:: output display_data
 
-      .. image:: vertopal_6b101e0129fa46319571b7b03d7c7f71/8e335c39dd7a3d70f8316089513eab5974b9c70f.png
+      .. image:: vertopal_3711143d19e0467e9ab9ccde543f54cd/8e335c39dd7a3d70f8316089513eab5974b9c70f.png
 
 .. container:: cell markdown
 
@@ -731,9 +819,14 @@ Fiducial background cosmologies
    computation is quite slow since it involves a different integral for
    each k-bin, it may be optimised in the future.
 
+
+
+Tree-level bispectrum
+^^^^^^^^^^^^^^^^^^^^^
+
 .. container:: cell markdown
 
-   .. rubric:: Tree-level bispectrum
+   .. rubric:: \
       :name: tree-level-bispectrum
 
 .. container:: cell markdown
@@ -807,83 +900,143 @@ Fiducial background cosmologies
 
    .. container:: output display_data
 
-      .. image:: vertopal_6b101e0129fa46319571b7b03d7c7f71/1c440416d098ef616f1419cc1e57d9172eac53b0.png
+      .. image:: vertopal_3711143d19e0467e9ab9ccde543f54cd/1c440416d098ef616f1419cc1e57d9172eac53b0.png
+
+
+
+Working with data sets
+----------------------
 
 .. container:: cell markdown
 
-   .. rubric:: Working with data sets
+   .. rubric:: \
       :name: working-with-data-sets
 
+
+Loading data
+^^^^^^^^^^^^
+
 .. container:: cell markdown
 
-   .. rubric:: Computing the :math:`\chi^2`
-      :name: computing-the-chi2
+   .. rubric:: \
+      :name: loading-data
 
 .. container:: cell markdown
 
-   Finally, the Comet class provides a function to directly compute the
-   :math:`\chi^2`. In order to do so, we need to specify the data set,
-   i.e., range of scales of the observations, the measured multipoles
-   and their covariance matrix. As before, these must be given in the
-   same unit system as that for which the emulator has been configured.
+   We can load measurements of the power spectrum and bispectrum
+   multipoles into COMET using the ``define_data_set`` function. This
+   function takes first an identifier for the data set (``obs_id``; this
+   can be anything, it will be used to reference the data) and any one
+   of the following arguments:
+
+   -  ``stat``. Can either be ``'powerspectrum'`` or ``'bispectrum'``;
+      if not provided, ``stat`` is deduced from the number of columns in
+      ``bins`` (see below).
+   -  ``bins``. In case of the power spectrum: 1d-array of k-modes
+      corresponding to the measurements; in case of the bispectrum:
+      2d-array with three columns corresponding to the triangle
+      configuration (:math:`k_1`, :math:`k_2`, :math:`k_3`) of the
+      measurements.
+   -  ``signal``. The measurements of the power spectrum or bispectrum;
+      the size of the first dimension must match the size of ``bins``,
+      and it is assumed that the first column corresponds to the
+      monopole, the second to the quadrupole, and the third to the
+      hexadecapole (one does not need to provide all three multipoles,
+      i.e., one can provide only the monopole, or monopole + quadrupole,
+      but one cannot leave out preceding multipoles).
+   -  ``cov``. The covariance matrix of the measurements, which must
+      match the combined size of all given multipoles. If the dimension
+      of ``cov`` is one-dimensional, it is assumed to be the diagonal of
+      the covariance matrix.
+   -  ``theory_cov``. A flag that specifies whether the given covariance
+      matrix was derived analytically or from a set of simulation
+      measurements. In the latter case an Anderson-Hartlap correction is
+      applied to the inverse, based on ``n_realizations``.
+   -  ``n_realizations``. Number of realizations from which the
+      covariance matrix was estimated, only used (and required) in case
+      ``theory_cov=False``.
+
+.. container:: cell markdown
+
+   Let us load some mock power spectrum measurements:
 
 .. container:: cell code
 
    .. code:: python
 
-      # Loading a sample data set:
-      data = np.loadtxt('../../../../data/cmass/Minerva_HOD_zs_z0.57_pkmulti_mean.dat')
-      cov = np.loadtxt('../../../../data/cmass/Minerva_HOD_zs_z0.57_pkmulti_covar.dat')
+      data = np.loadtxt('mock_Pk_mean.dat')
+      Cov = np.loadtxt('mock_Pk_cov.dat')
 
-.. container:: cell markdown
-
-   As the data vector would have an assosiated shot noise, we can
-   specify it by indicating the number density of the sample.
-
-.. container:: cell code
-
-   .. code:: python
-
-      EFT.define_nbar(nbar=3.95898e-4)
-
-.. container:: cell markdown
-
-   We have the option of specifying whether the covariance matrix is a
-   "theory" covariance matrix or not. If ``theory_cov = False``, the
-   Anderson-Hartlap factor is included in the inverse covariance matrix,
-   which is why we need to also provide the number of n_realizations
-   from which the covariance matrix was estimated (if
-   ``theory_cov = True``, ``Nrealizations`` can be ignored).
+      k = data[:,0]
+      P0 = data[:,1]
+      P2 = data[:,3]
+      P4 = data[:,5]
 
 .. container:: cell code
 
    .. code:: python
 
-      EFT.define_data_set(obs_id='Pk', bins=data[:,0], signal=data[:,(1,3,5)], cov=cov, theory_cov=False, n_realizations=300)
+      # Let's call this data set 'mock_Pk'
+      EFT.define_data_set(obs_id='mock_Pk', bins=k, signal=np.array([P0,P2,P4]).T, cov=Cov, theory_cov=False, n_realizations=300)
 
 .. container:: cell markdown
 
-   Now we can call ``chi2``, which takes as arguments the parameter
-   dictionary, a maximum k-mode value ``kmax``, a model argument
-   ``de_model``. ``kmax`` can either be a number, in which case the same
-   cutoff is applied for all multipoles, or a list of numbers for each
-   individual multipole, as for the multipoles case. If the cutoff is
-   zero (or smaller than the minimum scale of the observations) for a
-   particular multipole, then it is excluded from the computation of the
-   chi-square. ``kmax`` is also assumed to be in the units of the
-   emulator. ``de_model`` can be one of the specified before.
+   We can access the data through ``EFT.data['mock_Pk']`` and check, for
+   example, that the type of statistic was correctly identified (since
+   it was provided above):
 
 .. container:: cell code
 
    .. code:: python
 
-      EFT.chi2(obs_id='Pk',params=params, kmax=[0.3,0.30, 0.30], de_model='lambda', chi2_decomposition=False)
+      EFT.data['mock_Pk'].stat
 
    .. container:: output execute_result
 
       ::
 
-         9464.265846193817
+         'powerspectrum'
+
+
+
+Computing the :math:`\chi^2`
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. container:: cell markdown
+
+   .. rubric:: \
+      :name: computing-the-chi2
+
+.. container:: cell markdown
+
+   Finally, we can let COMET directly compute :math:`\chi^2` values
+   based on the provided data set, a given set of model parameters and
+   range of scales.
+
+.. container:: cell markdown
+
+   To do so, we call the function ``chi2``, which takes as arguments the
+   identifier of the data set, the parameter dictionary, a maximum
+   k-mode value ``kmax``, a model argument ``de_model``. ``kmax`` can
+   either be a number, in which case the same cutoff is applied for all
+   multipoles, or a list of numbers for each individual multipole, as
+   for the multipoles case. If the cutoff is zero (or smaller than the
+   minimum scale of the observations) for a particular multipole, then
+   it is excluded from the computation of the chi-square. ``kmax`` is
+   also assumed to be in the units of the emulator. ``de_model`` can be
+   one of the options specified before.
+
+.. container:: cell code
+
+   .. code:: python
+
+      EFT.chi2(obs_id='mock_Pk',params=params, kmax=[0.30, 0.30, 0.30], de_model='lambda', chi2_decomposition=False)
+
+   .. container:: output execute_result
+
+      ::
+
+         6754.176546673202
 
 .. container:: cell markdown
 
@@ -896,22 +1049,26 @@ Fiducial background cosmologies
 
    .. code:: python
 
-      %timeit EFT.chi2(obs_id='Pk',params=params, kmax=[0.3,0.30, 0.30], de_model='lambda', chi2_decomposition=False)
+      %timeit EFT.chi2(obs_id='mock_Pk',params=params, kmax=[0.30, 0.30, 0.30], de_model='lambda', chi2_decomposition=False)
 
    .. container:: output stream stdout
 
       ::
 
-         15.4 ms ± 298 µs per loop (mean ± std. dev. of 7 runs, 100 loops each)
+         6.37 ms ± 153 µs per loop (mean ± std. dev. of 7 runs, 100 loops each)
 
 .. container:: cell code
 
    .. code:: python
 
-      %timeit EFT.chi2(obs_id='Pk',params=params, kmax=[0.3,0.30, 0.30], de_model='lambda', chi2_decomposition=True)
+      %timeit EFT.chi2(obs_id='mock_Pk',params=params, kmax=[0.30, 0.30, 0.30], de_model='lambda', chi2_decomposition=True)
 
    .. container:: output stream stdout
 
       ::
 
-         26.1 µs ± 825 ns per loop (mean ± std. dev. of 7 runs, 10000 loops each)
+         9.11 µs ± 20.6 ns per loop (mean ± std. dev. of 7 runs, 100,000 loops each)
+
+.. container:: cell code
+
+   .. code:: python
