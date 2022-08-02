@@ -1,3 +1,11 @@
+.. _examples:
+
+Tutorials
+---------
+
+Quick-start
+===========
+
 .. container:: cell markdown
 
    .. rubric:: Quick-start
@@ -691,15 +699,15 @@
    .. code:: python
 
       Cov_hMpc_LCDM = EFT.Pell_covariance(
-                              k_hMpc, 
-                              params, 
+                              k_hMpc,
+                              params,
                               ell=[0,2,4],
-                              dk=2*np.pi/3780, 
-                              zmin=params['z']-0.1, 
-                              zmax=params['z']+0.1, 
-                              fsky=15000./(360**2/np.pi), 
-                              volfac=1, 
-                              de_model="lambda", 
+                              dk=2*np.pi/3780,
+                              zmin=params['z']-0.1,
+                              zmax=params['z']+0.1,
+                              fsky=15000./(360**2/np.pi),
+                              volfac=1,
+                              de_model="lambda",
                               volume=3780**3
                       )
 
