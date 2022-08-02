@@ -297,8 +297,11 @@ class PTEmu:
             self.Bisp.define_units(self.use_Mpc)
             self.Bisp.define_nbar(self.nbar)
             nbar_unit = '(1/Mpc)^3' if self.use_Mpc else '(h/Mpc)^3'
-            print("Number density resetted to nbar = 1 {}. Data set (if "
-                  "defined) cleared.".format(nbar_unit))
+            self.H_fid = None
+            self.Dm_fid = None
+            print("Number density resetted to nbar = 1 {}. Fiducial background "
+                  "cosmology and data sets (if defined)"
+                  "cleared.".format(nbar_unit))
 
     def define_nbar(self, nbar):
         r"""Define the number density of the sample.
@@ -384,10 +387,12 @@ class PTEmu:
                 wa = params_fid['wa']
             self.cosmo.update_cosmology(Om0, H0, Ok0=Ok0, de_model=de_model,
                                         w0=w0, wa=wa)
-            self.h_fid = params_fid['h']
             self.H_fid = self.cosmo.Hz(params_fid['z'])
             self.Dm_fid = \
                 self.cosmo.comoving_transverse_distance(params_fid['z'])
+            if not self.use_Mpc:
+                self.H_fid /= params_fid['h']
+                self.Dm_fid *= params_fid['h']
 
     def update_params(self, params, de_model=None):
         r"""Update parameters of the emulator.
@@ -513,8 +518,8 @@ class PTEmu:
             self.params['q_tr'] = self.cosmo.comoving_transverse_distance(
                 self.params['z'])/self.Dm_fid
             if not self.use_Mpc:
-                self.params['q_lo'] *= (self.params['h']/self.h_fid)
-                self.params['q_tr'] *= (self.params['h']/self.h_fid)
+                self.params['q_lo'] *= self.params['h']
+                self.params['q_tr'] *= self.params['h']
         elif de_model is not None:
             self.params['q_lo'] = q_tr_lo[1]
             self.params['q_tr'] = q_tr_lo[0]
