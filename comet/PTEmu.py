@@ -447,6 +447,14 @@ class PTEmu:
                                           in expected_params])
                 for p in expected_params:
                     self.params[p] = params[p]
+                if de_model == 'lambda' and \
+                    (self.params['w0'] != -1.0 or self.params['wa'] != 0.0):
+                        self.params['w0'] = -1.0
+                        self.params['wa'] = 0.0
+                        emu_params_updated = True
+                elif de_model == 'w0' and self.params['wa'] != 0.0:
+                    self.params['wa'] = 0.0
+                    emu_params_updated = True
                 check_ranges(self.params_shape_list)
         except KeyError:
             print('Not all required parameter values have been defined.')
