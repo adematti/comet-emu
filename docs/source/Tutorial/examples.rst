@@ -676,60 +676,9 @@ Linear power spectrum
 
       .. image:: vertopal_3711143d19e0467e9ab9ccde543f54cd/49bb254d3fecaa462ffc7c16a29ae17ba82739fc.png
 
-   -  The linear power spectrum, with and without infra-red resummation
-   -  The Gaussian covariance matrix for the power spectrum multipoles
-   -  The tree-level bispectrum multipoles
 
 Computing covariance matrices
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. container:: cell markdown
-
-   .. rubric:: Linear power spectrum
-      :name: linear-power-spectrum
-
-.. container:: cell markdown
-
-   The linear power spectrum (no infra-red resummation; simply the
-   emulated CAMB output) can be obtained from the function ``PL``, while
-   the linear power spectrum with damped BAO wiggles (infra-red
-   resummation) can be obtained from the function ``Pdw`` (note: this is
-   not the smooth, no-wiggle power spectrum). The arguments are
-   identical to those of ``Pell`` with the exception that we no longer
-   need to specify a multipole number.
-
-.. container:: cell code
-
-   .. code:: python
-
-      k = np.logspace(-3,np.log10(0.4),300)
-      Pdw = EFT.Pdw(params=params, k=k, de_model='lambda')
-      PL = EFT.PL(params=params, k=k, de_model='lambda')
-
-.. container:: cell markdown
-
-   Let's plot the ratio of the de-wiggled linear power spectrum over the
-   linear power spectrum:
-
-.. container:: cell code
-
-   .. code:: python
-
-      f = plt.figure(figsize=(10,5))
-      ax = f.add_subplot(111)
-      ax.semilogx(k, Pdw/PL,c='C0',ls='-')
-      ax.set_xlabel('$k$ [h/Mpc]',fontsize=15)
-      ax.set_ylabel(r'$P_{\rm dw}(k)/P_{L}(k)$',fontsize=15)
-      plt.show()
-
-   .. container:: output display_data
-
-      .. image:: vertopal_6b101e0129fa46319571b7b03d7c7f71/49bb254d3fecaa462ffc7c16a29ae17ba82739fc.png
-
-.. container:: cell markdown
-
-   .. rubric:: Computing covariance matrices
-      :name: computing-covariance-matrices
 
 .. container:: cell markdown
 
