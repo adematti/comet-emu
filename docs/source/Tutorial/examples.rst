@@ -1,25 +1,17 @@
-.. _examples:
-
-Tutorials
----------
-
-Quick-start
-===========
-
 .. container:: cell markdown
 
-   .. rubric:: \
+   .. rubric:: Quick-start
       :name: quick-start
 
-   -  In this tutorial we will show
+   In this tutorial we will show
 
-      -  How to initialise the emulator.
-      -  How to obtain multipoles for the standard :math:`\Lambda CDM`
-         cosmology.
+   -  How to initialise the emulator.
+   -  How to obtain multipoles for the standard :math:`\Lambda CDM`
+      cosmology.
 
 .. container:: cell markdown
 
-   Let’s first import ``comet`` as well as other required libraries:
+   Let’s first import ``comet`` as well as other requried libraries:
 
 .. container:: cell code
 
@@ -32,13 +24,15 @@ Quick-start
 .. container:: cell markdown
 
    At initialisation we only need to specify the perturbation theory
-   model that we want to use (for an overview of the models implemented
-   in COMET, see :ref:`here<models>`) and we can configure COMET either in :math:`Mpc`
-   units (``use_Mpc = True``, which is the default option) or in
-   :math:`h^{-1}Mpc` units (``use_Mpc = False``). All quantities that
-   are not dimensionless are then returned or assumed to be given in the
-   respective unit system. Let’s define an emulator object for the EFT
-   model using the standard :math:`h^{-1}Mpc` units:
+   model that we want to use (valid specifiers are currently either
+   ``"EFT"`` or ``"RS"``; for an overview of the models implemented in
+   COMET, see here) and we can configure COMET either in
+   :math:`\mathrm{Mpc}` units (``use_Mpc = True``, which is the default
+   option) or in :math:`h^{-1}\mathrm{Mpc}` units (``use_Mpc = False``).
+   All quantities that are not dimensionless are then returned or
+   assumed to be given in the respective unit system. Let’s define an
+   emulator object for the EFT model using the standard
+   :math:`h^{-1}\mathrm{Mpc}` units:
 
 .. container:: cell code
 
@@ -79,9 +73,10 @@ Quick-start
    The parameter dictionary must include all shape parameters: the
    physical cold dark matter and baryon densities (``wc`` and ``wb``)
    and the scalar spectral index (``ns``). In case of a flat
-   :math:`\Lambda CDM` model we also need to specify values for
+   :math:`\Lambda`\ CDM model we also need to specify values for
    :math:`h` (``h``), the amplitude of scalar fluctuations (``As``) and
-   redshift (``z``). For other cosmologies, see :ref:`examples_in_depth`.
+   redshift (``z``). For other cosmologies, see In-depth options for
+   obtaining multipoles.
 
 .. container:: cell code
 
@@ -104,7 +99,7 @@ Quick-start
 
    Finally, we define the values of the bias parameters. The complete
    list of parameters along with a brief explanation and their
-   dictionary keywords can be found here. In the following we only
+   dioctionary keywords can be found here. In the following we only
    specify values for the linear and quadratic bias, all other
    parameters are automatically set to zero:
 
@@ -119,7 +114,8 @@ Quick-start
 
    Now, let’s compute the monopole (``ell=0``), quadrupole (``ell=2``)
    and hexadecapole (``ell=4``) for a range of scales from
-   :math:`0.001 hMpc^{−1}` to :math:`0.3hMpc^{−1}`:
+   :math:`0.001 h\,\mathrm{Mpc}^{−1}` to
+   :math:`0.3h\,\mathrm{Mpc}^{−1}`:
 
 .. container:: cell code
 
@@ -154,10 +150,9 @@ Quick-start
 
       f = plt.figure(figsize=(10,5))
       ax = f.add_subplot(111)
-
-      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM["ell0"],c='C0',ls='-',label='P0')
-      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM["ell2"],c='C1',ls='-',label='P2')
-      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM["ell4"],c='C2',ls='-',label='P4')
+      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM["ell0"],c='C0',ls='-',label='$P_0$')
+      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM["ell2"],c='C1',ls='-',label='$P_2$')
+      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM["ell4"],c='C2',ls='-',label='$P_4$')
       ax.set_xlabel('$k$ [h/Mpc]',fontsize=15)
       ax.set_ylabel(r'$k^{1/2}\,P_{\ell}(k)$ [$(\mathrm{Mpc}/h)^{5/2}$]',fontsize=15)
       ax.legend(fontsize=15)
@@ -165,58 +160,159 @@ Quick-start
 
    .. container:: output display_data
 
-      .. image:: vertopal_a899190433aa4f85bb1541798bd599a6/537407037d704ddedc6cd575f28290c731218f9f.png
-
-
-.. _examples_in_depth:
-
-In-depth options for obtaining multipoles
-=========================================
-.. container:: cell markdown
-
-   .. rubric:: \
-      :name: in-depth-options-for-obtaining-multipoles
+      .. image:: vertopal_6b101e0129fa46319571b7b03d7c7f71/89648b9b95f5070142015408254706e662deeb9b.png
 
 .. container:: cell markdown
 
-   -  Now, let's see some details:
-
-      -  different cosmologies (:math:`\omega_0 + \omega_0\omega_a`)
-      -  using the :math:`f-\sigma_{12}` parameter space
-      -  the options for providing different :math:`k`-scales, float vs
-         np.array vs list and the corresponding outputs
-      -  describe the ``fixed_cosmo_boost`` function, i.e., speedup when
-         just changing bias parameters
-
-
-An alternative Dark energy model.
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-.. container:: cell markdown
-
-   .. rubric:: \
-      :name: an-alternative-dark-energy-model
+   .. rubric:: Exploring a few in-depth options
+      :name: exploring-a-few-in-depth-options
 
 .. container:: cell markdown
 
-   As mentioned before, we can make use of a different cosmological
-   model. Let's try the ``w0wa`` model. We need to add such parameters
-   to our params dictionary first.
+   Let us now consider some of the more detailed options in 'COMET':
+
+   -  Specifying fiducial background cosmologies
+   -  Specifying Alcock-Paczynski parameters
+   -  Specifying the shot noise normalisation
+   -  Non-flat and non-:math:`\Lambda` cosmologies
+   -  Using the :math:`f`-:math:`\sigma_{12}` parameter space
+   -  Options for providing different :math:`k`-scales, float vs
+      np.array vs list and the corresponding outputs
+   -  Description of the ``fixed_cosmo_boost`` function, i.e., speedup
+      when just changing bias parameters
+
+.. container:: cell markdown
+
+   .. rubric:: Fiducial background cosmologies
+      :name: fiducial-background-cosmologies
+
+.. container:: cell markdown
+
+   Above, we specified the fiducial background cosmology by setting the
+   values of :math:`h`, :math:`\omega_b`, :math:`\omega_c` and redshift
+   :math:`z`. Alternatively, we can directly provide the values of the
+   Hubble rate :math:`H_{\rm fid}(z)` and comoving transverse distance
+   :math:`D_{m,\rm fid}(z)` as follows:
 
 .. container:: cell code
 
    .. code:: python
 
-      # a non-flat
-      # cosmology is assumed if `params_fid` includes the key `Ok`.
-      # For other dark energy models one can set `de_model` to `w0` or `w0wa`, in
-      # which case one needs to provide the values for w0, wa in `params_fid`.
+      H_fid = 135    # in units of km/s/(Mpc/h)
+      Dm_fid = 1490  # in units of Mpc/h
+
+      EFT.define_fiducial_cosmology(HDm_fid=[H_fid, Dm_fid])
+
+.. container:: cell markdown
+
+   Note that the units of :math:`H_{\rm fid}(z)` and
+   :math:`D_{m,\rm fid}(z)` need to be either in
+   :math:`\mathrm{km}\,\mathrm{s}^{-1}\,\mathrm{Mpc}^{-1}` and
+   :math:`\mathrm{Mpc}` (if ``use_Mpc=True``), or
+   :math:`\mathrm{km}\,\mathrm{s}^{-1}\,(h^{-1}\mathrm{Mpc})^{-1}` and
+   :math:`h^{-1}\mathrm{Mpc}` (if ``use_Mpc=False``).
+
+.. container:: cell markdown
+
+   Moreover, we stress that ``define_fiducial_cosmology`` is only used
+   to set the fiducial cosmological parameter values. It cannot be used
+   to set default paramater values for the evaluation of the model.
+
+.. container:: cell markdown
+
+   .. rubric:: Alcock-Paczynski parameters
+      :name: alcock-paczynski-parameters
+
+.. container:: cell markdown
+
+   By default the values of the Alcock-Paczynski parameters,
+   :math:`q_{\parallel}` and :math:`q_{\perp}`, are computed based on
+   the given cosmological parameters and the fiducial background values
+   for the Hubble rate and comoving transverse distance. These values
+   can be overwritten by explicitly providing the Alcock-Paczynski
+   parameters as an argument to the ``Pell`` function:
+
+.. container:: cell code
+
+   .. code:: python
+
+      q_para = 1.0
+      q_perp = 1.0
+
+      Pell_LCDM_noAP = EFT.Pell(k_hMpc, params, ell=[0,2,4], de_model='lambda', q_tr_lo=[q_perp,q_para])
+
+.. container:: cell markdown
+
+   This can be useful when one would like to ignore Alcock-Paczynski
+   distortions.
+
+.. container:: cell markdown
+
+   .. rubric:: Shot noise normalisation
+      :name: shot-noise-normalisation
+
+.. container:: cell markdown
+
+   By default the shot noise parameters in the power spectrum model are
+   assumed to be given in units of :math:`L^3` for ``NP0`` and
+   :math:`L^5` for ``NP20`` and ``NP22``, where
+   :math:`L = (\mathrm{Mpc})^3` (``use_Mpc=True``) or
+   :math:`L = (h^{-1}\mathrm{Mpc})^3` (``use_Mpc=False``). It is
+   possible to define a fixed normalisation scale (i.e., corresponding
+   to the Poisson shot noise :math:`1/\bar{n}`) as follows:
+
+.. container:: cell code
+
+   .. code:: python
+
+      nbar = 1e-3  # in the respective units
+      EFT.define_nbar(nbar)
+
+.. container:: cell markdown
+
+   In this case ``NP0`` is dimensionless, while ``NP20`` and ``NP22``
+   have dimension :math:`L^2`.
+
+.. container:: cell markdown
+
+   .. rubric:: Non-flat and non-:math:`\Lambda` cosmologies
+      :name: non-flat-and-non-lambda-cosmologies
+
+.. container:: cell markdown
+
+   Predictions for non-flat cosmologies can be obtained by simply
+   specifying the curvature density parameter :math:`\Omega_k` in the
+   parameter dictionary:
+
+.. container:: cell code
+
+   .. code:: python
+
+      params['Ok'] = 0.05
+
+.. container:: cell markdown
+
+   For different dark energy models we need to provide a different
+   ``de_model`` argument for the ``Pell`` function. For a non-time
+   varying dark energy equation of state, we set ``de_model='w0'``,
+   while for a time-varying equation of state in the
+   :math:`w_0`-:math:`w_a` parametrisation, we set ``de_model='w0wa'``.
+   In those cases we need to specify the corresponding values of
+   :math:`w_0` and :math:`w_a` in the parameter dictionary. Let's
+   consider the following example:
+
+.. container:: cell code
+
+   .. code:: python
+
       params['w0'] = -1.1
       params['wa'] = 0.1
 
 .. container:: cell markdown
 
-   Then let's recompute the model updating such parameters and compare
-   with the :math:`\Lambda CDM` prediction
+   Then let's recompute the model by updating the previously set
+   parameter values and compare with the :math:`\Lambda`\ CDM
+   prediction:
 
 .. container:: cell code
 
@@ -230,13 +326,12 @@ An alternative Dark energy model.
 
       f = plt.figure(figsize=(10,5))
       ax = f.add_subplot(111)
-
-      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM["ell0"],c='C0',ls='-',label='P0')
-      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM["ell2"],c='C1',ls='-',label='P2')
-      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM["ell4"],c='C2',ls='-',label='P4')
-      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_w0wa["ell0"],c='C0',ls='--')
-      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_w0wa["ell2"],c='C1',ls='--')
-      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_w0wa["ell4"],c='C2',ls='--')
+      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM["ell0"],c='C0',ls='-',label='$P_0$, $\Lambda$CDM')
+      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM["ell2"],c='C1',ls='-',label='$P_2$, $\Lambda$CDM')
+      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM["ell4"],c='C2',ls='-',label='$P_4$, $\Lambda$CDM')
+      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_w0wa["ell0"],c='C0',ls='--',label='$P_0$, $w_0 w_a$CDM')
+      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_w0wa["ell2"],c='C1',ls='--',label='$P_2$, $w_0 w_a$CDM')
+      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_w0wa["ell4"],c='C2',ls='--',label='$P_4$, $w_0 w_a$CDM')
       ax.set_xlabel('$k$ [h/Mpc]',fontsize=15)
       ax.set_ylabel(r'$k^{1/2}\,P_{\ell}(k)$ [$(\mathrm{Mpc}/h)^{5/2}$]',fontsize=15)
       ax.legend(fontsize=15)
@@ -244,24 +339,21 @@ An alternative Dark energy model.
 
    .. container:: output display_data
 
-      .. image:: vertopal_a899190433aa4f85bb1541798bd599a6/9ebd8852cc810799a3f8285b02bb172d804750d5.png
+      .. image:: vertopal_6b101e0129fa46319571b7b03d7c7f71/0679e37f0d1a6ffb5045d4970263461a19a3cb56.png
 
-
-The :math:`f-\sigma_{12}` parameter space.
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 .. container:: cell markdown
 
-   .. rubric:: \
+   .. rubric:: The :math:`f`-:math:`\sigma_{12}` parameter space
       :name: the-f-sigma_12-parameter-space
 
 .. container:: cell markdown
 
-   The function called before ignores the values of ``s12``,
-   ``q_tr``, ``q_lo`` and ``f`` in the parameter dictionary and
-   instead converts the :math:`\Lambda`\ CDM parameters to the
-   :math:`\sigma_{12}` parameter space. The internal values of those
-   parameters (which can be accessed via ``EFT.params``) have therefore
-   been updated:
+   When calling the ``Pell`` function for a specific dark energy model,
+   it ignores any potential values of ``s12``, ``q_tr``, ``q_lo`` and
+   ``f`` in the parameter dictionary and instead converts the
+   :math:`\Lambda`\ CDM parameters to the :math:`\sigma_{12}` parameter
+   space. The internal values of those parameters (which can be accessed
+   via ``EFT.params``) have therefore been updated:
 
 .. container:: cell code
 
@@ -277,8 +369,8 @@ The :math:`f-\sigma_{12}` parameter space.
          {'wc': 0.11544,
           'wb': 0.0222191,
           'ns': 0.9632,
-          's12': array([0.5993593]),
-          'f': 0.7252890877752092,
+          's12': 0.5644811904905519,
+          'f': 0.7025465611424653,
           'b1': 2.0,
           'b2': -0.5,
           'g2': 0.0,
@@ -287,38 +379,44 @@ The :math:`f-\sigma_{12}` parameter space.
           'c2': 0.0,
           'c4': 0.0,
           'cnlo': 0.0,
-          'N0': 0.0,
-          'N20': 0.0,
-          'N22': 0.0,
+          'NP0': 0.0,
+          'NP20': 0.0,
+          'NP22': 0.0,
+          'NB0': 0.0,
+          'MB0': 0.0,
           'h': 0.8,
           'As': 2.3,
-          'Ok': 0.0,
+          'Ok': 0.05,
           'w0': -1.1,
           'wa': 0.1,
           'z': 0.6,
-          'q_tr': 1.0960392096062852,
-          'q_lo': 1.0718295294749038}
+          'q_tr': 1.081799699202137,
+          'q_lo': 1.045999542223697}
 
 .. container:: cell markdown
 
-   First, we need to redefine our parameters.
+   If we want to use the :math:`f`-:math:`\sigma_{12}` parameter space
+   directly, we need to provide explicit values for ``s12``, ``f``,
+   ``q_lo`` (:math:`q_{\parallel}`) and ``q_tr`` (:math:`q_{\perp}`). As
+   an example, let's redefine our parameter values:
 
 .. container:: cell code
 
    .. code:: python
 
       # For predictions using the RSD parameter space we also need to specify values for the following four parameters, e.g.
-      params['s12']      = 0.6
+      params['s12']  = 0.6
       params['q_lo'] = 1.1
       params['q_tr'] = 0.9
-      params['f']        = 0.7
+      params['f']    = 0.7
 
 .. container:: cell markdown
 
-   **Note**: When computing the multipoles using the :math:`\sigma_{12}`
-   parameter space we need to specify a fiducial value for the Hubble
-   rate. This is required to convert the native emulator output from Mpc
-   to Mpc/h units.
+   *Note: When computing the multipoles using the :math:`\sigma_{12}`
+   parameter space and in :math:`h^{-1}\mathrm{Mpc}` units, we need to
+   specify a fiducial value for the Hubble rate (provided in the
+   parameter dictionary). This is required to convert the native
+   emulator output from Mpc to Mpc/h units.*
 
 .. container:: cell code
 
@@ -332,7 +430,6 @@ The :math:`f-\sigma_{12}` parameter space.
 
       f = plt.figure(figsize=(10,5))
       ax = f.add_subplot(111)
-
       ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM["ell0"],c='C0',ls='-',label='P0')
       ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM["ell2"],c='C1',ls='-',label='P2')
       ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM["ell4"],c='C2',ls='-',label='P4')
@@ -346,45 +443,39 @@ The :math:`f-\sigma_{12}` parameter space.
 
    .. container:: output display_data
 
-      .. image:: vertopal_a899190433aa4f85bb1541798bd599a6/3facc8bde43a8184ef0a5a04de74d2e6de557b77.png
-
-
-How to provide different k-scales.
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-.. container:: cell markdown
-
-   .. rubric:: \
-      :name: how-to-provide-different-k-scales
+      .. image:: vertopal_6b101e0129fa46319571b7b03d7c7f71/e48eee58e266daddc52fd930ded8589f754786c7.png
 
 .. container:: cell markdown
 
-   The scales for which to compute the multipoles: if given as a number
-   or numpy array all specified multipoles will be computed for those
-   scales, if given as a list, the length must match the number of
-   specified multipoles (``ell``) and the first entry of the list is
-   evaluated for the first multipole etc.
+   .. rubric:: Providing different :math:`k`-scales
+      :name: providing-different-k-scales
+
+.. container:: cell markdown
+
+   There are multiple options for specifying the scales for which to
+   compute the multipoles: if given as a number or numpy array all
+   specified multipoles will be computed for those scales, if given as a
+   list, however, then the first entry of the list is evaluated for the
+   first multipole, the second for the second multipole, etc.
 
    We can output at a single scale and single multipole number, e.g. for
-   the quadrupole at :math:`k = 0.1 1/Mpc`:
+   the quadrupole at :math:`k = 0.1\,h\,\mathrm{Mpc}^{-1}`:
 
 .. container:: cell code
 
    .. code:: python
 
-      # The provided scales are also assumed to be in 1/Mpc units
       EFT.Pell(0.1, params, ell=2)
 
    .. container:: output execute_result
 
       ::
 
-         {'ell2': array([12735.02642573])}
+         {'ell2': array([12734.58552054])}
 
 .. container:: cell markdown
 
-   Or for various multipoles and multiple scales, in which case the
-   output is a list with the first entry corresponding to the first
-   multipole specified in ``ell``:
+   Or for various multipoles and multiple scales:
 
 .. container:: cell code
 
@@ -396,9 +487,9 @@ How to provide different k-scales.
 
       ::
 
-         {'ell0': array([21993.63231466,  8419.32061295,  5052.40597447]),
-          'ell2': array([12735.02642573,  7163.41410577,  5357.67022233]),
-          'ell4': array([3027.55903402, 2244.05437432, 1870.91419438])}
+         {'ell0': array([21993.36193293,  8421.42627781,  5055.15969128]),
+          'ell2': array([12734.58552054,  7163.04358551,  5357.26768927]),
+          'ell4': array([3027.98356766, 2244.35964221, 1870.99204263])}
 
 .. container:: cell markdown
 
@@ -415,25 +506,34 @@ How to provide different k-scales.
 
       ::
 
-         {'ell0': array([21993.63231466,  8419.32061295]),
-          'ell4': array([1870.91419438])}
+         {'ell0': array([21993.36193293,  8421.42627781]),
+          'ell4': array([1870.99204263])}
 
-
-Speedup when changing just bias parameters.
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 .. container:: cell markdown
 
-   .. rubric:: \
+   *Note: In this case, the length of the list must match the length of
+   the specified multipoles (``ell``).*
+
+.. container:: cell markdown
+
+   Performance-wise it is advisable to compute all required multipoles
+   and scales via the same function call (i.e., avoid calling ``Pell``
+   for individual wavemodes).
+
+.. container:: cell markdown
+
+   .. rubric:: Speedup when changing just bias parameters.
       :name: speedup-when-changing-just-bias-parameters
 
 .. container:: cell markdown
 
-   It is a common task to test the models just by changing parameters
-   that does not involve any cosmological computation. On that case we
-   can call the function ``Pell_fixed_cosmo_boost``, which looks into
-   the parameters specified and if any cosmological parameter has
-   changed, it uses the computation from previous calls. In the
-   following cells the differences on time can be seen, which reflects a
+   It is a common task to test the models at fixed cosmological
+   parameters, and in that case COMET provides the function
+   ``Pell_fixed_cosmo_boost``, which accelerates the model computation.
+   It computes all individual model contributions, which are kept fixed
+   as long as the cosmological parameters are not changed, such that
+   changing the bias parameters only is sped up drastically. In the
+   following cells the diferences on time can be seen, which reflects a
    speed up of around 3 orders of magnitude.
 
 .. container:: cell code
@@ -446,7 +546,7 @@ Speedup when changing just bias parameters.
 
       ::
 
-         22.3 ms ± 676 µs per loop (mean ± std. dev. of 7 runs, 10 loops each)
+         5.19 ms ± 8.59 µs per loop (mean ± std. dev. of 7 runs, 100 loops each)
 
 .. container:: cell code
 
@@ -458,52 +558,100 @@ Speedup when changing just bias parameters.
 
       ::
 
-         22.8 µs ± 3.19 µs per loop (mean ± std. dev. of 7 runs, 1 loop each)
+         9.46 µs ± 10.3 ns per loop (mean ± std. dev. of 7 runs, 100,000 loops each)
 
-
-Beyond :math:`P_{\ell}` predictions.
-====================================
 .. container:: cell markdown
 
-   .. rubric:: \
+   *Note: Since the computation of all the individual contributions
+   takes more time than the direct evaluation of the multipoles, this is
+   really only useful at fixed cosmological parameters.*
+
+.. container:: cell markdown
+
+   .. rubric:: Beyond :math:`P_{\ell}` predictions
       :name: beyond-p_ell-predictions
 
 .. container:: cell markdown
 
-   We have included some required tools needed for cosmological analysis
-   in order to make easier to integrate it into a complete pipeline
+   In the following we demonstrate a number of additional outputs that
+   COMET can provide. Specifically:
 
+   -  The linear power spectrum, with and without infra-red resummation
+   -  The Gaussian covariance matrix for the power spectrum multipoles
+   -  The tree-level bispectrum multipoles
 
-Computing covariance matrices
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 .. container:: cell markdown
 
-   .. rubric:: \
+   .. rubric:: Linear power spectrum
+      :name: linear-power-spectrum
+
+.. container:: cell markdown
+
+   The linear power spectrum (no infra-red resummation; simply the
+   emulated CAMB output) can be obtained from the function ``PL``, while
+   the linear power spectrum with damped BAO wiggles (infra-red
+   resummation) can be obtained from the function ``Pdw`` (note: this is
+   not the smooth, no-wiggle power spectrum). The arguments are
+   identical to those of ``Pell`` with the exception that we no longer
+   need to specify a multipole number.
+
+.. container:: cell code
+
+   .. code:: python
+
+      k = np.logspace(-3,np.log10(0.4),300)
+      Pdw = EFT.Pdw(params=params, k=k, de_model='lambda')
+      PL = EFT.PL(params=params, k=k, de_model='lambda')
+
+.. container:: cell markdown
+
+   Let's plot the ratio of the de-wiggled linear power spectrum over the
+   linear power spectrum:
+
+.. container:: cell code
+
+   .. code:: python
+
+      f = plt.figure(figsize=(10,5))
+      ax = f.add_subplot(111)
+      ax.semilogx(k, Pdw/PL,c='C0',ls='-')
+      ax.set_xlabel('$k$ [h/Mpc]',fontsize=15)
+      ax.set_ylabel(r'$P_{\rm dw}(k)/P_{L}(k)$',fontsize=15)
+      plt.show()
+
+   .. container:: output display_data
+
+      .. image:: vertopal_6b101e0129fa46319571b7b03d7c7f71/49bb254d3fecaa462ffc7c16a29ae17ba82739fc.png
+
+.. container:: cell markdown
+
+   .. rubric:: Computing covariance matrices
       :name: computing-covariance-matrices
 
 .. container:: cell markdown
 
    Apart from the multipoles we can also generate (Gaussian) covariance
    matrices, for which there are again different flags, that are either
-   defined for the :math:`\sigma_{12}` or the :math:`\Lambda`\ CDM
-   parameter spaces. The first three arguments, ``k``, ``params``, and
-   ``ell``, are identical to those for ``Pell``. In addition, we need to
-   specify a binwidth ``dk`` and volume (both of which need to be given
-   in the respective units for which the emulator is configured in), for
+   defined for the :math:`\sigma_{12}` or the dark energy parameter
+   spaces. The first three arguments, ``k``, ``params``, and ``ell``,
+   are identical to those for ``Pell``. In addition, we need to specify
+   a binwidth ``dk`` and volume (both of which need to be given in the
+   respective units for which the emulator is configured in), for
    example:
 
 .. container:: cell code
 
    .. code:: python
 
-      dk_hMpc = 0.001
+      dk_hMpc = 0.005
       k_hMpc_lin = np.arange(0.001, 0.3, dk_hMpc)
+      vol_hMpc = 3e9
 
 .. container:: cell code
 
    .. code:: python
 
-      Cov_hMpc = EFT.Pell_covariance(k_hMpc, params, ell=[0,2,4], dk=dk_hMpc, volume=3e9)
+      Cov_hMpc = EFT.Pell_covariance(k_hMpc_lin, params, ell=[0,2,4], dk=dk_hMpc, volume=vol_hMpc)
 
 .. container:: cell code
 
@@ -511,76 +659,149 @@ Computing covariance matrices
 
       plt.figure(figsize=(9,6))
       plt.title(r"")
-      plt.title(r"Corr matrix", y=1.05)
+      plt.title(r"Correlation Matrix")
       var_inv = np.diag(1./np.sqrt(np.diag(Cov_hMpc)))
       R_hMpc = var_inv @ Cov_hMpc @ var_inv
-      plt.imshow(R_hMpc,cmap='magma_r', interpolation="blackman", filterrad=10)
+      plt.imshow(R_hMpc,cmap='magma_r')
       plt.show()
 
    .. container:: output display_data
 
-      .. image:: vertopal_a899190433aa4f85bb1541798bd599a6/b2f4536ec9c2f0f8e7b1e57e5ceb347e60e832d7.png
+      .. image:: vertopal_6b101e0129fa46319571b7b03d7c7f71/8e335c39dd7a3d70f8316089513eab5974b9c70f.png
 
 .. container:: cell markdown
 
-   As a further extension, in the case when using measurements on a
-   cubic box along diferent line of sight an averaging them, we have
-   added the averaging corrections for the covariance. We have created
-   the flags ``avg_cov=False``, ``avg_los=3`` for the
-   ``Pell_covariance`` function, so that when you set the
-   ``avg_cov=True`` it by default will make the average along 3 axis,
-   but we have included the option to correct for averaging on only 2
-   directions. Note that this computation is quite slow since it
-   involves a different integral for each k-bin, maybe in the future it
-   can be optimised.
+   The argument specifying the scales provides the same functionality as
+   for ``Pell``, that is, it can either be given as a number or numpy
+   array, in which case all specified multipoles are evaluated for the
+   same scales, or a list of numbers/numpy arrays, in which case the
+   first entry is evaluated for the first multipole in ``ell`` etc.
 
 .. container:: cell markdown
 
-   For the :math:`\Lambda`\ CDM version, instead of providing a volume,
-   we can provide minimum and maximum redshifts, ``zmin`` and ``zmax``,
-   a sky fraction ``fsky``, and a volume scaling factor ``volfac`` (by
-   default equal to 1), which computes then evalutes the corresponding
-   volume, also assuming a flat :math:`\Lambda`\ CDM model. For example:
+   For the version with specified dark energy model it is also possible
+   (in addition to providing the volume via the ``volume`` argument) to
+   provide minimum and maximum redshifts, ``zmin`` and ``zmax``, a sky
+   fraction ``fsky``, and a volume scaling factor ``volfac`` (by default
+   equal to 1), such that the volume is computed in accordance with the
+   given cosmological model. For example:
 
 .. container:: cell code
 
    .. code:: python
 
       Cov_hMpc_LCDM = EFT.Pell_covariance(
-                              k_hMpc,
-                              params,
+                              k_hMpc, 
+                              params, 
                               ell=[0,2,4],
-                              dk=2*np.pi/3780,
-                              zmin=params['z']-0.1,
-                              zmax=params['z']+0.1,
-                              fsky=15000./(360**2/np.pi),
-                              volfac=1,
-                              de_model="lambda",
+                              dk=2*np.pi/3780, 
+                              zmin=params['z']-0.1, 
+                              zmax=params['z']+0.1, 
+                              fsky=15000./(360**2/np.pi), 
+                              volfac=1, 
+                              de_model="lambda", 
                               volume=3780**3
                       )
+
+.. container:: cell markdown
+
+   As a further extension, in the case when using measurements from a
+   periodic box that have been averaged over different lines of sight,
+   we have added the averaging corrections for the covariance matrix. We
+   have created the flags ``avg_cov`` (set to ``False`` by default) and
+   ``avg_los`` (set to 3 by default) for the ``Pell_covariance``
+   function, so that when ``avg_cov=True`` it by default will compute
+   the average along the three perpendicular axes (x,y,z), but it is
+   also possible to average over just 2 directions. Note that this
+   computation is quite slow since it involves a different integral for
+   each k-bin, it may be optimised in the future.
+
+.. container:: cell markdown
+
+   .. rubric:: Tree-level bispectrum
+      :name: tree-level-bispectrum
+
+.. container:: cell markdown
+
+   COMET can also output the tree-level bispectrum (in real-space, for
+   the ``RS`` model) and its multipoles (in redshift-space, for the
+   ``EFT`` model). These predictions are not emulated, but computed from
+   the emulated de-wiggled power spectrum directly. For that purpose we
+   provide the function ``Bell`` and in order to demonstrate its usage
+   let's first generate a set of triangle configurations:
 
 .. container:: cell code
 
    .. code:: python
 
-      plt.figure(figsize=(9,6))
-      plt.title(r"")
-      plt.title(r"Corr matrix", y=1.05)
-      var_inv = np.diag(1./np.sqrt(np.diag(Cov_hMpc_LCDM)))
-      R_hMpc = var_inv @ Cov_hMpc_LCDM @ var_inv
-      plt.imshow(R_hMpc,cmap='magma_r', interpolation="blackman", filterrad=10)
+      k_hMpc_lin = np.arange(0.005, 0.3, 0.005)
+      tri =[]
+      for i1,k1 in enumerate(k_hMpc_lin):
+          for i2,k2 in enumerate(k_hMpc_lin[:i1+1]):
+              for i3,k3 in enumerate(k_hMpc_lin[:i2+1]):
+                  if k2 + k3 >= k1:
+                      tri.append([k1, k2, k3])
+      tri=np.asarray(tri)
+
+.. container:: cell markdown
+
+   The ``Bell`` function has the same arguments and functionality as the
+   analogous ``Pell`` function for the power spectrum. However, it
+   expects the triangle configurations to be always specified as a numpy
+   array containing :math:`k_1`, :math:`k_2`, :math:`k_3` (it is not
+   possible to evaluate the multipoles for different triangles at the
+   moment), and in addition it includes the argument ``kfun``, which is
+   used for compressing the number of unique k-modes and is ideally
+   chosen as a value that corresponds closely to the spacing between
+   configurations (e.g. the bin-width for measured data), but must not
+   be much larger. If in doubt, use a value much smaller than the
+   typical spacing.
+
+.. container:: cell code
+
+   .. code:: python
+
+      params['h'] = 0.69
+      params['z'] = 0.57
+      Bell = EFT.Bell(tri, params=params, ell=[0,2,4], de_model='lambda', kfun=0.005)
+
+.. container:: cell markdown
+
+   *Note: The very first call of ``Bell`` for a given set of
+   configurations can take a little longer (depending on the total
+   number of triangle configurations) as some lookup-tables are
+   generated. All subsequent calls, even with changing cosmological
+   parameters, are then much faster. That implicitly means that one
+   should avoid calling ``Bell`` multiple times with different triangle
+   configurations, but once for all triangle configurations.*
+
+.. container:: cell code
+
+   .. code:: python
+
+      fig, axs = plt.subplots(3,1, figsize=(10,5), sharex=True,)
+      #x_axis = tri = np.arange(tri.shape[0])
+      for i in range(3):
+          axs[i].semilogy(np.arange(tri.shape[0]), Bell["ell"+str(2*i)],c='C'+str(2*i),ls='-')
+          axs[i].set_ylabel(f'$B_{i*2}(k)$',fontsize=15)
+
+      fig.tight_layout()
+      plt.subplots_adjust(wspace=0, hspace=0)
+      axs[-1].set_xlabel('Triangle index - $k$ [h/Mpc]',fontsize=15)
       plt.show()
 
    .. container:: output display_data
 
-      .. image:: vertopal_a899190433aa4f85bb1541798bd599a6/affd7df3aa9238b86a5216b22deea909da142f8e.png
+      .. image:: vertopal_6b101e0129fa46319571b7b03d7c7f71/1c440416d098ef616f1419cc1e57d9172eac53b0.png
 
-
-Computing the :math:`\chi^2`
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 .. container:: cell markdown
 
-   .. rubric:: \
+   .. rubric:: Working with data sets
+      :name: working-with-data-sets
+
+.. container:: cell markdown
+
+   .. rubric:: Computing the :math:`\chi^2`
       :name: computing-the-chi2
 
 .. container:: cell markdown
@@ -601,7 +822,7 @@ Computing the :math:`\chi^2`
 
 .. container:: cell markdown
 
-   As the data vector would have an associated shot noise, we can
+   As the data vector would have an assosiated shot noise, we can
    specify it by indicating the number density of the sample.
 
 .. container:: cell code
@@ -647,7 +868,7 @@ Computing the :math:`\chi^2`
 
       ::
 
-         9453.159316045188
+         9464.265846193817
 
 .. container:: cell markdown
 
@@ -666,7 +887,7 @@ Computing the :math:`\chi^2`
 
       ::
 
-         23 ms ± 538 µs per loop (mean ± std. dev. of 7 runs, 10 loops each)
+         15.4 ms ± 298 µs per loop (mean ± std. dev. of 7 runs, 100 loops each)
 
 .. container:: cell code
 
@@ -678,91 +899,4 @@ Computing the :math:`\chi^2`
 
       ::
 
-         20.7 µs ± 470 ns per loop (mean ± std. dev. of 7 runs, 10000 loops each)
-
-Further features of the package
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
- .. container:: cell markdown
-
-    .. rubric:: \
-       :name: further-features-of-the-package
-
-.. container:: cell markdown
-
-  .. rubric:: the prediction of the linear matter power spectrum, with
-     or without application of infrared resummation (BAO damping)
-     :name: the-prediction-of-the-linear-matter-power-spectrum-with-or-without-application-of-infrared-resummation-bao-damping
-
-.. container:: cell code
-
-  .. code:: python
-
-     PLO = EFT.Pdw(params=params, k=k_hMpc, de_model='lambda',)
-     PL = EFT.PL(params=params, k=k_hMpc, de_model='lambda',)
-
-.. container:: cell code
-
-  .. code:: python
-
-     f = plt.figure(figsize=(10,5))
-     ax = f.add_subplot(111)
-
-     ax.semilogx(k_hMpc, PLO/PL,c='C0',ls='-')
-     ax.set_xlabel('$k$ [h/Mpc]',fontsize=15)
-     ax.set_ylabel(r'$P_{LO}(k)/P_{L}(k)$',fontsize=15)
-     plt.show()
-
-  .. container:: output display_data
-
-     .. image:: vertopal_c56978800f1947cca8ee540f20f66295/4a1e74835b5f30c07fe09ca288df5d47dd3ffd78.png
-
-.. container:: cell markdown
-
-  .. rubric:: the prediction of the real-space tree-level galaxy
-     bispectrum and the tree-level galaxy bispectrum multipoles in
-     redshift-space
-     :name: the-prediction-of-the-real-space-tree-level-galaxy-bispectrum-and-the-tree-level-galaxy-bispectrum-multipoles-in-redshift-space
-
-.. container:: cell code
-
-  .. code:: python
-
-     tri =[]
-     for k1 in k_hMpc:
-         for k2 in k_hMpc:
-             for k3 in k_hMpc:
-                 if k1 >= k2 >=k3:
-                     tri.append([k1, k2, k3])
-     tri=np.asarray(tri)
-
-.. container:: cell code
-
-  .. code:: python
-
-     Bell = EFT.Bell(tri, params=params, ell=[0,2,4], de_model='lambda')
-
-  .. container:: output stream stdout
-
-     ::
-
-        kfun not specified. Using kfun = 0.001
-
-.. container:: cell code
-
-  .. code:: python
-
-     fig, axs = plt.subplots(3,1, figsize=(10,5), sharex=True,)
-     #x_axis = tri = np.arange(tri.shape[0])
-     for i in range(3):
-         axs[i].semilogy(np.arange(tri.shape[0]), Bell["ell"+str(2*i)],c='C'+str(2*i),ls='--')
-         axs[i].set_ylabel(f'$B_{i*2}(k)$',fontsize=15)
-
-     fig.tight_layout()
-     plt.subplots_adjust(wspace=0, hspace=0)
-     axs[-1].set_xlabel('Triangle index - $k$ [h/Mpc]',fontsize=15)
-     plt.show()
-
-  .. container:: output display_data
-
-     .. image:: vertopal_c56978800f1947cca8ee540f20f66295/d9b7b299376e57aaa95e6ea8e276fc34c3918ce8.png
+         26.1 µs ± 825 ns per loop (mean ± std. dev. of 7 runs, 10000 loops each)
