@@ -1,25 +1,25 @@
 .. _examples:
 
 Tutorials
----------
+=========
 
 Quick-start
-===========
+-----------
 
 .. container:: cell markdown
 
-   .. rubric:: Quick-start
+   .. rubric:: \
       :name: quick-start
 
    In this tutorial we will show
 
    -  How to initialise the emulator.
-   -  How to obtain multipoles for the standard :math:`\Lambda CDM`
+   -  How to obtain multipoles for the standard :math:`\Lambda`CDM
       cosmology.
 
 .. container:: cell markdown
 
-   Let’s first import ``comet`` as well as other requried libraries:
+   Let’s first import ``comet`` as well as other required libraries:
 
 .. container:: cell code
 
@@ -107,7 +107,7 @@ Quick-start
 
    Finally, we define the values of the bias parameters. The complete
    list of parameters along with a brief explanation and their
-   dioctionary keywords can be found here. In the following we only
+   dictionary keywords can be found here. In the following we only
    specify values for the linear and quadratic bias, all other
    parameters are automatically set to zero:
 
@@ -170,9 +170,13 @@ Quick-start
 
       .. image:: vertopal_6b101e0129fa46319571b7b03d7c7f71/89648b9b95f5070142015408254706e662deeb9b.png
 
+
+Exploring a few in-depth options
+--------------------------------
+
 .. container:: cell markdown
 
-   .. rubric:: Exploring a few in-depth options
+   .. rubric:: \
       :name: exploring-a-few-in-depth-options
 
 .. container:: cell markdown
@@ -189,9 +193,12 @@ Quick-start
    -  Description of the ``fixed_cosmo_boost`` function, i.e., speedup
       when just changing bias parameters
 
+Fiducial background cosmologies
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 .. container:: cell markdown
 
-   .. rubric:: Fiducial background cosmologies
+   .. rubric:: \
       :name: fiducial-background-cosmologies
 
 .. container:: cell markdown
@@ -224,7 +231,7 @@ Quick-start
 
    Moreover, we stress that ``define_fiducial_cosmology`` is only used
    to set the fiducial cosmological parameter values. It cannot be used
-   to set default paramater values for the evaluation of the model.
+   to set default parameter values for the evaluation of the model.
 
 .. container:: cell markdown
 
