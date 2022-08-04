@@ -318,9 +318,10 @@ class PTEmu:
                 self.bias_params_list = ['b1t', 'b2t', 'b3t', 'b4t', 'c0', 'c2',
                                          'c4', 'cnlo', 'NP0', 'NP20', 'NP22',
                                          'NB0', 'MB0']
+            self.init_params_dict()
             self.splines_up_to_date = False
             self.dw_spline_up_to_date = False
-            
+
     def define_nbar(self, nbar):
         r"""Define the number density of the sample.
 
