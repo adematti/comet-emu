@@ -138,7 +138,139 @@ By default the values of the Alcock-Paczynski parameters, $q\ *{\parallel}$ and 
 This can be useful when one would like to ignore Alcock-Paczynski distortions.
 
 Shot noise normalisation
+<<<<<<< HEAD
 ------------------------
+=======
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. container:: cell markdown
+
+   .. rubric:: \
+      :name: shot-noise-normalisation
+
+.. container:: cell markdown
+
+   By default the shot noise parameters in the power spectrum model are
+   assumed to be given in units of :math:`L^3` for ``NP0`` and
+   :math:`L^5` for ``NP20`` and ``NP22``, where
+   :math:`L = (\mathrm{Mpc})^3` (``use_Mpc=True``) or
+   :math:`L = (h^{-1}\mathrm{Mpc})^3` (``use_Mpc=False``). It is
+   possible to define a fixed normalisation scale (i.e., corresponding
+   to the Poisson shot noise :math:`1/\bar{n}`) as follows:
+
+.. container:: cell code
+
+   .. code:: python
+
+      nbar = 1e-3  # in the respective units
+      EFT.define_nbar(nbar)
+
+.. container:: cell markdown
+
+   In this case ``NP0`` is dimensionless, while ``NP20`` and ``NP22``
+   have dimension :math:`L^2`.
+
+
+
+Non-flat and non-:math:`\Lambda` cosmologies
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. container:: cell markdown
+
+   .. rubric:: \
+      :name: non-flat-and-non-lambda-cosmologies
+
+.. container:: cell markdown
+
+   Predictions for non-flat cosmologies can be obtained by simply
+   specifying the curvature density parameter :math:`\Omega_k` in the
+   parameter dictionary:
+
+.. container:: cell code
+
+   .. code:: python
+
+      params['Ok'] = 0.05
+
+.. container:: cell markdown
+
+   For different dark energy models we need to provide a different
+   ``de_model`` argument for the ``Pell`` function. For a non-time
+   varying dark energy equation of state, we set ``de_model='w0'``,
+   while for a time-varying equation of state in the
+   :math:`w_0`-:math:`w_a` parametrisation, we set ``de_model='w0wa'``.
+   In those cases we need to specify the corresponding values of
+   :math:`w_0` and :math:`w_a` in the parameter dictionary. Let's
+   consider the following example:
+
+.. container:: cell code
+
+   .. code:: python
+
+      params['w0'] = -1.1
+      params['wa'] = 0.1
+
+.. container:: cell markdown
+
+   Then let's recompute the model by updating the previously set
+   parameter values and compare with the :math:`\Lambda`\ CDM
+   prediction:
+
+.. container:: cell code
+
+   .. code:: python
+
+      Pell_w0wa = EFT.Pell(k_hMpc, params, ell=[0,2,4], de_model='w0wa')
+
+.. container:: cell code
+
+   .. code:: python
+
+      f = plt.figure(figsize=(10,5))
+      ax = f.add_subplot(111)
+      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM["ell0"],c='C0',ls='-',label='$P_0$, $\Lambda$CDM')
+      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM["ell2"],c='C1',ls='-',label='$P_2$, $\Lambda$CDM')
+      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM["ell4"],c='C2',ls='-',label='$P_4$, $\Lambda$CDM')
+      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_w0wa["ell0"],c='C0',ls='--',label='$P_0$, $w_0 w_a$CDM')
+      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_w0wa["ell2"],c='C1',ls='--',label='$P_2$, $w_0 w_a$CDM')
+      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_w0wa["ell4"],c='C2',ls='--',label='$P_4$, $w_0 w_a$CDM')
+      ax.set_xlabel('$k$ [h/Mpc]',fontsize=15)
+      ax.set_ylabel(r'$k^{1/2}\,P_{\ell}(k)$ [$(\mathrm{Mpc}/h)^{5/2}$]',fontsize=15)
+      ax.legend(fontsize=15)
+      plt.show()
+
+   .. container:: output display_data
+
+      .. image:: vertopal_3711143d19e0467e9ab9ccde543f54cd/0679e37f0d1a6ffb5045d4970263461a19a3cb56.png
+
+
+
+The :math:`f`-:math:`\sigma_{12}` parameter space
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. container:: cell markdown
+
+   .. rubric:: The :math:`f`-:math:`\sigma_{12}` parameter space
+      :name: the-f-sigma_12-parameter-space
+
+.. container:: cell markdown
+
+   When calling the ``Pell`` function for a specific dark energy model,
+   it ignores any potential values of ``s12``, ``q_tr``, ``q_lo`` and
+   ``f`` in the parameter dictionary and instead converts the
+   :math:`\Lambda`\ CDM parameters to the :math:`\sigma_{12}` parameter
+   space. The internal values of those parameters (which can be accessed
+   via ``EFT.params``) have therefore been updated:
+
+.. container:: cell code
+
+   .. code:: python
+
+      # s12, q_tr, q_lo and f are computed internally!
+      EFT.params
+
+   .. container:: output execute_result
+>>>>>>> main
 
 By default the shot noise parameters in the power spectrum model are assumed to be given in units of $L^3$ for ``NP0`` and $L^5$ for ``NP20`` and ``NP22``\ , where $L = (\mathrm{Mpc})^3$ (\ ``use_Mpc=True``\ ) or $L = (h^{-1}\mathrm{Mpc})^3$ (\ ``use_Mpc=False``\ ). It is possible to define a fixed normalisation scale (i.e., corresponding to the Poisson shot noise $1/\bar{n}$) as follows:
 
@@ -274,6 +406,81 @@ Beyond $P_{\ell}$ predictions
 
 In the following we demonstrate a number of additional outputs that COMET can provide. Specifically:
 
+<<<<<<< HEAD
+=======
+   Performance-wise it is advisable to compute all required multipoles
+   and scales via the same function call (i.e., avoid calling ``Pell``
+   for individual wavemodes).
+
+
+Speed-up for fixed cosmological parameters
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. container:: cell markdown
+
+   .. rubric:: \
+      :name: speed-up-for-fixed-cosmological-parameters
+
+.. container:: cell markdown
+
+   It is a common task to test the models at fixed cosmological
+   parameters, and in that case COMET provides the function
+   ``Pell_fixed_cosmo_boost``, which accelerates the model computation.
+   It computes all individual model contributions, which are kept fixed
+   as long as the cosmological parameters are not changed, such that
+   changing the bias parameters only is sped up drastically. In the
+   following cells the diferences on time can be seen, which reflects a
+   speed up of around 3 orders of magnitude.
+
+.. container:: cell code
+
+   .. code:: python
+
+      %timeit EFT.Pell(k_hMpc, params, ell=[0,2,4], de_model="lambda")
+
+   .. container:: output stream stdout
+
+      ::
+
+         5.19 ms ± 8.59 µs per loop (mean ± std. dev. of 7 runs, 100 loops each)
+
+.. container:: cell code
+
+   .. code:: python
+
+      %timeit EFT.Pell_fixed_cosmo_boost(k_hMpc, params, ell=[0,2,4], de_model="lambda")
+
+   .. container:: output stream stdout
+
+      ::
+
+         9.46 µs ± 10.3 ns per loop (mean ± std. dev. of 7 runs, 100,000 loops each)
+
+.. container:: cell markdown
+
+   *Note: Since the computation of all the individual contributions
+   takes more time than the direct evaluation of the multipoles, this is
+   really only useful at fixed cosmological parameters.*
+
+
+
+Beyond :math:`P_{\ell}` predictions
+-----------------------------------
+
+.. container:: cell markdown
+
+   .. rubric:: Beyond :math:`P_{\ell}` predictions
+      :name: beyond-p_ell-predictions
+
+.. container:: cell markdown
+
+   In the following we demonstrate a number of additional outputs that
+   COMET can provide. Specifically:
+
+   -  The linear power spectrum, with and without infra-red resummation
+   -  The Gaussian covariance matrix for the power spectrum multipoles
+   -  The tree-level bispectrum multipoles
+>>>>>>> main
 
 * The linear power spectrum, with and without infra-red resummation
 * The Gaussian covariance matrix for the power spectrum multipoles
@@ -302,7 +509,26 @@ Let's plot the ratio of the de-wiggled linear power spectrum over the linear pow
    plt.show()
 
 Computing covariance matrices
+<<<<<<< HEAD
 -----------------------------
+=======
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. container:: cell markdown
+
+   Apart from the multipoles we can also generate (Gaussian) covariance
+   matrices, for which there are again different flags, that are either
+   defined for the :math:`\sigma_{12}` or the dark energy parameter
+   spaces. The first three arguments, ``k``, ``params``, and ``ell``,
+   are identical to those for ``Pell``. In addition, we need to specify
+   a binwidth ``dk`` and volume (both of which need to be given in the
+   respective units for which the emulator is configured in), for
+   example:
+
+.. container:: cell code
+
+   .. code:: python
+>>>>>>> main
 
 Apart from the multipoles we can also generate (Gaussian) covariance matrices, for which there are again different flags, that are either defined for the $\sigma_{12}$ or the dark energy parameter spaces. The first three arguments, ``k``\ , ``params``\ , and ``ell``\ , are identical to those for ``Pell``. In addition, we need to specify a binwidth ``dk`` and volume (both of which need to be given in the respective units for which the emulator is configured in), for example:
 
