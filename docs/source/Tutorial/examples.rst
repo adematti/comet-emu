@@ -7,9 +7,9 @@ Tutorials
 Quick-start
 -----------
 
-In this tutorial we will show
-  * How to initialise the emulator.
-  * How to obtain multipoles for the standard $\Lambda$CDM cosmology.
+ In this tutorial we will show
+   * How to initialise the emulator.
+   * How to obtain multipoles for the standard $\Lambda$CDM cosmology.
 
 Let’s first import ``comet`` as well as other required libraries:
 
@@ -93,6 +93,8 @@ So we can access our results and plot them as follow.
    ax.legend(fontsize=15)
    plt.show()
 
+.. image:: images/fig01.png
+
 Exploring a few in-depth options
 ================================
 
@@ -106,6 +108,7 @@ Let us now consider some of the more detailed options in 'COMET':
 * Using the $f$-$\sigma_{12}$ parameter space
 * Options for providing different $k$-scales, float vs np.array vs list and the corresponding outputs
 * Description of the ``fixed_cosmo_boost`` function, i.e., speedup when just changing bias parameters
+* Using different bases for galaxy bias
 
 Fiducial background cosmologies
 -------------------------------
@@ -138,139 +141,7 @@ By default the values of the Alcock-Paczynski parameters, $q\ *{\parallel}$ and 
 This can be useful when one would like to ignore Alcock-Paczynski distortions.
 
 Shot noise normalisation
-<<<<<<< HEAD
 ------------------------
-=======
-^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. container:: cell markdown
-
-   .. rubric:: \
-      :name: shot-noise-normalisation
-
-.. container:: cell markdown
-
-   By default the shot noise parameters in the power spectrum model are
-   assumed to be given in units of :math:`L^3` for ``NP0`` and
-   :math:`L^5` for ``NP20`` and ``NP22``, where
-   :math:`L = (\mathrm{Mpc})^3` (``use_Mpc=True``) or
-   :math:`L = (h^{-1}\mathrm{Mpc})^3` (``use_Mpc=False``). It is
-   possible to define a fixed normalisation scale (i.e., corresponding
-   to the Poisson shot noise :math:`1/\bar{n}`) as follows:
-
-.. container:: cell code
-
-   .. code:: python
-
-      nbar = 1e-3  # in the respective units
-      EFT.define_nbar(nbar)
-
-.. container:: cell markdown
-
-   In this case ``NP0`` is dimensionless, while ``NP20`` and ``NP22``
-   have dimension :math:`L^2`.
-
-
-
-Non-flat and non-:math:`\Lambda` cosmologies
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. container:: cell markdown
-
-   .. rubric:: \
-      :name: non-flat-and-non-lambda-cosmologies
-
-.. container:: cell markdown
-
-   Predictions for non-flat cosmologies can be obtained by simply
-   specifying the curvature density parameter :math:`\Omega_k` in the
-   parameter dictionary:
-
-.. container:: cell code
-
-   .. code:: python
-
-      params['Ok'] = 0.05
-
-.. container:: cell markdown
-
-   For different dark energy models we need to provide a different
-   ``de_model`` argument for the ``Pell`` function. For a non-time
-   varying dark energy equation of state, we set ``de_model='w0'``,
-   while for a time-varying equation of state in the
-   :math:`w_0`-:math:`w_a` parametrisation, we set ``de_model='w0wa'``.
-   In those cases we need to specify the corresponding values of
-   :math:`w_0` and :math:`w_a` in the parameter dictionary. Let's
-   consider the following example:
-
-.. container:: cell code
-
-   .. code:: python
-
-      params['w0'] = -1.1
-      params['wa'] = 0.1
-
-.. container:: cell markdown
-
-   Then let's recompute the model by updating the previously set
-   parameter values and compare with the :math:`\Lambda`\ CDM
-   prediction:
-
-.. container:: cell code
-
-   .. code:: python
-
-      Pell_w0wa = EFT.Pell(k_hMpc, params, ell=[0,2,4], de_model='w0wa')
-
-.. container:: cell code
-
-   .. code:: python
-
-      f = plt.figure(figsize=(10,5))
-      ax = f.add_subplot(111)
-      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM["ell0"],c='C0',ls='-',label='$P_0$, $\Lambda$CDM')
-      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM["ell2"],c='C1',ls='-',label='$P_2$, $\Lambda$CDM')
-      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_LCDM["ell4"],c='C2',ls='-',label='$P_4$, $\Lambda$CDM')
-      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_w0wa["ell0"],c='C0',ls='--',label='$P_0$, $w_0 w_a$CDM')
-      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_w0wa["ell2"],c='C1',ls='--',label='$P_2$, $w_0 w_a$CDM')
-      ax.semilogx(k_hMpc, k_hMpc**0.5*Pell_w0wa["ell4"],c='C2',ls='--',label='$P_4$, $w_0 w_a$CDM')
-      ax.set_xlabel('$k$ [h/Mpc]',fontsize=15)
-      ax.set_ylabel(r'$k^{1/2}\,P_{\ell}(k)$ [$(\mathrm{Mpc}/h)^{5/2}$]',fontsize=15)
-      ax.legend(fontsize=15)
-      plt.show()
-
-   .. container:: output display_data
-
-      .. image:: vertopal_3711143d19e0467e9ab9ccde543f54cd/0679e37f0d1a6ffb5045d4970263461a19a3cb56.png
-
-
-
-The :math:`f`-:math:`\sigma_{12}` parameter space
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. container:: cell markdown
-
-   .. rubric:: The :math:`f`-:math:`\sigma_{12}` parameter space
-      :name: the-f-sigma_12-parameter-space
-
-.. container:: cell markdown
-
-   When calling the ``Pell`` function for a specific dark energy model,
-   it ignores any potential values of ``s12``, ``q_tr``, ``q_lo`` and
-   ``f`` in the parameter dictionary and instead converts the
-   :math:`\Lambda`\ CDM parameters to the :math:`\sigma_{12}` parameter
-   space. The internal values of those parameters (which can be accessed
-   via ``EFT.params``) have therefore been updated:
-
-.. container:: cell code
-
-   .. code:: python
-
-      # s12, q_tr, q_lo and f are computed internally!
-      EFT.params
-
-   .. container:: output execute_result
->>>>>>> main
 
 By default the shot noise parameters in the power spectrum model are assumed to be given in units of $L^3$ for ``NP0`` and $L^5$ for ``NP20`` and ``NP22``\ , where $L = (\mathrm{Mpc})^3$ (\ ``use_Mpc=True``\ ) or $L = (h^{-1}\mathrm{Mpc})^3$ (\ ``use_Mpc=False``\ ). It is possible to define a fixed normalisation scale (i.e., corresponding to the Poisson shot noise $1/\bar{n}$) as follows:
 
@@ -318,6 +189,8 @@ Then let's recompute the model by updating the previously set parameter values a
    ax.legend(fontsize=15)
    plt.show()
 
+.. image:: images/fig02.png
+
 The $f$-$\sigma_{12}$ parameter space
 -------------------------------------
 
@@ -358,6 +231,8 @@ If we want to use the $f$-$\sigma_{12}$ parameter space directly, we need to pro
    ax.set_ylabel(r'$k^{1/2}\,P_{\ell}(k)$ [$(\mathrm{Mpc}/h)^{5/2}$]',fontsize=15)
    ax.legend(fontsize=15)
    plt.show()
+
+.. image:: images/fig03.png
 
 Providing different $k$-scales
 ------------------------------
@@ -401,86 +276,45 @@ It is a common task to test the models at fixed cosmological parameters, and in 
 
 *Note: Since the computation of all the individual contributions takes more time than the direct evaluation of the multipoles, this is really only useful at fixed cosmological parameters.*
 
+Using different bases for galaxy bias
+-------------------------------------
+
+By default COMET uses the galaxy bias expansion proposed in Eggemeier et al. (2019), but it is also possible to specify bias parameters of two other bases from:
+
+
+* Assassi et al. (2014), used e.g. in the analysis by Ivanov et al. (2019)
+* d'Amico et al. (2019)
+
+The bias basis is defined at initialisation using the argument ``bias_basis``\ , which can take the strings ``"EggScoSmi"`` (for the Eggemeier et al. basis), ``"AssBauGre"`` (for the Assassi et al. basis), or ``"AmiGleKok"`` (for the D'Amico et al. basis). It is also possible to change the bias basis later via the function ``change_bias_basis``\ , e.g.:
+
+.. code-block:: python
+
+   EFT.change_bias_basis("AssBauGre")
+
+Changing the bias basis changes the parameter dictionary keys that need to be provided. The full list of available bias keys can be printed as follows:
+
+.. code-block:: python
+
+   print(EFT.bias_params_list)
+
+In this case we now need to provide values for ``'bG2'`` and ``'bGam3'``\ , i.e., parameters for ``'g2'`` and ``'g21'`` are now ignored. In case of the d'Amico et al. basis we have:
+
+.. code-block:: python
+
+   EFT.change_bias_basis("AmiGleKok")
+   print(EFT.bias_params_list)
+
+Let's change back to the default for the remainder of the tutorial:
+
+.. code-block:: python
+
+   EFT.change_bias_basis("EggScoSmi")
+
 Beyond $P_{\ell}$ predictions
 =============================
 
 In the following we demonstrate a number of additional outputs that COMET can provide. Specifically:
 
-<<<<<<< HEAD
-=======
-   Performance-wise it is advisable to compute all required multipoles
-   and scales via the same function call (i.e., avoid calling ``Pell``
-   for individual wavemodes).
-
-
-Speed-up for fixed cosmological parameters
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. container:: cell markdown
-
-   .. rubric:: \
-      :name: speed-up-for-fixed-cosmological-parameters
-
-.. container:: cell markdown
-
-   It is a common task to test the models at fixed cosmological
-   parameters, and in that case COMET provides the function
-   ``Pell_fixed_cosmo_boost``, which accelerates the model computation.
-   It computes all individual model contributions, which are kept fixed
-   as long as the cosmological parameters are not changed, such that
-   changing the bias parameters only is sped up drastically. In the
-   following cells the diferences on time can be seen, which reflects a
-   speed up of around 3 orders of magnitude.
-
-.. container:: cell code
-
-   .. code:: python
-
-      %timeit EFT.Pell(k_hMpc, params, ell=[0,2,4], de_model="lambda")
-
-   .. container:: output stream stdout
-
-      ::
-
-         5.19 ms ± 8.59 µs per loop (mean ± std. dev. of 7 runs, 100 loops each)
-
-.. container:: cell code
-
-   .. code:: python
-
-      %timeit EFT.Pell_fixed_cosmo_boost(k_hMpc, params, ell=[0,2,4], de_model="lambda")
-
-   .. container:: output stream stdout
-
-      ::
-
-         9.46 µs ± 10.3 ns per loop (mean ± std. dev. of 7 runs, 100,000 loops each)
-
-.. container:: cell markdown
-
-   *Note: Since the computation of all the individual contributions
-   takes more time than the direct evaluation of the multipoles, this is
-   really only useful at fixed cosmological parameters.*
-
-
-
-Beyond :math:`P_{\ell}` predictions
------------------------------------
-
-.. container:: cell markdown
-
-   .. rubric:: Beyond :math:`P_{\ell}` predictions
-      :name: beyond-p_ell-predictions
-
-.. container:: cell markdown
-
-   In the following we demonstrate a number of additional outputs that
-   COMET can provide. Specifically:
-
-   -  The linear power spectrum, with and without infra-red resummation
-   -  The Gaussian covariance matrix for the power spectrum multipoles
-   -  The tree-level bispectrum multipoles
->>>>>>> main
 
 * The linear power spectrum, with and without infra-red resummation
 * The Gaussian covariance matrix for the power spectrum multipoles
@@ -508,27 +342,10 @@ Let's plot the ratio of the de-wiggled linear power spectrum over the linear pow
    ax.set_ylabel(r'$P_{\rm dw}(k)/P_{L}(k)$',fontsize=15)
    plt.show()
 
+.. image:: images/fig04.png
+
 Computing covariance matrices
-<<<<<<< HEAD
 -----------------------------
-=======
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. container:: cell markdown
-
-   Apart from the multipoles we can also generate (Gaussian) covariance
-   matrices, for which there are again different flags, that are either
-   defined for the :math:`\sigma_{12}` or the dark energy parameter
-   spaces. The first three arguments, ``k``, ``params``, and ``ell``,
-   are identical to those for ``Pell``. In addition, we need to specify
-   a binwidth ``dk`` and volume (both of which need to be given in the
-   respective units for which the emulator is configured in), for
-   example:
-
-.. container:: cell code
-
-   .. code:: python
->>>>>>> main
 
 Apart from the multipoles we can also generate (Gaussian) covariance matrices, for which there are again different flags, that are either defined for the $\sigma_{12}$ or the dark energy parameter spaces. The first three arguments, ``k``\ , ``params``\ , and ``ell``\ , are identical to those for ``Pell``. In addition, we need to specify a binwidth ``dk`` and volume (both of which need to be given in the respective units for which the emulator is configured in), for example:
 
@@ -552,6 +369,8 @@ Apart from the multipoles we can also generate (Gaussian) covariance matrices, f
    plt.imshow(R_hMpc,cmap='magma_r')
    plt.show()
 
+.. image:: images/fig05.png
+
 The argument specifying the scales provides the same functionality as for ``Pell``\ , that is, it can either be given as a number or numpy array, in which case all specified multipoles are evaluated for the same scales, or a list of numbers/numpy arrays, in which case the first entry is evaluated for the first multipole in ``ell`` etc.
 
 For the version with specified dark energy model it is also possible (in addition to providing the volume via the ``volume`` argument) to provide minimum and maximum redshifts, ``zmin`` and ``zmax``\ , a sky fraction ``fsky``\ , and a volume scaling factor ``volfac`` (by default equal to 1), such that the volume is computed in accordance with the given cosmological model. For example:
@@ -568,7 +387,6 @@ For the version with specified dark energy model it is also possible (in additio
                            fsky=15000./(360**2/np.pi),
                            volfac=1,
                            de_model="lambda",
-                           volume=3780**3
                    )
 
 As a further extension, in the case when using measurements from a periodic box that have been averaged over different lines of sight, we have added the averaging corrections for the covariance matrix. We have created the flags ``avg_cov`` (set to ``False`` by default) and ``avg_los`` (set to 3 by default) for the ``Pell_covariance`` function, so that when ``avg_cov=True`` it by default will compute the average along the three perpendicular axes (x,y,z), but it is also possible to average over just 2 directions. Note that this computation is quite slow since it involves a different  integral for each k-bin, it may be optimised in the future.
@@ -599,42 +417,39 @@ The ``Bell`` function has the same arguments and functionality as the analogous 
 
 *Note: The very first call of ``Bell`` for a given set of configurations can take a little longer (depending on the total number of triangle configurations) as some lookup-tables are generated. All subsequent calls, even with changing cosmological parameters, are then much faster. That implicitly means that one should avoid calling ``Bell`` multiple times with different triangle configurations, but once for all triangle configurations.*
 
-```python tags=[]
-fig, axs = plt.subplots(3,1, figsize=(10,5), sharex=True,)
+.. code-nlack:: python
 
-x_axis = tri = np.arange(tri.shape[0])
-======================================
+    fig, axs = plt.subplots(3,1, figsize=(10,5), sharex=True,)
+    for i in range(3):
+        axs[i].semilogy(np.arange(tri.shape[0]), Bell["ell"+str(2\ *i)],c='C'+str(2*\ i),ls='-')
+        axs[i].set\ *ylabel(f'$B*\ {i*2}(k)$',fontsize=15)
 
-for i in range(3):
-    axs[i].semilogy(np.arange(tri.shape[0]), Bell["ell"+str(2\ *i)],c='C'+str(2*\ i),ls='-')
-    axs[i].set\ *ylabel(f'$B*\ {i*2}(k)$',fontsize=15)
+    fig.tight_layout()
+    plt.subplots_adjust(wspace=0, hspace=0)
+    axs[-1].set_xlabel('Triangle index - $k$ [h/Mpc]',fontsize=15)
+    plt.show()
 
-fig.tight_layout()
-plt.subplots_adjust(wspace=0, hspace=0)
-axs[-1].set_xlabel('Triangle index - $k$ [h/Mpc]',fontsize=15)
-plt.show()
+.. image:: images/fig06.png
 
-.. code-block::
-
-
-   # Working with data sets
+Working with data sets
+----------------------
 
 
-   ## Loading data
+Loading data
+^^^^^^^^^^^^
+
+ We can load measurements of the power spectrum and bispectrum multipoles into COMET using the `define_data_set` function. This function takes first an identifier for the data set (`obs_id`; this can be anything, it will be used to reference the data) and any one of the following arguments:
+    * `stat`. Can either be `'powerspectrum'` or `'bispectrum'`; if not provided, `stat` is deduced from the number of columns in `bins` (see below).
+    * `bins`. In case of the power spectrum: 1d-array of k-modes corresponding to the measurements; in case of the bispectrum: 2d-array with three columns corresponding to the triangle configuration ($k_1$, $k_2$, $k_3$) of the measurements.
+    * `signal`. The measurements of the power spectrum or bispectrum; the size of the first dimension must match the size of `bins`, and it is assumed that the first column corresponds to the monopole, the second to the quadrupole, and the third to the hexadecapole (one does not need to provide all three multipoles, i.e., one can provide only the monopole, or monopole + quadrupole, but one cannot leave out preceding multipoles).
+    * `cov`. The covariance matrix of the measurements, which must match the combined size of all given multipoles. If the dimension of `cov` is one-dimensional, it is assumed to be the diagonal of the covariance matrix.
+    * `theory_cov`. A flag that specifies whether the given covariance matrix was derived analytically or from a set of simulation measurements. In the latter case an Anderson-Hartlap correction is applied to the inverse, based on `n_realizations`.
+    * `n_realizations`. Number of realizations from which the covariance matrix was estimated, only used (and required) in case `theory_cov=False`.
 
 
-   We can load measurements of the power spectrum and bispectrum multipoles into COMET using the `define_data_set` function. This function takes first an identifier for the data set (`obs_id`; this can be anything, it will be used to reference the data) and any one of the following arguments:
-      * `stat`. Can either be `'powerspectrum'` or `'bispectrum'`; if not provided, `stat` is deduced from the number of columns in `bins` (see below).
-      * `bins`. In case of the power spectrum: 1d-array of k-modes corresponding to the measurements; in case of the bispectrum: 2d-array with three columns corresponding to the triangle configuration ($k_1$, $k_2$, $k_3$) of the measurements.
-      * `signal`. The measurements of the power spectrum or bispectrum; the size of the first dimension must match the size of `bins`, and it is assumed that the first column corresponds to the monopole, the second to the quadrupole, and the third to the hexadecapole (one does not need to provide all three multipoles, i.e., one can provide only the monopole, or monopole + quadrupole, but one cannot leave out preceding multipoles).
-      * `cov`. The covariance matrix of the measurements, which must match the combined size of all given multipoles. If the dimension of `cov` is one-dimensional, it is assumed to be the diagonal of the covariance matrix.
-      * `theory_cov`. A flag that specifies whether the given covariance matrix was derived analytically or from a set of simulation measurements. In the latter case an Anderson-Hartlap correction is applied to the inverse, based on `n_realizations`.
-      * `n_realizations`. Number of realizations from which the covariance matrix was estimated, only used (and required) in case `theory_cov=False`.
+ Let us load some mock power spectrum measurements:
 
-
-   Let us load some mock power spectrum measurements:
-
-   ```python
+.. code-black:: ptyhon
    data = np.loadtxt('mock_Pk_mean.dat')
    Cov = np.loadtxt('mock_Pk_cov.dat')
 
@@ -663,9 +478,9 @@ To do so, we call the function ``chi2``\ , which takes as arguments the identifi
 
 .. code-block:: python
 
-   EFT.chi2(obs_id='mock_Pk',params=params, kmax=[0.30, 0.30, 0.30], de_model='lambda', chi2_decomposition=False)
+   EFT.chi2(obs_id='mock_Pk',params=params, kmax=[0.30, 0.30, 0.30], de_model='lambda', convolve_window=False)
 
-Moreover, in order to speed up the computation of the $\chi^2$, in the same way as ``Pell_fixed_cosmo_boost`` function, we can specify the flag ``chi2_decomposition`` in order to avoid recompute the cosmological dependent quantities. Let's see how it works
+Moreover, in order to speed up the computation of the $\chi^2$, in the same way as ``Pell_fixed_cosmo_boost`` function, we can specify the flag ``chi2_decomposition`` in order to avoid recomputing the quantities depending on cosmological parameters. Let's see how it works
 
 .. code-block:: python
 
@@ -674,5 +489,59 @@ Moreover, in order to speed up the computation of the $\chi^2$, in the same way 
 .. code-block:: python
 
    %timeit EFT.chi2(obs_id='mock_Pk',params=params, kmax=[0.30, 0.30, 0.30], de_model='lambda', chi2_decomposition=True)
+
+Convolution with survey window function
+---------------------------------------
+
+In order to compare the power spectrum model predictions to some actual measurements, we need to convolve with the survey window function. This can be done within COMET by providing a window function mixing matrix $W\ *{\ell\ell'}(k,k')$ that connects the convolved and unconvolved power spectra via a simple matrix multiplication (see e.g. d'Amico et al. 2019):
+$$
+P*\ {W,\ell}(k) = W\ *{\ell\ell'}(k,k') \cdot P*\ {\ell'}(k')\,,
+$$
+where the summation over multipole numbers is implicit.
+
+The mixing matrix and the associated scales for which it has been computed, $k$ and $k'$, can be specified via ``define_data_set`` using the arguments ``bins_mixing_matrix`` and ``W_mixing_matrix``. The former is a list, containing the arrays for $k$ and $k'$. For example:
+
+.. code-block:: python
+
+   # Let's load some sample window function and k_prime values
+   W = np.fromfile('mock_Pk_window_W.npy').reshape((216, 4854))
+   k_prime = np.loadtxt('mock_Pk_window_kp.dat')
+
+   # The mixing matrix was computed for the following k-scales
+   k = np.arange(1,73)*2*np.pi/1500
+
+   # Load everything into COMET using the same data identifier as before ('mock_Pk')
+   EFT.define_data_set(obs_id='mock_Pk', bins_mixing_matrix=[k, k_prime], W_mixing_matrix=W)
+
+We can now obtain the window-convolved power spectrum by passing the additional argument ``obs_id`` to ``Pell`` (the same functionality applies also to ``Pell_fixed_cosmo_boost``\ ) using the corresponding data identifier:
+
+.. code-block:: python
+
+   P_unconv = EFT.Pell(k, params, ell=[0,2,4], de_model='lambda')                  # unconvolved, equivalent with obs_id=None
+   P_conv = EFT.Pell(k, params, ell=[0,2,4], de_model='lambda', obs_id='mock_Pk')  # convolved with window function for data set 'mock_Pk'
+
+.. code-block:: python
+
+   f = plt.figure(figsize=(10,5))
+   ax = f.add_subplot(111)
+   ax.plot(k, k*P_unconv['ell0'],c='C0',ls='-',label='$P_{0}$')
+   ax.plot(k, k*P_conv['ell0'],c='C0',ls='--',label='$P_{W,0}$')
+   ax.plot(k, k*P_unconv['ell2'],c='C1',ls='-',label='$P_{2}$')
+   ax.plot(k, k*P_conv['ell2'],c='C1',ls='--',label='$P_{W,2}$')
+   ax.plot(k, k*P_unconv['ell4'],c='C2',ls='-',label='$P_{4}$')
+   ax.plot(k, k*P_conv['ell4'],c='C2',ls='--',label='$P_{W,4}$')
+   ax.set_xlabel('$k$ [h/Mpc]',fontsize=15)
+   ax.set_ylabel(r'$k\,P_{\ell}(k)$ [$(\mathrm{Mpc}/h)^{2}$]',fontsize=15)
+   ax.legend(fontsize=15,ncol=3)
+
+.. image:: images/fig07.png
+
+We can also take the window function convolution into account when computing the $\chi^2$. In that case we set the flag ``convolve_window=True`` (by default it is set to ``False``\ ):
+
+.. code-block:: python
+
+   EFT.chi2(obs_id='mock_Pk',params=params, kmax=[0.30, 0.30, 0.30], de_model='lambda', convolve_window=True)
+
+This also works in combination with the option ``chi2_decomposition=True``.
 
 .. code-block:: python

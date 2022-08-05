@@ -151,17 +151,18 @@ class MeasuredData:
             self.W_mixing_matrix = kwargs.get('W_mixing_matrix')
         if 'theory_cov' in kwargs:
             self.theory_cov = kwargs.get('theory_cov')
-        else:
-            self.theory_cov = True
         if 'kfun' in kwargs:
             self.kfun = kwargs.get('kfun')
 
         if not self.theory_cov:
-            if 'n_realizations' in kwargs:
-                self.n_realizations = kwargs.get('n_realizations')
-            else:
-                raise ValueError("For non-analytical covariance matrix, "
-                                 "'n_realizations' needs to be specified.")
+            try:
+                self.n_realizations
+            except:
+                if 'n_realizations' in kwargs:
+                    self.n_realizations = kwargs.get('n_realizations')
+                else:
+                    raise ValueError("For non-analytical covariance matrix, "
+                                     "'n_realizations' needs to be specified.")
 
         # update kmax-truncated data containers
         if self.kmax_is_set:
@@ -236,7 +237,8 @@ class MeasuredData:
                                     ell2*nbin_total + ids_kmax[ell2],
                                     indexing='ij'))]
         self.inverse_cov_kmax = np.linalg.inv(self.cov_kmax)
-        self.inverse_cov_kmax *= self.AHfactor(sum(self.nbins))
+        if not self.theory_cov:
+            self.inverse_cov_kmax *= self.AHfactor(sum(self.nbins))
 
         if self.stat == 'bispectrum':
             self.inverse_cov_kmax_cholesky = np.linalg.cholesky(
