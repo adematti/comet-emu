@@ -36,12 +36,12 @@ class MeasuredData:
             this parameter is required, and specifies the total number of
             resamplings (needed for Hartlap corrections).
         """
+        if 'stat' in kwargs and \
+            kwargs.get('stat') in ['powerspectrum', 'bispectrum']:
+                self.stat = kwargs.get('stat')
         if 'bins' in kwargs:
             self.bins = kwargs.get('bins')
-            if 'stat' in kwargs and \
-                kwargs.get('stat') in ['powerspectrum', 'bispectrum']:
-                    self.stat = kwargs.get('stat')
-            elif 'stat' not in kwargs and self.bins.ndim == 1:
+            if 'stat' not in kwargs and self.bins.ndim == 1:
                 self.stat = 'powerspectrum'
             elif 'stat' not in kwargs and self.bins.shape[1] == 3:
                 self.stat = 'bispectrum'
@@ -59,6 +59,10 @@ class MeasuredData:
                 self.cov = np.diag(self.cov)
         if 'bins_mixing_matrix' in kwargs:
             self.bins_mixing_matrix = kwargs.get('bins_mixing_matrix')
+            self.bins_mixing_matrix_compressed = np.logspace(
+                np.log10(self.bins_mixing_matrix[1][0]),
+                np.log10(self.bins_mixing_matrix[1][-1]),
+                int(self.bins_mixing_matrix[1][-1]/0.5*100))
         if 'W_mixing_matrix' in kwargs:
             self.W_mixing_matrix = kwargs.get('W_mixing_matrix')
         if 'theory_cov' in kwargs:
@@ -116,12 +120,12 @@ class MeasuredData:
             this parameter is required, and specifies the total number of
             resamplings (needed for Hartlap corrections).
         """
+        if 'stat' in kwargs and \
+            kwargs.get('stat') in ['powerspectrum', 'bispectrum']:
+                self.stat = kwargs.get('stat')
         if 'bins' in kwargs:
             self.bins = kwargs.get('bins')
-            if 'stat' in kwargs and \
-                kwargs.get('stat') in ['powerspectrum', 'bispectrum']:
-                    self.stat = kwargs.get('stat')
-            elif 'stat' not in kwargs and self.bins.ndim == 1:
+            if 'stat' not in kwargs and self.bins.ndim == 1:
                 self.stat = 'powerspectrum'
             elif 'stat' not in kwargs and self.bins.shape[1] == 3:
                 self.stat = 'bispectrum'
@@ -139,6 +143,10 @@ class MeasuredData:
                 self.cov = np.diag(self.cov)
         if 'bins_mixing_matrix' in kwargs:
             self.bins_mixing_matrix = kwargs.get('bins_mixing_matrix')
+            self.bins_mixing_matrix_compressed = np.logspace(
+                np.log10(self.bins_mixing_matrix[1][0]),
+                np.log10(self.bins_mixing_matrix[1][-1]),
+                int(self.bins_mixing_matrix[1][-1]/0.5*100))
         if 'W_mixing_matrix' in kwargs:
             self.W_mixing_matrix = kwargs.get('W_mixing_matrix')
         if 'theory_cov' in kwargs:
