@@ -138,6 +138,7 @@ class PTEmu:
         self.splines_up_to_date = False
         self.dw_spline_up_to_date = False
         self.X_splines_up_to_date = {X: False for X in self.diagrams_all}
+        self.X_obs_id = None
         self.emu_params_updated = False
 
         self.chi2_decomposition = None
@@ -1363,6 +1364,11 @@ class PTEmu:
             chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
             the standard cosmological parameters, or be left undefined to use
             only :math:`\sigma_{12}`. Defaults to **None**.
+        obs_id: str, optional
+            If not **None** the returned power spectrum will be convolved with
+            a survey window function. In that case the string must be a valid
+            data set identifier and the window function mixing matrix must
+            have been loaded beforehand. Defaults to **None**.
         q_tr_lo: list or numpy.ndarray, optional
             List containing the user-provided AP parameters, in the form
             :math:`(q_\perp, q_\parallel)`. If provided, prevents
@@ -1520,7 +1526,7 @@ class PTEmu:
         return Pell_dict
 
     def Pell_fixed_cosmo_boost(self, k, params, ell, de_model=None,
-                               q_tr_lo=None, W_damping=None,
+                               obs_id=None, q_tr_lo=None, W_damping=None,
                                ell_for_recon=None):
         r"""Compute the power spectrum multipoles (fast for fixed cosmology).
 
@@ -1552,6 +1558,11 @@ class PTEmu:
             chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
             the standard cosmological parameters, or be left undefined to use
             only :math:`\sigma_{12}`. Defaults to **None**.
+        obs_id: str, optional
+            If not **None** the returned power spectrum will be convolved with
+            a survey window function. In that case the string must be a valid
+            data set identifier and the window function mixing matrix must
+            have been loaded beforehand. Defaults to **None**.
         q_tr_lo: list or numpy.ndarray, optional
             List containing the user-provided AP parameters, in the form
             :math:`(q_\perp, q_\parallel)`. If provided, prevents
@@ -1602,6 +1613,10 @@ class PTEmu:
             if 'Ok' not in params:
                 check_params.remove('Ok')
 
+        if obs_id != self.X_obs_id:
+            self.X_splines_up_to_date = {X: False for X in self.diagrams_all}
+            self.X_obs_id = obs_id
+
         if (any(params[p] != self.params[p] for p in check_params) or
                 not all(self.X_splines_up_to_date.values())):
             self.PX_ell_list = {
@@ -1610,6 +1625,7 @@ class PTEmu:
                 for i, m in enumerate(ell)}
             for i, X in enumerate(self.diagrams_all):
                 PX_ell = self.PX_ell(k_list, params, ell, X, de_model=de_model,
+                                     obs_id=self.X_obs_id,
                                      q_tr_lo=q_tr_lo,
                                      W_damping=W_damping,
                                      ell_for_recon=ell_for_recon)
@@ -1629,104 +1645,6 @@ class PTEmu:
         for i, m in enumerate(ell):
             Pell_dict['ell{}'.format(m)] = np.dot(
                 self.PX_ell_list['ell{}'.format(m)], bX)
-
-        return Pell_dict
-
-    def Pell_convolved(self, k, params, ell, obs_id, de_model=None,
-                       q_tr_lo=None, W_damping=None, ell_for_recon=None):
-        r"""Compute the convolved power spectrum multipoles.
-
-        Main method to compute the galaxy power spectrum multipoles convolved
-        with a specific data window function.
-        Returns the specified multipole at the given wavemodes :math:`k`.
-
-        Parameters
-        ----------
-        k: float or list or numpy.ndarray
-            Wavemodes :math:`k` at which to evaluate the multipoles. If a list
-            is passed, it has to match the size of `ell`, and in that case
-            each wavemode refer to a given multipole.
-        params: dict
-            Dictionary containing the list of total model parameters which are
-            internally used by the emulator. The keyword/value pairs of the
-            dictionary specify the names and the values of the parameters,
-            respectively.
-        ell: int or list
-            pecific multipole order :math:`\ell`.
-            Can be chosen from the list [0,2,4,6], whose entries correspond to
-            monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`),
-            hexadecapole (:math:`\ell=4`) and octopole (:math:`\ell=6`).
-        obs_id: str
-            Identifier of the data sample. Necessary to obtain access to the
-            particular window function of the sample.
-        de_model: str, optional
-            String that determines the dark energy equation of state. Can be
-            chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
-            the standard cosmological parameters, or be left undefined to use
-            only :math:`\sigma_{12}`. Defaults to **None**.
-        q_tr_lo: list or numpy.ndarray, optional
-            List containing the user-provided AP parameters, in the form
-            :math:`(q_\perp, q_\parallel)`. If provided, prevents
-            computation from correct formulas (ratios of angular diameter
-            distances and expansion factors wrt to the corresponding quantities
-            of the fiducial cosmology). Defaults to **None**.
-        W_damping: Callable[[float, float], float], optional
-            Function returning the shape of the pairwise velocity generating
-            function in the large scale limit, :math:`r\rightarrow\infty`. The
-            function accepts two floats as arguments, corresponding to the
-            wavemode :math:`k` and the cosinus of the angle between pair
-            separation and line of sight :math:`\mu`, and returns a float. This
-            function is used only with the **VDG_infty** model. If **None**, it
-            uses the free kurtosis distribution defined by **W_kurt**.
-            Defaults to **None**.
-        ell_for_recon: list, optional
-            List of :math:`\ell` values used for the reconstruction of the
-            2d leading-order IR-resummed power spectrum. If **None**, all the
-            even multipoles up to :math:`\ell=6` are used in the
-            reconstruction. Defaults to **None**.
-
-        Returns
-        -------
-        Pell_dict: dict
-            Dictionary containing all the requested power spectrum multipoles
-            of order :math:`\ell` at the specified :math:`k`.
-        """
-        ell_for_mixing_matrix = [0, 2, 4] if not self.real_space else [0]
-        Pell = self.Pell(self.data[obs_id].bins_mixing_matrix[1], params,
-                         ell_for_mixing_matrix, de_model, q_tr_lo,
-                         W_damping, ell_for_recon)
-        Pell_list = np.hstack([Pell['ell{}'.format(m)] for m
-                               in ell_for_mixing_matrix])
-        Pell_convolved = np.dot(self.data[obs_id].W_mixing_matrix, Pell_list)
-
-        ell = [ell] if not isinstance(ell, list) else ell
-
-        if isinstance(k, list):
-            if len(k) != len(ell):
-                raise ValueError("If 'k' is given as a list, it must match the"
-                                 " length of 'ell'.")
-            else:
-                k_list = k
-                k = np.unique(np.hstack(k_list))
-        else:
-            k_list = [k]*len(ell)
-
-        nb = len(self.data[obs_id].bins_mixing_matrix[0])
-
-        Pell_dict = {}
-        if k.size != np.intersect1d(
-            k, self.data[obs_id].bins_mixing_matrix[0]).size:
-                for i, m in enumerate(ell):
-                    spline = UnivariateSpline(
-                        self.data[obs_id].bins_mixing_matrix[0],
-                        Pell_convolved[int(m/2)*nb:(int(m/2)+1)*nb], k=3, s=0)
-                    Pell_dict['ell{}'.format(m)] = spline(k_list[i])
-        else:
-            for i, m in enumerate(ell):
-                ids = np.intersect1d(k_list[i],
-                                     self.data[obs_id].bins_mixing_matrix[0],
-                                     return_indices=True)[1]
-                Pell_dict['ell{}'.format(m)] = Pell_convolved[ids+int(m/2)*nb]
 
         return Pell_dict
 
@@ -1913,6 +1831,11 @@ class PTEmu:
             chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
             the standard cosmological parameters, or be left undefined to use
             only :math:`\sigma_{12}`. Defaults to **None**.
+        obs_id: str, optional
+            If not **None** the returned power spectrum contribution will be
+            convolved with a survey window function. In that case the string
+            must be a valid data set identifier and the window function mixing
+            matrix must have been loaded beforehand. Defaults to **None**.
         q_tr_lo: list or numpy.ndarray, optional
             List containing the user-provided AP parameters, in the form
             :math:`(q_\perp, q_\parallel)`. If provided, prevents
