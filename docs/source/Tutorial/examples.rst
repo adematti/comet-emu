@@ -7,7 +7,7 @@ Tutorials
 Quick-start
 -----------
 
- In this tutorial we will show
+In this tutorial we will show
    * How to initialise the emulator.
    * How to obtain multipoles for the standard $\Lambda$CDM cosmology.
 
@@ -96,7 +96,7 @@ So we can access our results and plot them as follow.
 .. image:: images/fig01.png
 
 Exploring a few in-depth options
-================================
+--------------------------------
 
 Let us now consider some of the more detailed options in 'COMET':
 
@@ -111,7 +111,7 @@ Let us now consider some of the more detailed options in 'COMET':
 * Using different bases for galaxy bias
 
 Fiducial background cosmologies
--------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Above, we specified the fiducial background cosmology by setting the values of $h$, $\omega_b$, $\omega\ *c$ and redshift $z$. Alternatively, we can directly provide the values of the Hubble rate $H*\ {\rm fid}(z)$ and comoving transverse distance $D_{m,\rm fid}(z)$ as follows:
 
@@ -127,7 +127,7 @@ Note that the units of $H\ *{\rm fid}(z)$ and $D*\ {m,\rm fid}(z)$ need to be ei
 Moreover, we stress that ``define_fiducial_cosmology`` is only used to set the fiducial cosmological parameter values. It cannot be used to set default parameter values for the evaluation of the model.
 
 Alcock-Paczynski parameters
----------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 By default the values of the Alcock-Paczynski parameters, $q\ *{\parallel}$ and $q*\ {\perp}$, are computed based on the given cosmological parameters and the fiducial background values for the Hubble rate and comoving transverse distance. These values can be overwritten by explicitly providing the Alcock-Paczynski parameters as an argument to the ``Pell`` function:
 
@@ -141,7 +141,7 @@ By default the values of the Alcock-Paczynski parameters, $q\ *{\parallel}$ and 
 This can be useful when one would like to ignore Alcock-Paczynski distortions.
 
 Shot noise normalisation
-------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^
 
 By default the shot noise parameters in the power spectrum model are assumed to be given in units of $L^3$ for ``NP0`` and $L^5$ for ``NP20`` and ``NP22``\ , where $L = (\mathrm{Mpc})^3$ (\ ``use_Mpc=True``\ ) or $L = (h^{-1}\mathrm{Mpc})^3$ (\ ``use_Mpc=False``\ ). It is possible to define a fixed normalisation scale (i.e., corresponding to the Poisson shot noise $1/\bar{n}$) as follows:
 
@@ -153,7 +153,7 @@ By default the shot noise parameters in the power spectrum model are assumed to 
 In this case ``NP0`` is dimensionless, while ``NP20`` and ``NP22`` have dimension $L^2$.
 
 Non-flat and non-$\Lambda$ cosmologies
---------------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Predictions for non-flat cosmologies can be obtained by simply specifying the curvature density parameter $\Omega_k$ in the parameter dictionary:
 
@@ -192,7 +192,7 @@ Then let's recompute the model by updating the previously set parameter values a
 .. image:: images/fig02.png
 
 The $f$-$\sigma_{12}$ parameter space
--------------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 When calling the ``Pell`` function for a specific dark energy model, it ignores any potential values of ``s12``\ , ``q_tr``\ , ``q_lo`` and ``f`` in the parameter dictionary and instead converts the $\Lambda$CDM parameters to the $\sigma_{12}$ parameter space. The internal values of those parameters (which can be accessed via ``EFT.params``\ ) have therefore been updated:
 
@@ -235,7 +235,7 @@ If we want to use the $f$-$\sigma_{12}$ parameter space directly, we need to pro
 .. image:: images/fig03.png
 
 Providing different $k$-scales
-------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 There are multiple options for specifying the scales for which to compute the multipoles: if given as a number or numpy array all specified multipoles will be computed for those scales, if given as a list, however, then the first entry of the list is evaluated for the first multipole, the second for the second multipole, etc.
 
@@ -261,8 +261,8 @@ Or at different scales for different multipoles (providing a list of numbers or 
 
 Performance-wise it is advisable to compute all required multipoles and scales via the same function call (i.e., avoid calling ``Pell`` for individual wavemodes).
 
-Speedup when changing just bias parameters.
--------------------------------------------
+Speedup when changing just bias parameters
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 It is a common task to test the models at fixed cosmological parameters, and in that case COMET provides the function ``Pell_fixed_cosmo_boost``\ , which accelerates the model computation. It computes all individual model contributions, which are kept fixed as long as the cosmological parameters are not changed, such that changing the bias parameters only is sped up drastically. In the following cells the diferences on time can be seen, which reflects a speed up of around 3 orders of magnitude.
 
@@ -277,7 +277,7 @@ It is a common task to test the models at fixed cosmological parameters, and in 
 *Note: Since the computation of all the individual contributions takes more time than the direct evaluation of the multipoles, this is really only useful at fixed cosmological parameters.*
 
 Using different bases for galaxy bias
--------------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 By default COMET uses the galaxy bias expansion proposed in Eggemeier et al. (2019), but it is also possible to specify bias parameters of two other bases from:
 
@@ -311,7 +311,7 @@ Let's change back to the default for the remainder of the tutorial:
    EFT.change_bias_basis("EggScoSmi")
 
 Beyond $P_{\ell}$ predictions
-=============================
+-----------------------------
 
 In the following we demonstrate a number of additional outputs that COMET can provide. Specifically:
 
@@ -321,7 +321,7 @@ In the following we demonstrate a number of additional outputs that COMET can pr
 * The tree-level bispectrum multipoles
 
 Linear power spectrum
----------------------
+^^^^^^^^^^^^^^^^^^^^^
 
 The linear power spectrum (no infra-red resummation; simply the emulated CAMB output) can be obtained from the function ``PL``\ , while the linear power spectrum with damped BAO wiggles (infra-red resummation) can be obtained from the function ``Pdw`` (note: this is not the smooth, no-wiggle power spectrum). The arguments are identical to those of ``Pell`` with the exception that we no longer need to specify a multipole number.
 
@@ -345,7 +345,7 @@ Let's plot the ratio of the de-wiggled linear power spectrum over the linear pow
 .. image:: images/fig04.png
 
 Computing covariance matrices
------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Apart from the multipoles we can also generate (Gaussian) covariance matrices, for which there are again different flags, that are either defined for the $\sigma_{12}$ or the dark energy parameter spaces. The first three arguments, ``k``\ , ``params``\ , and ``ell``\ , are identical to those for ``Pell``. In addition, we need to specify a binwidth ``dk`` and volume (both of which need to be given in the respective units for which the emulator is configured in), for example:
 
@@ -392,7 +392,7 @@ For the version with specified dark energy model it is also possible (in additio
 As a further extension, in the case when using measurements from a periodic box that have been averaged over different lines of sight, we have added the averaging corrections for the covariance matrix. We have created the flags ``avg_cov`` (set to ``False`` by default) and ``avg_los`` (set to 3 by default) for the ``Pell_covariance`` function, so that when ``avg_cov=True`` it by default will compute the average along the three perpendicular axes (x,y,z), but it is also possible to average over just 2 directions. Note that this computation is quite slow since it involves a different  integral for each k-bin, it may be optimised in the future.
 
 Tree-level bispectrum
----------------------
+^^^^^^^^^^^^^^^^^^^^^
 
 COMET can also output the tree-level bispectrum (in real-space, for the ``RS`` model) and its multipoles (in redshift-space, for the ``EFT`` model). These predictions are not emulated, but computed from the emulated de-wiggled power spectrum directly. For that purpose we provide the function ``Bell`` and in order to demonstrate its usage let's first generate a set of triangle configurations:
 
@@ -470,7 +470,7 @@ We can access the data through ``EFT.data['mock_Pk']`` and check, for example, t
    EFT.data['mock_Pk'].stat
 
 Computing the $\chi^2$
-----------------------
+^^^^^^^^^^^^^^^^^^^^^^
 
 Finally, we can let COMET directly compute $\chi^2$ values based on the provided data set, a given set of model parameters and range of scales.
 
@@ -491,7 +491,7 @@ Moreover, in order to speed up the computation of the $\chi^2$, in the same way 
    %timeit EFT.chi2(obs_id='mock_Pk',params=params, kmax=[0.30, 0.30, 0.30], de_model='lambda', chi2_decomposition=True)
 
 Convolution with survey window function
----------------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 In order to compare the power spectrum model predictions to some actual measurements, we need to convolve with the survey window function. This can be done within COMET by providing a window function mixing matrix $W\ *{\ell\ell'}(k,k')$ that connects the convolved and unconvolved power spectra via a simple matrix multiplication (see e.g. d'Amico et al. 2019):
 $$
