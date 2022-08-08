@@ -2044,7 +2044,7 @@ class PTEmu:
             if kfun is None:
                 kfun = tri[0,0]
                 print('kfun not specified. Using kfun = {}'.format(kfun))
-            self.Bisp.set_tri(tri, kfun)
+            self.Bisp.set_tri(tri, ell, kfun)
 
         Pdw = self.Pdw(self.Bisp.tri_unique, params, de_model=de_model,
                        ell_for_recon=ell_for_recon)
@@ -2382,27 +2382,24 @@ class PTEmu:
                 kmax_dict[oi] = kmax
             kmax = kmax_dict
 
+        ell = {}
         for oi in obs_id:
+            kmax_updated = False
             if (not self.data[oi].kmax_is_set or
                 (self.data[oi].kmax != kmax[oi] and self.data[oi].kmax !=
                     [kmax[oi] for i in range(self.data[oi].n_ell)])):
                         self.data[oi].set_kmax(kmax[oi])
-                        if self.data[oi].stat == 'bispectrum':
-                            self.Bisp.set_tri(self.data[oi].bins_kmax[0],
-                                              self.data[oi].kfun)
                         self.chi2_decomposition = None
-            else:
-                if self.data[oi].stat == 'bispectrum' and \
-                    self.Bisp.tri is None:
-                        self.Bisp.set_tri(self.data[oi].bins_kmax[0],
-                                          self.data[oi].kfun)
-            if self.data[oi].stat == 'bispectrum':
-                chi2_decomposition = False # currently only implemented for Pk
+                        kmax_updated = True
 
-        ell = {}
-        for oi in obs_id:
             ell[oi] = [2*m for m in range(self.data[oi].n_ell)
                        if self.data[oi].nbins[m] > 0]
+
+            if self.data[oi].stat == 'bispectrum':
+                if kmax_updated or self.Bisp.tri is None:
+                    self.Bisp.set_tri(self.data[oi].bins_kmax, ell[oi],
+                                      self.data[oi].kfun)
+                chi2_decomposition = False # currently only implemented for Pk
 
         if not chi2_decomposition:
             chi2 = 0.0

@@ -80,7 +80,7 @@ class Bispectrum:
         """
         self.nbar = np.copy(nbar)
 
-    def set_tri(self, tri, kfun):
+    def set_tri(self, tri, ell, kfun):
         r"""Define triangular configurations and compute kernels.
 
         Reads the list of triangular configurations and the request fundamental
@@ -92,11 +92,30 @@ class Bispectrum:
         ----------
         tri:
             List of triangular configurations.
+        ell:
+            List of multipoles for which the triangular configurations
+            correspond to.
         kfun: float
             Fundamental frequency.
 
         """
-        self.tri = tri
+        if isinstance(tri, list):
+            self.tri = max(tri, key=len)
+            self.ntri_ell = {}
+            if self.real_space:
+                self.ntri_ell[0] = self.tri.shape[0]
+            else:
+                for i,l in enumerate(ell):
+                    self.ntri_ell[l] = tri[i].shape[0]
+        else:
+            self.tri = tri
+            self.ntri_ell = {}
+            if self.real_space:
+                self.ntri_ell[0] = self.tri.shape[0]
+            else:
+                for i,l in enumerate(ell):
+                    self.ntri_ell[l] = tri.shape[0]
+
         self.kfun = kfun
         self.generate_index_arrays()
         self.compute_kernels()
@@ -620,8 +639,11 @@ class Bispectrum:
 
         Bell_dict = {}
         for l in ell:
-            B_SPT = np.einsum("ij,ij->i", kernel[l], P2[self.tri_to_id_sq])
-            B_stoch = params['MB0'] * np.sum(PL_dw[self.tri_to_id], axis=1) \
+            ntri = self.ntri_ell[l]
+            B_SPT = np.einsum("ij,ij->i", kernel[l][:ntri],
+                              P2[self.tri_to_id_sq][:ntri])
+            B_stoch = params['MB0'] * np.sum(PL_dw[self.tri_to_id][:ntri],
+                                             axis=1) \
                       * kernel_stoch[l]
             if l == 0:
                 B_stoch += params['NB0']/self.nbar**2
