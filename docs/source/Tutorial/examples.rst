@@ -170,8 +170,8 @@ By default the shot noise parameters in the power spectrum model are assumed to 
 
 In this case ``NP0`` is dimensionless, while ``NP20`` and ``NP22`` have dimension :math:`L^2`.
 
-Non-flat and non-$\Lambda$ cosmologies
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Non-flat and non-:math:`\Lambda` cosmologies
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Predictions for non-flat cosmologies can be obtained by simply specifying the curvature density parameter :math:`\Omega_k` in the parameter dictionary:
 
@@ -321,7 +321,7 @@ Or at different scales for different multipoles (providing a list of numbers or 
 
 .. note::
 
-   In this case, the length of the list must match the length of the specified multipoles (\ ``ell``\ ).
+   In case ``kmax`` is given as a list, its length must match the length of the specified multipoles (\ ``ell``\ ).
 
 .. hint::
 
@@ -345,6 +345,7 @@ It is a common task to test the models at fixed cosmological parameters, and in 
    %timeit EFT.Pell_fixed_cosmo_boost(k_hMpc, params, ell=[0,2,4], de_model="lambda")
 
 .. code-block:: python
+
    9.46 µs ± 10.3 ns per loop (mean ± std. dev. of 7 runs, 100,000 loops each)
 
 .. note::
@@ -554,8 +555,8 @@ We can access the data through ``EFT.data['mock_Pk']`` and check, for example, t
 
    EFT.data['mock_Pk'].stat
 
-Computing the $\chi^2$
-^^^^^^^^^^^^^^^^^^^^^^
+Computing the :math:`\chi^2`
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Finally, we can let COMET directly compute :math:`\chi^2` values based on the provided data set, a given set of model parameters and range of scales.
 
@@ -587,7 +588,7 @@ In order to compare the power spectrum model predictions to some actual measurem
 
 where the summation over multipole numbers is implicit.
 
-The mixing matrix and the associated scales for which it has been computed, :math:`k` and :math:`k'`, can be specified via ``define_data_set`` using the arguments ``bins_mixing_matrix`` and ``W_mixing_matrix``. The former is a list, containing the arrays for $k$ and $k'$. For example:
+The mixing matrix and the associated scales for which it has been computed, :math:`k` and :math:`k'`, can be specified via ``define_data_set`` using the arguments ``bins_mixing_matrix`` and ``W_mixing_matrix``. The former is a list, containing the arrays for :math:`k` and :math:`k'`. For example:
 
 .. code-block:: python
 
