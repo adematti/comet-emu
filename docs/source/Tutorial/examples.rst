@@ -566,6 +566,10 @@ To do so, we call the function ``chi2``\ , which takes as arguments the identifi
 
    EFT.chi2(obs_id='mock_Pk',params=params, kmax=[0.30, 0.30, 0.30], de_model='lambda')
 
+.. code-block:: python
+
+   6754.176546673202
+
 Moreover, in order to speed up the computation of the :math:`\chi^2`, in the same way as ``Pell_fixed_cosmo_boost`` function, we can specify the flag ``chi2_decomposition`` in order to avoid recomputing the quantities depending on cosmological parameters. Let's see how it works
 
 .. code-block:: python
@@ -584,8 +588,28 @@ Moreover, in order to speed up the computation of the :math:`\chi^2`, in the sam
 
    9.11 µs ± 20.6 ns per loop (mean ± std. dev. of 7 runs, 100,000 loops each)
 
-It is also possible to compute the :math:`\chi^2` for multiple data sets by giving ``chi2`` a list of data identifiers. While in principle this could be useful to simultaneously analyse multiple power spectrum measurements at different redshifts, COMET currently does not support multiple parameter sets with different bias parameters, or at various redshifts (this will be possible in a future release). However, we can use this functionality to compute the joint :math:`\chi^2` of the power spectrum and bispectrum. 
+It is also possible to compute the :math:`\chi^2` for multiple data sets by giving ``chi2`` a list of data identifiers. While in principle this could be useful to simultaneously analyse multiple power spectrum measurements at different redshifts, COMET currently does not support multiple parameter sets with different bias parameters, or at various redshifts (this will be possible in a future release). However, we can use this functionality to compute the joint :math:`\chi^2` of the power spectrum and bispectrum.
 
+As an example, let's load some mock bispectrum data and store it in a new data container:
+
+.. code-block:: python
+
+   # data format: k1, k2, k3, B0, B0_var, B2, B2_var, B4, B4_var
+   data = np.loadtxt('mock_Bk_mean.dat')
+
+   EFT.define_data_set(obs_id='mock_Bk', bins=data[:,:3], signal=data[:,[3,5,7]], cov=np.hstack(data[:,[4,6,8]]), kfun=0.00166)
+
+When providing a list of data identifiers, the ``kmax`` argument passed to ``chi2`` can be a dictionary of :math:`k_{\rm max}` values, where the keys must match the data identifiers. If not given as a dictionary, the same :math:`k_{\rm max}` is used for each of the data sets. The following call of `chi2` evaluates the :math:`\chi^2` for the power spectrum and bispectrum data sets, using the power spectrum monopole and quadrupole up to :math:`k_{\rm max} = 0.3` and :math:`0.25\,h\,\mathrm{Mpc}^{-1}`, respectively, and the bispectrum monopole and hexadecapole up to :math:`k_{\rm max} = 0.12` and :math:`0.05\,h\mathrm{Mpc}^{-1}`:
+
+.. code-block:: python
+
+   EFT.chi2(['mock_Pk','mock_Bk'], params, {'mock_Pk':[0.3,0.25,0.], 'mock_Bk':[0.12,0.0,0.05]}, de_model='lambda')
+
+.. code-block:: python
+
+   13454838417.038185
+
+Note that the option ``chi2_decomposition`` is currently not available for the bispectrum.
 
 
 Convolution with survey window function
