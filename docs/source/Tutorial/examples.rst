@@ -7,9 +7,11 @@ Tutorials
 Quick-start
 -----------
 
-In this tutorial we will show
-   * How to initialise the emulator.
-   * How to obtain multipoles for the standard $\Lambda$CDM cosmology.
+.. container:: cell markdown
+
+   In this tutorial we will show
+     * How to initialise the emulator.
+     * How to obtain multipoles for the standard $\Lambda$CDM cosmology.
 
 Let’s first import ``comet`` as well as other required libraries:
 
@@ -19,13 +21,29 @@ Let’s first import ``comet`` as well as other required libraries:
    import numpy as np
    import matplotlib.pyplot as plt
 
-At initialisation we only need to specify the perturbation theory model that we want to use (valid specifiers are currently either ``"EFT"`` or ``"RS"``\ ; for an overview of the models implemented in COMET, see here) and we can configure COMET either in $\mathrm{Mpc}$ units (\ ``use_Mpc = True``\ , which is the default option) or in $h^{-1}\mathrm{Mpc}$ units (\ ``use_Mpc = False``\ ). All quantities that are not dimensionless are then returned or assumed to be given in the respective unit system. Let’s define an emulator object for the EFT model using the standard $h^{-1}\mathrm{Mpc}$ units:
+.. container:: cell markdown
+
+   At initialisation we only need to specify the perturbation theory model that
+   we want to use (valid specifiers are currently either ``"EFT"`` or ``"RS"``\ ;
+   for an overview of the models implemented in COMET, see here) and we can
+   configure COMET either in $\mathrm{Mpc}$ units (\ ``use_Mpc = True``\ , which
+   is the default option) or in $h^{-1}\mathrm{Mpc}$ units
+   (\ ``use_Mpc = False``\ ). All quantities that are not dimensionless are then
+   returned or assumed to be given in the respective unit system. Let’s define
+   an emulator object for the EFT model using the standard $h^{-1}\mathrm{Mpc}$
+   units:
 
 .. code-block:: python
 
    EFT=comet(model="EFT", use_Mpc=False)
 
-In order to make predictions for a given cosmological model we first need to specify the fiducial background cosmology, from which the Alcock-Paczynski distortions will be computed. This is done by calling the function ``define_fiducial_cosmology`` with a dictionary specifying the cosmological parameters and the redshift:
+.. container:: cell markdown
+
+   In order to make predictions for a given cosmological model we first need to
+   specify the fiducial background cosmology, from which the Alcock-Paczynski
+   distortions will be computed. This is done by calling the function
+   ``define_fiducial_cosmology`` with a dictionary specifying the cosmological
+   parameters and the redshift:
 
 .. code-block:: python
 
@@ -35,14 +53,22 @@ In order to make predictions for a given cosmological model we first need to spe
    # options, see the in-depth examples below.
    EFT.define_fiducial_cosmology(params_fid=params_fid)
 
-The function ``Pell``\ , which returns the power spectrum multipoles takes generally three parameters:
+.. container:: cell markdown
 
+   The function ``Pell``\ , which returns the power spectrum multipoles takes
+   generally three parameters:
 
-#. The scales for which to compute the multipoles (in the corresponding units)
-#. A parameter dictionary, specifying cosmological, bias, and (if applicable) additional redshift-space distortions parameters
-#. The multipole number, i.e. ell = 0, 2, 4, or a list of multipole numbers
+   #. The scales for which to compute the multipoles (in the corresponding units)
+   #. A parameter dictionary, specifying cosmological, bias, and (if applicable)
+      additional redshift-space distortions parameters
+   #. The multipole number, i.e. ell = 0, 2, 4, or a list of multipole numbers
 
-The parameter dictionary must include all shape parameters: the physical cold dark matter and baryon densities (\ ``wc`` and ``wb``\ ) and the scalar spectral index (\ ``ns``\ ). In case of a flat $\Lambda$CDM model we also need to specify values for $h$ (\ ``h``\ ), the amplitude of scalar fluctuations (\ ``As``\ ) and redshift (\ ``z``\ ). For other cosmologies, see In-depth options for obtaining multipoles.
+   The parameter dictionary must include all shape parameters: the physical cold
+   dark matter and baryon densities (\ ``wc`` and ``wb``\ ) and the scalar
+   spectral index (\ ``ns``\ ). In case of a flat $\Lambda$CDM model we also
+   need to specify values for $h$ (\ ``h``\ ), the amplitude of scalar
+   fluctuations (\ ``As``\ ) and redshift (\ ``z``\ ). For other cosmologies,
+   see In-depth options for obtaining multipoles.
 
 .. code-block:: python
 
