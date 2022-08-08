@@ -564,7 +564,7 @@ To do so, we call the function ``chi2``\ , which takes as arguments the identifi
 
 .. code-block:: python
 
-   EFT.chi2(obs_id='mock_Pk',params=params, kmax=[0.30, 0.30, 0.30], de_model='lambda', convolve_window=False)
+   EFT.chi2(obs_id='mock_Pk',params=params, kmax=[0.30, 0.30, 0.30], de_model='lambda')
 
 Moreover, in order to speed up the computation of the :math:`\chi^2`, in the same way as ``Pell_fixed_cosmo_boost`` function, we can specify the flag ``chi2_decomposition`` in order to avoid recomputing the quantities depending on cosmological parameters. Let's see how it works
 
@@ -583,6 +583,10 @@ Moreover, in order to speed up the computation of the :math:`\chi^2`, in the sam
 .. code-block:: python
 
    9.11 µs ± 20.6 ns per loop (mean ± std. dev. of 7 runs, 100,000 loops each)
+
+It is also possible to compute the :math:`\chi^2` for multiple data sets by giving ``chi2`` a list of data identifiers. While in principle this could be useful to simultaneously analyse multiple power spectrum measurements at different redshifts, COMET currently does not support multiple parameter sets with different bias parameters, or at various redshifts (this will be possible in a future release). However, we can use this functionality to compute the joint :math:`\chi^2` of the power spectrum and bispectrum. 
+
+
 
 Convolution with survey window function
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
