@@ -609,7 +609,9 @@ When providing a list of data identifiers, the ``kmax`` argument passed to ``chi
 
    13454838417.038185
 
-Note that the option ``chi2_decomposition`` is currently not available for the bispectrum.
+.. note::
+
+   The option ``chi2_decomposition`` is currently not available for the bispectrum.
 
 
 Convolution with survey window function
