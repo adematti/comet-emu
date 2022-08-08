@@ -93,7 +93,7 @@ The output of ``Pell`` is given in a dictionary format:
 
    print(Pell_LCDM.keys())
 
-.. code-black:: python
+.. code-block:: python
 
    dict_keys(['ell0', 'ell2', 'ell4'])
 
@@ -219,7 +219,7 @@ When calling the ``Pell`` function for a specific dark energy model, it ignores 
    # s12, q_tr, q_lo and f are computed internally!
    EFT.params
 
-.. code-black:: python
+.. code-block:: python
 
    {'wc': 0.11544,
    'wb': 0.0222191,
@@ -292,7 +292,7 @@ We can output at a single scale and single multipole number, e.g. for the quadru
 
    EFT.Pell(0.1, params, ell=2)
 
-.. code-black:: python
+.. code-block:: python
 
    {'ell2': array([12734.58552054])}
 
@@ -302,7 +302,7 @@ Or for various multipoles and multiple scales:
 
    EFT.Pell(np.array([0.1,0.2,0.3]), params, ell=[0,2,4])
 
-.. code-black:: python
+.. code-block:: python
 
    {'ell0': array([21993.36193293,  8421.42627781,  5055.15969128]),
     'ell2': array([12734.58552054,  7163.04358551,  5357.26768927]),
@@ -314,7 +314,7 @@ Or at different scales for different multipoles (providing a list of numbers or 
 
    EFT.Pell([np.array([0.1,0.2]),0.3], params, ell=[0,4])
 
-.. code-black:: python
+.. code-block:: python
 
    {'ell0': array([21993.36193293,  8421.42627781]),
     'ell4': array([1870.99204263])}
@@ -336,7 +336,7 @@ It is a common task to test the models at fixed cosmological parameters, and in 
 
    %timeit EFT.Pell(k_hMpc, params, ell=[0,2,4], de_model="lambda")
 
-.. code-black:: python
+.. code-block:: python
 
    5.19 ms ± 8.59 µs per loop (mean ± std. dev. of 7 runs, 100 loops each)
 
@@ -344,7 +344,7 @@ It is a common task to test the models at fixed cosmological parameters, and in 
 
    %timeit EFT.Pell_fixed_cosmo_boost(k_hMpc, params, ell=[0,2,4], de_model="lambda")
 
-.. code-black:: python
+.. code-block:: python
    9.46 µs ± 10.3 ns per loop (mean ± std. dev. of 7 runs, 100,000 loops each)
 
 .. note::
@@ -371,7 +371,7 @@ Changing the bias basis changes the parameter dictionary keys that need to be pr
 
    print(EFT.bias_params_list)
 
-.. code-black:: python
+.. code-block:: python
 
    ['b1', 'b2', 'bG2', 'bGam3', 'c0', 'c2', 'c4', 'cnlo', 'NP0', 'NP20', 'NP22', 'NB0', 'MB0']
 
@@ -382,7 +382,7 @@ In this case we now need to provide values for ``'bG2'`` and ``'bGam3'``\ , i.e.
    EFT.change_bias_basis("AmiGleKok")
    print(EFT.bias_params_list)
 
-.. code-black:: python
+.. code-block:: python
 
    ['b1t', 'b2t', 'b3t', 'b4t', 'c0', 'c2', 'c4', 'cnlo', 'NP0', 'NP20', 'NP22', 'NB0', 'MB0']
 
