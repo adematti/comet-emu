@@ -574,7 +574,15 @@ Moreover, in order to speed up the computation of the :math:`\chi^2`, in the sam
 
 .. code-block:: python
 
+   6.37 ms ± 153 µs per loop (mean ± std. dev. of 7 runs, 100 loops each)
+
+.. code-block:: python
+
    %timeit EFT.chi2(obs_id='mock_Pk',params=params, kmax=[0.30, 0.30, 0.30], de_model='lambda', chi2_decomposition=True)
+
+.. code-block:: python
+
+   9.11 µs ± 20.6 ns per loop (mean ± std. dev. of 7 runs, 100,000 loops each)
 
 Convolution with survey window function
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
