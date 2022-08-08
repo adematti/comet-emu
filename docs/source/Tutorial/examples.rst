@@ -93,7 +93,9 @@ The output of ``Pell`` is given in a dictionary format:
 
    print(Pell_LCDM.keys())
 
-   >>> dict_keys(['ell0', 'ell2', 'ell4'])
+.. code-black:: python
+
+   dict_keys(['ell0', 'ell2', 'ell4'])
 
 So we can access our results and plot them as follow.
 
@@ -217,7 +219,9 @@ When calling the ``Pell`` function for a specific dark energy model, it ignores 
    # s12, q_tr, q_lo and f are computed internally!
    EFT.params
 
-   >>> {'wc': 0.11544,
+.. code-black:: python
+
+   {'wc': 0.11544,
    'wb': 0.0222191,
    'ns': 0.9632,
    's12': 0.5644811904905519,
@@ -288,7 +292,9 @@ We can output at a single scale and single multipole number, e.g. for the quadru
 
    EFT.Pell(0.1, params, ell=2)
 
-   >>> {'ell2': array([12734.58552054])}
+.. code-black:: python
+
+   {'ell2': array([12734.58552054])}
 
 Or for various multipoles and multiple scales:
 
@@ -296,7 +302,9 @@ Or for various multipoles and multiple scales:
 
    EFT.Pell(np.array([0.1,0.2,0.3]), params, ell=[0,2,4])
 
-   >>> {'ell0': array([21993.36193293,  8421.42627781,  5055.15969128]),
+.. code-black:: python
+
+   {'ell0': array([21993.36193293,  8421.42627781,  5055.15969128]),
     'ell2': array([12734.58552054,  7163.04358551,  5357.26768927]),
     'ell4': array([3027.98356766, 2244.35964221, 1870.99204263])}
 
@@ -306,7 +314,9 @@ Or at different scales for different multipoles (providing a list of numbers or 
 
    EFT.Pell([np.array([0.1,0.2]),0.3], params, ell=[0,4])
 
-   >>> {'ell0': array([21993.36193293,  8421.42627781]),
+.. code-black:: python
+
+   {'ell0': array([21993.36193293,  8421.42627781]),
     'ell4': array([1870.99204263])}
 
 .. note::
@@ -326,13 +336,16 @@ It is a common task to test the models at fixed cosmological parameters, and in 
 
    %timeit EFT.Pell(k_hMpc, params, ell=[0,2,4], de_model="lambda")
 
-   >>> 5.19 ms ± 8.59 µs per loop (mean ± std. dev. of 7 runs, 100 loops each)
+.. code-black:: python
+
+   5.19 ms ± 8.59 µs per loop (mean ± std. dev. of 7 runs, 100 loops each)
 
 .. code-block:: python
 
    %timeit EFT.Pell_fixed_cosmo_boost(k_hMpc, params, ell=[0,2,4], de_model="lambda")
 
-   >>> 9.46 µs ± 10.3 ns per loop (mean ± std. dev. of 7 runs, 100,000 loops each)
+.. code-black:: python
+   9.46 µs ± 10.3 ns per loop (mean ± std. dev. of 7 runs, 100,000 loops each)
 
 .. note::
 
@@ -358,12 +371,20 @@ Changing the bias basis changes the parameter dictionary keys that need to be pr
 
    print(EFT.bias_params_list)
 
+.. code-black:: python
+
+   ['b1', 'b2', 'bG2', 'bGam3', 'c0', 'c2', 'c4', 'cnlo', 'NP0', 'NP20', 'NP22', 'NB0', 'MB0']
+
 In this case we now need to provide values for ``'bG2'`` and ``'bGam3'``\ , i.e., parameters for ``'g2'`` and ``'g21'`` are now ignored. In case of the d'Amico et al. basis we have:
 
 .. code-block:: python
 
    EFT.change_bias_basis("AmiGleKok")
    print(EFT.bias_params_list)
+
+.. code-black:: python
+
+   ['b1t', 'b2t', 'b3t', 'b4t', 'c0', 'c2', 'c4', 'cnlo', 'NP0', 'NP20', 'NP22', 'NB0', 'MB0']
 
 Let's change back to the default for the remainder of the tutorial:
 
@@ -483,8 +504,8 @@ The ``Bell`` function has the same arguments and functionality as the analogous 
 
     fig, axs = plt.subplots(3,1, figsize=(10,5), sharex=True,)
     for i in range(3):
-        axs[i].semilogy(np.arange(tri.shape[0]), Bell["ell"+str(2\ *i)],c='C'+str(2*\ i),ls='-')
-        axs[i].set\ *ylabel(f'$B*\ {i*2}(k)$',fontsize=15)
+        axs[i].semilogy(np.arange(tri.shape[0]), Bell["ell"+str(2*i)],c='C'+str(2*i),ls='-')
+        axs[i].set_ylabel(f'$B_{i*2}(k)$',fontsize=15)
 
     fig.tight_layout()
     plt.subplots_adjust(wspace=0, hspace=0)
@@ -492,6 +513,8 @@ The ``Bell`` function has the same arguments and functionality as the analogous 
     plt.show()
 
 .. image:: images/fig06.png
+
+
 
 Working with data sets
 ----------------------
@@ -501,17 +524,17 @@ Loading data
 ^^^^^^^^^^^^
 
  We can load measurements of the power spectrum and bispectrum multipoles into COMET using the `define_data_set` function. This function takes first an identifier for the data set (`obs_id`; this can be anything, it will be used to reference the data) and any one of the following arguments:
-    * `stat`. Can either be `'powerspectrum'` or `'bispectrum'`; if not provided, `stat` is deduced from the number of columns in `bins` (see below).
-    * `bins`. In case of the power spectrum: 1d-array of k-modes corresponding to the measurements; in case of the bispectrum: 2d-array with three columns corresponding to the triangle configuration ($k_1$, $k_2$, $k_3$) of the measurements.
-    * `signal`. The measurements of the power spectrum or bispectrum; the size of the first dimension must match the size of `bins`, and it is assumed that the first column corresponds to the monopole, the second to the quadrupole, and the third to the hexadecapole (one does not need to provide all three multipoles, i.e., one can provide only the monopole, or monopole + quadrupole, but one cannot leave out preceding multipoles).
-    * `cov`. The covariance matrix of the measurements, which must match the combined size of all given multipoles. If the dimension of `cov` is one-dimensional, it is assumed to be the diagonal of the covariance matrix.
-    * `theory_cov`. A flag that specifies whether the given covariance matrix was derived analytically or from a set of simulation measurements. In the latter case an Anderson-Hartlap correction is applied to the inverse, based on `n_realizations`.
-    * `n_realizations`. Number of realizations from which the covariance matrix was estimated, only used (and required) in case `theory_cov=False`.
+- `stat`. Can either be `'powerspectrum'` or `'bispectrum'`; if not provided, `stat` is deduced from the number of columns in `bins` (see below).
+- `bins`. In case of the power spectrum: 1d-array of k-modes corresponding to the measurements; in case of the bispectrum: 2d-array with three columns corresponding to the triangle configuration (:math:`k_1`, :math:`k_2`, :math:`k_3`) of the measurements.
+- `signal`. The measurements of the power spectrum or bispectrum; the size of the first dimension must match the size of `bins`, and it is assumed that the first column corresponds to the monopole, the second to the quadrupole, and the third to the hexadecapole (one does not need to provide all three multipoles, i.e., one can provide only the monopole, or monopole + quadrupole, but one cannot leave out preceding multipoles).
+- `cov`. The covariance matrix of the measurements, which must match the combined size of all given multipoles. If the dimension of `cov` is one-dimensional, it is assumed to be the diagonal of the covariance matrix.
+- `theory_cov`. A flag that specifies whether the given covariance matrix was derived analytically or from a set of simulation measurements. In the latter case an Anderson-Hartlap correction is applied to the inverse, based on `n_realizations`.
+- `n_realizations`. Number of realizations from which the covariance matrix was estimated, only used (and required) in case `theory_cov=False`.
 
 
  Let us load some mock power spectrum measurements:
 
-.. code-black:: ptyhon
+.. code-block:: ptyhon
    data = np.loadtxt('mock_Pk_mean.dat')
    Cov = np.loadtxt('mock_Pk_cov.dat')
 
@@ -534,7 +557,7 @@ We can access the data through ``EFT.data['mock_Pk']`` and check, for example, t
 Computing the $\chi^2$
 ^^^^^^^^^^^^^^^^^^^^^^
 
-Finally, we can let COMET directly compute $\chi^2$ values based on the provided data set, a given set of model parameters and range of scales.
+Finally, we can let COMET directly compute :math:`\chi^2` values based on the provided data set, a given set of model parameters and range of scales.
 
 To do so, we call the function ``chi2``\ , which takes as arguments the identifier of the data set, the parameter dictionary, a maximum k-mode value ``kmax``\ , a model argument ``de_model``. ``kmax`` can either be a number, in which case the same cutoff is applied for all multipoles, or a list of numbers for each individual multipole, as for the multipoles case. If the cutoff is zero (or smaller than the minimum scale of the observations) for a particular multipole, then it is excluded from the computation of the chi-square. ``kmax`` is also assumed to be in the units of the emulator. ``de_model`` can be one of the options specified before.
 
@@ -542,7 +565,7 @@ To do so, we call the function ``chi2``\ , which takes as arguments the identifi
 
    EFT.chi2(obs_id='mock_Pk',params=params, kmax=[0.30, 0.30, 0.30], de_model='lambda', convolve_window=False)
 
-Moreover, in order to speed up the computation of the $\chi^2$, in the same way as ``Pell_fixed_cosmo_boost`` function, we can specify the flag ``chi2_decomposition`` in order to avoid recomputing the quantities depending on cosmological parameters. Let's see how it works
+Moreover, in order to speed up the computation of the :math:`\chi^2`, in the same way as ``Pell_fixed_cosmo_boost`` function, we can specify the flag ``chi2_decomposition`` in order to avoid recomputing the quantities depending on cosmological parameters. Let's see how it works
 
 .. code-block:: python
 
@@ -555,13 +578,16 @@ Moreover, in order to speed up the computation of the $\chi^2$, in the same way 
 Convolution with survey window function
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-In order to compare the power spectrum model predictions to some actual measurements, we need to convolve with the survey window function. This can be done within COMET by providing a window function mixing matrix $W\ *{\ell\ell'}(k,k')$ that connects the convolved and unconvolved power spectra via a simple matrix multiplication (see e.g. d'Amico et al. 2019):
-$$
-P*\ {W,\ell}(k) = W\ *{\ell\ell'}(k,k') \cdot P*\ {\ell'}(k')\,,
-$$
+In order to compare the power spectrum model predictions to some actual measurements, we need to convolve with the survey window function. This can be done within COMET by providing a window function mixing matrix :math:`W_{\ell\ell'}(k,k')` that connects the convolved and unconvolved power spectra via a simple matrix multiplication (see e.g. d'Amico et al. 2019):
+
+
+.. math::
+
+  P_{W,\ell}(k) = W_{\ell\ell'}(k,k') \cdot P_{\ell'}(k')\,,
+
 where the summation over multipole numbers is implicit.
 
-The mixing matrix and the associated scales for which it has been computed, $k$ and $k'$, can be specified via ``define_data_set`` using the arguments ``bins_mixing_matrix`` and ``W_mixing_matrix``. The former is a list, containing the arrays for $k$ and $k'$. For example:
+The mixing matrix and the associated scales for which it has been computed, :math:`k` and :math:`k'`, can be specified via ``define_data_set`` using the arguments ``bins_mixing_matrix`` and ``W_mixing_matrix``. The former is a list, containing the arrays for $k$ and $k'$. For example:
 
 .. code-block:: python
 
@@ -598,12 +624,10 @@ We can now obtain the window-convolved power spectrum by passing the additional 
 
 .. image:: images/fig07.png
 
-We can also take the window function convolution into account when computing the $\chi^2$. In that case we set the flag ``convolve_window=True`` (by default it is set to ``False``\ ):
+We can also take the window function convolution into account when computing the :math:`\chi^2`. In that case we set the flag ``convolve_window=True`` (by default it is set to ``False``\ ):
 
 .. code-block:: python
 
    EFT.chi2(obs_id='mock_Pk',params=params, kmax=[0.30, 0.30, 0.30], de_model='lambda', convolve_window=True)
 
 This also works in combination with the option ``chi2_decomposition=True``.
-
-.. code-block:: python
