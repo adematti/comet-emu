@@ -18,7 +18,7 @@ Let’s first import ``comet`` as well as other required libraries:
 .. code-block:: python
 
    from comet import comet
-   import numpy as np
+   import Numpy as np
    import matplotlib.pyplot as plt
 
 At initialisation we only need to specify the perturbation theory model that we want to use: valid specifiers are currently either ``"EFT"`` (effective field theory model) or ``"RS"`` (real-space model); for an overview of the models implemented in COMET, see here. Moreover, we can configure COMET either in :math:`\mathrm{Mpc}` units (\ ``use_Mpc = True``\ , which is the default option) or in :math:`h^{-1}\mathrm{Mpc}` units (\ ``use_Mpc = False``\ ). All quantities that are not dimensionless are then returned or assumed to be given in the respective unit system. Let’s define an emulator object for the EFT model using the standard :math:`h^{-1}\mathrm{Mpc}` units:
@@ -45,16 +45,13 @@ The function ``Pell``\ , which returns the power spectrum multipoles takes
 generally three parameters:
 
 #. The scales for which to compute the multipoles (in the corresponding units)
-#. A parameter dictionary, specifying cosmological, bias, and (if applicable)
-  additional redshift-space distortions parameters
+#. A parameter dictionary, specifying cosmological, bias, and (if applicable) additional redshift-space distortions parameters
 #. The multipole number, i.e. ell = 0, 2, 4, or a list of multipole numbers
 
 The parameter dictionary must include all shape parameters: the physical cold
 dark matter and baryon densities (\ ``wc`` and ``wb``\ ) and the scalar
-spectral index (\ ``ns``\ ). In case of a flat $\Lambda$CDM model we also
-need to specify values for $h$ (\ ``h``\ ), the amplitude of scalar
-fluctuations (\ ``As``\ ) and redshift (\ ``z``\ ). For other cosmologies,
-see In-depth options for obtaining multipoles.
+spectral index (\ ``ns``\ ). In case of a flat :math:`\Lambda`\ CDM model we also need to specify values for :math:`h` (\ ``h``\ ), the amplitude of scalar
+fluctuations (\ ``As``\ ) and redshift (\ ``z``\ ). For other cosmologies, see In-depth options for obtaining multipoles.
 
 .. code-block:: python
 
@@ -83,7 +80,7 @@ quadratic bias, all other parameters are automatically set to zero:
 
 Now, let’s compute the monopole (\ ``ell=0``\ ), quadrupole (\ ``ell=2``\ )
 and hexadecapole (\ ``ell=4``\ ) for a range of scales from
-:math:`0.001 h\,\mathrm{Mpc}^{−1}` to :math:`0.3h\,\mathrm{Mpc}^{−1}`:
+:math:`0.001\,h\,\mathrm{Mpc}^{−1}` to :math:`0.3\,h\,\mathrm{Mpc}^{−1}`:
 
 .. code-block:: python
 
@@ -95,6 +92,8 @@ The output of ``Pell`` is given in a dictionary format:
 .. code-block:: python
 
    print(Pell_LCDM.keys())
+
+   >>> dict_keys(['ell0', 'ell2', 'ell4'])
 
 So we can access our results and plot them as follow.
 
@@ -218,6 +217,33 @@ When calling the ``Pell`` function for a specific dark energy model, it ignores 
    # s12, q_tr, q_lo and f are computed internally!
    EFT.params
 
+   >>> {'wc': 0.11544,
+   'wb': 0.0222191,
+   'ns': 0.9632,
+   's12': 0.5644811904905519,
+   'f': 0.7025465611424653,
+   'b1': 2.0,
+   'b2': -0.5,
+   'g2': 0.0,
+   'g21': 0.0,
+   'c0': 0.0,
+   'c2': 0.0,
+   'c4': 0.0,
+   'cnlo': 0.0,
+   'NP0': 0.0,
+   'NP20': 0.0,
+   'NP22': 0.0,
+   'NB0': 0.0,
+   'MB0': 0.0,
+   'h': 0.8,
+   'As': 2.3,
+   'Ok': 0.05,
+   'w0': -1.1,
+   'wa': 0.1,
+   'z': 0.6,
+   'q_tr': 1.081799699202137,
+   'q_lo': 1.045999542223697}
+
 If we want to use the :math:`f`-:math:`\sigma_{12}` parameter space directly, we need to provide explicit values for ``s12``\ , ``f``\ , ``q_lo`` (:math:`q_{\parallel}`) and ``q_tr`` (:math:`q_{\perp}`). As an example, let's redefine our parameter values:
 
 .. code-block:: python
@@ -228,13 +254,11 @@ If we want to use the :math:`f`-:math:`\sigma_{12}` parameter space directly, we
    params['q_tr'] = 0.9
    params['f']    = 0.7
 
+   Pell_s12 = EFT.Pell(k_hMpc, params, ell=[0,2,4])
+
 .. note::
 
-   When computing the multipoles using the :math:`\sigma_{12}` parameter space and in :math:`h^{-1}\mathrm{Mpc}` units, we need to specify a fiducial value for the Hubble rate (provided in the parameter dictionary). This is required to convert the native emulator output from Mpc to Mpc/h units.
-
-.. code-block:: python
-
-   Pell_s12 = EFT.Pell(k_hMpc, params, ell=[0,2,4])
+   When computing the multipoles using the :math:`\sigma_{12}` parameter space and in :math:`h^{-1}\mathrm{Mpc}` units, we need to specify a fiducial value for the Hubble rate (provided in the parameter dictionary). This is required to convert the native emulator output from :math:`\mathrm{Mpc}` to :math:`h^{-1}\mathrm{Mpc}` units.
 
 .. code-block:: python
 
@@ -253,10 +277,10 @@ If we want to use the :math:`f`-:math:`\sigma_{12}` parameter space directly, we
 
 .. image:: images/fig03.png
 
-Providing different $k$-scales
+Providing different :math:`k`-scales
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-There are multiple options for specifying the scales for which to compute the multipoles: if given as a number or numpy array all specified multipoles will be computed for those scales, if given as a list, however, then the first entry of the list is evaluated for the first multipole, the second for the second multipole, etc.
+There are multiple options for specifying the scales for which to compute the multipoles: if given as a number or Numpy array all specified multipoles will be computed for those scales, if given as a list, however, then the first entry of the list is evaluated for the first multipole, the second for the second multipole, etc.
 
 We can output at a single scale and single multipole number, e.g. for the quadrupole at :math:`k = 0.1\,h\,\mathrm{Mpc}^{-1}`:
 
@@ -264,21 +288,32 @@ We can output at a single scale and single multipole number, e.g. for the quadru
 
    EFT.Pell(0.1, params, ell=2)
 
+   >>> {'ell2': array([12734.58552054])}
+
 Or for various multipoles and multiple scales:
 
 .. code-block:: python
 
    EFT.Pell(np.array([0.1,0.2,0.3]), params, ell=[0,2,4])
 
-Or at different scales for different multipoles (providing a list of numbers or numpy arrays):
+   >>> {'ell0': array([21993.36193293,  8421.42627781,  5055.15969128]),
+    'ell2': array([12734.58552054,  7163.04358551,  5357.26768927]),
+    'ell4': array([3027.98356766, 2244.35964221, 1870.99204263])}
+
+Or at different scales for different multipoles (providing a list of numbers or Numpy arrays):
 
 .. code-block:: python
 
    EFT.Pell([np.array([0.1,0.2]),0.3], params, ell=[0,4])
 
-*Note: In this case, the length of the list must match the length of the specified multipoles (\ ``ell``\ ).*
+   >>> {'ell0': array([21993.36193293,  8421.42627781]),
+    'ell4': array([1870.99204263])}
 
 .. note::
+
+   In this case, the length of the list must match the length of the specified multipoles (\ ``ell``\ ).
+
+.. hint::
 
    Performance-wise it is advisable to compute all required multipoles and scales via the same function call (i.e., avoid calling ``Pell`` for individual wavemodes).
 
@@ -291,13 +326,17 @@ It is a common task to test the models at fixed cosmological parameters, and in 
 
    %timeit EFT.Pell(k_hMpc, params, ell=[0,2,4], de_model="lambda")
 
+   >>> 5.19 ms ± 8.59 µs per loop (mean ± std. dev. of 7 runs, 100 loops each)
+
 .. code-block:: python
 
    %timeit EFT.Pell_fixed_cosmo_boost(k_hMpc, params, ell=[0,2,4], de_model="lambda")
 
+   >>> 9.46 µs ± 10.3 ns per loop (mean ± std. dev. of 7 runs, 100,000 loops each)
+
 .. note::
 
-   Since the computation of all the individual contributions takes more time than the direct evaluation of the multipoles, this is really only useful at fixed cosmological parameters.
+   Since the computation of all the individual contributions takes more time than the direct evaluation of the multipoles, this is really only useful at fixed cosmological parameters (or for samplers that can exploit a speed hierarchy).
 
 Using different bases for galaxy bias
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -337,10 +376,9 @@ Beyond :math:`P_{\ell}` predictions
 
 In the following we demonstrate a number of additional outputs that COMET can provide. Specifically:
 
-
-* The linear power spectrum, with and without infra-red resummation
-* The Gaussian covariance matrix for the power spectrum multipoles
-* The tree-level bispectrum multipoles
+- The linear power spectrum, with and without infra-red resummation
+- The Gaussian covariance matrix for the power spectrum multipoles
+- The tree-level bispectrum multipoles
 
 Linear power spectrum
 ^^^^^^^^^^^^^^^^^^^^^
@@ -369,7 +407,7 @@ Let's plot the ratio of the de-wiggled linear power spectrum over the linear pow
 Computing covariance matrices
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Apart from the multipoles we can also generate (Gaussian) covariance matrices, for which there are again different flags, that are either defined for the $\sigma_{12}$ or the dark energy parameter spaces. The first three arguments, ``k``\ , ``params``\ , and ``ell``\ , are identical to those for ``Pell``. In addition, we need to specify a binwidth ``dk`` and volume (both of which need to be given in the respective units for which the emulator is configured in), for example:
+Apart from the multipoles we can also generate (Gaussian) covariance matrices, for which there are again different flags, that are either defined for the :math:`\sigma_{12}` or the dark energy parameter spaces. The first three arguments, ``k``\ , ``params``\ , and ``ell``\ , are identical to those for ``Pell``. In addition, we need to specify a binwidth ``dk`` and volume (both of which need to be given in the respective units for which the emulator is configured in), for example:
 
 .. code-block:: python
 
@@ -393,7 +431,7 @@ Apart from the multipoles we can also generate (Gaussian) covariance matrices, f
 
 .. image:: images/fig05.png
 
-The argument specifying the scales provides the same functionality as for ``Pell``\ , that is, it can either be given as a number or numpy array, in which case all specified multipoles are evaluated for the same scales, or a list of numbers/numpy arrays, in which case the first entry is evaluated for the first multipole in ``ell`` etc.
+The argument specifying the scales provides the same functionality as for ``Pell``\ , that is, it can either be given as a number or Numpy array, in which case all specified multipoles are evaluated for the same scales, or a list of numbers/Numpy arrays, in which case the first entry is evaluated for the first multipole in ``ell`` etc.
 
 For the version with specified dark energy model it is also possible (in addition to providing the volume via the ``volume`` argument) to provide minimum and maximum redshifts, ``zmin`` and ``zmax``\ , a sky fraction ``fsky``\ , and a volume scaling factor ``volfac`` (by default equal to 1), such that the volume is computed in accordance with the given cosmological model. For example:
 
@@ -429,7 +467,7 @@ COMET can also output the tree-level bispectrum (in real-space, for the ``RS`` m
                    tri.append([k1, k2, k3])
    tri=np.asarray(tri)
 
-The ``Bell`` function has the same arguments and functionality as the analogous ``Pell`` function for the power spectrum. However, it expects the triangle configurations to be always specified as a numpy array containing $k_1$, $k_2$, $k_3$ (it is not possible to evaluate the multipoles for different triangles at the moment), and in addition it includes the argument ``kfun``\ , which is used for compressing the number of unique k-modes and is ideally chosen as a value that corresponds closely to the spacing between configurations (e.g. the bin-width for measured data), but must not be much larger. If in doubt, use a value much smaller than the typical spacing.
+The ``Bell`` function has the same arguments and functionality as the analogous ``Pell`` function for the power spectrum. However, it expects the triangle configurations to be always specified as a Numpy array containing :math:`k_1`, :math:`k_2`, :math:`k_3` (it is not possible to evaluate the multipoles for different triangles at the moment), and in addition it includes the argument ``kfun``\ , which is used for compressing the number of unique k-modes and is ideally chosen as a value that corresponds closely to the spacing between configurations (e.g. the bin-width for measured data), but must not be much larger. If in doubt, use a value much smaller than the typical spacing.
 
 .. code-block:: python
 
@@ -437,9 +475,11 @@ The ``Bell`` function has the same arguments and functionality as the analogous 
    params['z'] = 0.57
    Bell = EFT.Bell(tri, params=params, ell=[0,2,4], de_model='lambda', kfun=0.005)
 
-*Note: The very first call of ``Bell`` for a given set of configurations can take a little longer (depending on the total number of triangle configurations) as some lookup-tables are generated. All subsequent calls, even with changing cosmological parameters, are then much faster. That implicitly means that one should avoid calling ``Bell`` multiple times with different triangle configurations, but once for all triangle configurations.*
+.. note::
 
-.. code-nlack:: python
+   The very first call of ``Bell`` for a given set of configurations can take a little longer (depending on the total number of triangle configurations) as some lookup-tables are generated. All subsequent calls, even with changing cosmological parameters, are then much faster. That implicitly means that one should avoid calling ``Bell`` multiple times with different triangle configurations, but once for all triangle configurations.
+
+.. code-block:: python
 
     fig, axs = plt.subplots(3,1, figsize=(10,5), sharex=True,)
     for i in range(3):
