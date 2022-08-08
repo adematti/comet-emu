@@ -7,11 +7,11 @@ Tutorials
 Quick-start
 -----------
 
-.. container:: cell markdown
 
-   In this tutorial we will show
-     * How to initialise the emulator.
-     * How to obtain multipoles for the standard $\Lambda$CDM cosmology.
+In this tutorial we will show
+
+- How to initialise the emulator
+- How to obtain multipoles for the standard :math:`\Lambda`\ CDM cosmology
 
 Let’s first import ``comet`` as well as other required libraries:
 
@@ -21,29 +21,17 @@ Let’s first import ``comet`` as well as other required libraries:
    import numpy as np
    import matplotlib.pyplot as plt
 
-.. container:: cell markdown
-
-   At initialisation we only need to specify the perturbation theory model that
-   we want to use (valid specifiers are currently either ``"EFT"`` or ``"RS"``\ ;
-   for an overview of the models implemented in COMET, see here) and we can
-   configure COMET either in $\mathrm{Mpc}$ units (\ ``use_Mpc = True``\ , which
-   is the default option) or in $h^{-1}\mathrm{Mpc}$ units
-   (\ ``use_Mpc = False``\ ). All quantities that are not dimensionless are then
-   returned or assumed to be given in the respective unit system. Let’s define
-   an emulator object for the EFT model using the standard $h^{-1}\mathrm{Mpc}$
-   units:
+At initialisation we only need to specify the perturbation theory model that we want to use: valid specifiers are currently either ``"EFT"`` (effective field theory model) or ``"RS"`` (real-space model); for an overview of the models implemented in COMET, see here. Moreover, we can configure COMET either in :math:`\mathrm{Mpc}` units (\ ``use_Mpc = True``\ , which is the default option) or in :math:`h^{-1}\mathrm{Mpc}` units (\ ``use_Mpc = False``\ ). All quantities that are not dimensionless are then returned or assumed to be given in the respective unit system. Let’s define an emulator object for the EFT model using the standard :math:`h^{-1}\mathrm{Mpc}` units:
 
 .. code-block:: python
 
    EFT=comet(model="EFT", use_Mpc=False)
 
-.. container:: cell markdown
-
-   In order to make predictions for a given cosmological model we first need to
-   specify the fiducial background cosmology, from which the Alcock-Paczynski
-   distortions will be computed. This is done by calling the function
-   ``define_fiducial_cosmology`` with a dictionary specifying the cosmological
-   parameters and the redshift:
+In order to make predictions for a given cosmological model we first need to
+specify the fiducial background cosmology, from which the Alcock-Paczynski
+distortions will be computed. This is done by calling the function
+``define_fiducial_cosmology`` with a dictionary specifying the cosmological
+parameters and the redshift:
 
 .. code-block:: python
 
@@ -53,22 +41,20 @@ Let’s first import ``comet`` as well as other required libraries:
    # options, see the in-depth examples below.
    EFT.define_fiducial_cosmology(params_fid=params_fid)
 
-.. container:: cell markdown
+The function ``Pell``\ , which returns the power spectrum multipoles takes
+generally three parameters:
 
-   The function ``Pell``\ , which returns the power spectrum multipoles takes
-   generally three parameters:
+#. The scales for which to compute the multipoles (in the corresponding units)
+#. A parameter dictionary, specifying cosmological, bias, and (if applicable)
+  additional redshift-space distortions parameters
+#. The multipole number, i.e. ell = 0, 2, 4, or a list of multipole numbers
 
-   #. The scales for which to compute the multipoles (in the corresponding units)
-   #. A parameter dictionary, specifying cosmological, bias, and (if applicable)
-      additional redshift-space distortions parameters
-   #. The multipole number, i.e. ell = 0, 2, 4, or a list of multipole numbers
-
-   The parameter dictionary must include all shape parameters: the physical cold
-   dark matter and baryon densities (\ ``wc`` and ``wb``\ ) and the scalar
-   spectral index (\ ``ns``\ ). In case of a flat $\Lambda$CDM model we also
-   need to specify values for $h$ (\ ``h``\ ), the amplitude of scalar
-   fluctuations (\ ``As``\ ) and redshift (\ ``z``\ ). For other cosmologies,
-   see In-depth options for obtaining multipoles.
+The parameter dictionary must include all shape parameters: the physical cold
+dark matter and baryon densities (\ ``wc`` and ``wb``\ ) and the scalar
+spectral index (\ ``ns``\ ). In case of a flat $\Lambda$CDM model we also
+need to specify values for $h$ (\ ``h``\ ), the amplitude of scalar
+fluctuations (\ ``As``\ ) and redshift (\ ``z``\ ). For other cosmologies,
+see In-depth options for obtaining multipoles.
 
 .. code-block:: python
 
@@ -85,14 +71,19 @@ Let’s first import ``comet`` as well as other required libraries:
    params['As'] = 2.3
    params['z']  = 0.6
 
-Finally, we define the values of the bias parameters. The complete list of parameters along with a brief explanation and their dictionary keywords can be found here. In the following we only specify values for the linear and quadratic bias, all other parameters are automatically set to zero:
+Finally, we define the values of the bias parameters. The complete list of
+parameters along with a brief explanation and their dictionary keywords can
+be found here. In the following we only specify values for the linear and
+quadratic bias, all other parameters are automatically set to zero:
 
 .. code-block:: python
 
    params['b1'] = 2.
    params['b2'] = -0.5
 
-Now, let’s compute the monopole (\ ``ell=0``\ ), quadrupole (\ ``ell=2``\ ) and hexadecapole (\ ``ell=4``\ ) for a range of scales from $0.001 h\,\mathrm{Mpc}^{−1}$ to $0.3h\,\mathrm{Mpc}^{−1}$:
+Now, let’s compute the monopole (\ ``ell=0``\ ), quadrupole (\ ``ell=2``\ )
+and hexadecapole (\ ``ell=4``\ ) for a range of scales from
+:math:`0.001 h\,\mathrm{Mpc}^{−1}` to :math:`0.3h\,\mathrm{Mpc}^{−1}`:
 
 .. code-block:: python
 
@@ -121,25 +112,25 @@ So we can access our results and plot them as follow.
 
 .. image:: images/fig01.png
 
+
 Exploring a few in-depth options
 --------------------------------
 
 Let us now consider some of the more detailed options in 'COMET':
 
-
-* Specifying fiducial background cosmologies
-* Specifying Alcock-Paczynski parameters
-* Specifying the shot noise normalisation
-* Non-flat and non-$\Lambda$ cosmologies
-* Using the $f$-$\sigma_{12}$ parameter space
-* Options for providing different $k$-scales, float vs np.array vs list and the corresponding outputs
-* Description of the ``fixed_cosmo_boost`` function, i.e., speedup when just changing bias parameters
-* Using different bases for galaxy bias
+- Specifying fiducial background cosmologies
+- Specifying Alcock-Paczynski parameters
+- Specifying the shot noise normalisation
+- Non-flat and non-:math:`\Lambda` cosmologies
+- Using the :math:`f`-:math:`\sigma_{12}` parameter space
+- Options for providing different :math:`k`-scales, float vs np.array vs list and the corresponding outputs
+- Description of the ``fixed_cosmo_boost`` function, i.e., speedup when just changing bias parameters
+- Using different bases for galaxy bias
 
 Fiducial background cosmologies
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Above, we specified the fiducial background cosmology by setting the values of $h$, $\omega_b$, $\omega\ *c$ and redshift $z$. Alternatively, we can directly provide the values of the Hubble rate $H*\ {\rm fid}(z)$ and comoving transverse distance $D_{m,\rm fid}(z)$ as follows:
+Above, we specified the fiducial background cosmology by setting the values of :math:`h`, :math:`\omega_b`, :math:`\omega_c` and redshift :math:`z`. Alternatively, we can directly provide the values of the Hubble rate :math:`H_ {\rm fid}(z)` and comoving transverse distance :math:`D_{m,\rm fid}(z)` as follows:
 
 .. code-block:: python
 
@@ -148,14 +139,14 @@ Above, we specified the fiducial background cosmology by setting the values of $
 
    EFT.define_fiducial_cosmology(HDm_fid=[H_fid, Dm_fid])
 
-Note that the units of $H\ *{\rm fid}(z)$ and $D*\ {m,\rm fid}(z)$ need to be either in $\mathrm{km}\,\mathrm{s}^{-1}\,\mathrm{Mpc}^{-1}$ and $\mathrm{Mpc}$ (if ``use_Mpc=True``\ ), or $\mathrm{km}\,\mathrm{s}^{-1}\,(h^{-1}\mathrm{Mpc})^{-1}$ and $h^{-1}\mathrm{Mpc}$ (if ``use_Mpc=False``\ ).
+Note that the units of :math:`H_{\rm fid}(z)` and :math:`D_{m,\rm fid}(z)` need to be either in :math:`\mathrm{km}\,\mathrm{s}^{-1}\,\mathrm{Mpc}^{-1}` and :math:`\mathrm{Mpc}` (if ``use_Mpc=True``\ ), or :math:`\mathrm{km}\,\mathrm{s}^{-1}\,(h^{-1}\mathrm{Mpc})^{-1}` and :math:`h^{-1}\mathrm{Mpc}` (if ``use_Mpc=False``\ ).
 
 Moreover, we stress that ``define_fiducial_cosmology`` is only used to set the fiducial cosmological parameter values. It cannot be used to set default parameter values for the evaluation of the model.
 
 Alcock-Paczynski parameters
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-By default the values of the Alcock-Paczynski parameters, $q\ *{\parallel}$ and $q*\ {\perp}$, are computed based on the given cosmological parameters and the fiducial background values for the Hubble rate and comoving transverse distance. These values can be overwritten by explicitly providing the Alcock-Paczynski parameters as an argument to the ``Pell`` function:
+By default the values of the Alcock-Paczynski parameters, :math:`q_{\parallel}` and :math:`q_{\perp}`, are computed based on the given cosmological parameters and the fiducial background values for the Hubble rate and comoving transverse distance. These values can be overwritten by explicitly providing the Alcock-Paczynski parameters as an argument to the ``Pell`` function:
 
 .. code-block:: python
 
@@ -169,32 +160,32 @@ This can be useful when one would like to ignore Alcock-Paczynski distortions.
 Shot noise normalisation
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-By default the shot noise parameters in the power spectrum model are assumed to be given in units of $L^3$ for ``NP0`` and $L^5$ for ``NP20`` and ``NP22``\ , where $L = (\mathrm{Mpc})^3$ (\ ``use_Mpc=True``\ ) or $L = (h^{-1}\mathrm{Mpc})^3$ (\ ``use_Mpc=False``\ ). It is possible to define a fixed normalisation scale (i.e., corresponding to the Poisson shot noise $1/\bar{n}$) as follows:
+By default the shot noise parameters in the power spectrum model are assumed to be given in units of :math:`L^3` for ``NP0`` and :math:`L^5` for ``NP20`` and ``NP22``\ , where :math:`L = (\mathrm{Mpc})^3` (\ ``use_Mpc=True``\ ) or :math:`L = (h^{-1}\mathrm{Mpc})^3` (\ ``use_Mpc=False``\ ). It is possible to define a fixed normalisation scale (i.e., corresponding to the Poisson shot noise :math:`1/\bar{n}`) as follows:
 
 .. code-block:: python
 
    nbar = 1e-3  # in the respective units
    EFT.define_nbar(nbar)
 
-In this case ``NP0`` is dimensionless, while ``NP20`` and ``NP22`` have dimension $L^2$.
+In this case ``NP0`` is dimensionless, while ``NP20`` and ``NP22`` have dimension :math:`L^2`.
 
 Non-flat and non-$\Lambda$ cosmologies
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Predictions for non-flat cosmologies can be obtained by simply specifying the curvature density parameter $\Omega_k$ in the parameter dictionary:
+Predictions for non-flat cosmologies can be obtained by simply specifying the curvature density parameter :math:`\Omega_k` in the parameter dictionary:
 
 .. code-block:: python
 
    params['Ok'] = 0.05
 
-For different dark energy models we need to provide a different ``de_model`` argument for the ``Pell`` function. For a non-time varying dark energy equation of state, we set ``de_model='w0'``\ , while for a time-varying equation of state in the $w_0$-$w_a$ parametrisation, we set ``de_model='w0wa'``. In those cases we need to specify the corresponding values of $w_0$ and $w_a$ in the parameter dictionary. Let's consider the following example:
+For different dark energy models we need to provide a different ``de_model`` argument for the ``Pell`` function. For a non-time varying dark energy equation of state, we set ``de_model='w0'``\ , while for a time-varying equation of state in the :math:`w_0`-:math:`w_a` parametrisation, we set ``de_model='w0wa'``. In those cases we need to specify the corresponding values of :math:`w_0` and :math:`w_a` in the parameter dictionary. Let's consider the following example:
 
 .. code-block:: python
 
    params['w0'] = -1.1
    params['wa'] = 0.1
 
-Then let's recompute the model by updating the previously set parameter values and compare with the $\Lambda$CDM prediction:
+Then let's recompute the model by updating the previously set parameter values and compare with the :math:`\Lambda`\ CDM prediction:
 
 .. code-block:: python
 
@@ -217,17 +208,17 @@ Then let's recompute the model by updating the previously set parameter values a
 
 .. image:: images/fig02.png
 
-The $f$-$\sigma_{12}$ parameter space
+The :math:`f`-:math:`\sigma_{12}` parameter space
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-When calling the ``Pell`` function for a specific dark energy model, it ignores any potential values of ``s12``\ , ``q_tr``\ , ``q_lo`` and ``f`` in the parameter dictionary and instead converts the $\Lambda$CDM parameters to the $\sigma_{12}$ parameter space. The internal values of those parameters (which can be accessed via ``EFT.params``\ ) have therefore been updated:
+When calling the ``Pell`` function for a specific dark energy model, it ignores any potential values of ``s12``\ , ``q_tr``\ , ``q_lo`` and ``f`` in the parameter dictionary and instead converts the $\Lambda$CDM parameters to the :math:`\sigma_{12}` parameter space. The internal values of those parameters (which can be accessed via ``EFT.params``\ ) have therefore been updated:
 
 .. code-block:: python
 
    # s12, q_tr, q_lo and f are computed internally!
    EFT.params
 
-If we want to use the $f$-$\sigma_{12}$ parameter space directly, we need to provide explicit values for ``s12``\ , ``f``\ , ``q_lo`` ($q_{\parallel}$) and ``q_tr`` ($q_{\perp}$). As an example, let's redefine our parameter values:
+If we want to use the :math:`f`-:math:`\sigma_{12}` parameter space directly, we need to provide explicit values for ``s12``\ , ``f``\ , ``q_lo`` (:math:`q_{\parallel}`) and ``q_tr`` (:math:`q_{\perp}`). As an example, let's redefine our parameter values:
 
 .. code-block:: python
 
@@ -237,7 +228,9 @@ If we want to use the $f$-$\sigma_{12}$ parameter space directly, we need to pro
    params['q_tr'] = 0.9
    params['f']    = 0.7
 
-*Note: When computing the multipoles using the $\sigma*\ {12}$ parameter space and in $h^{-1}\mathrm{Mpc}$ units, we need to specify a fiducial value for the Hubble rate (provided in the parameter dictionary). This is required to convert the native emulator output from Mpc to Mpc/h units._
+.. note::
+
+   When computing the multipoles using the :math:`\sigma_{12}` parameter space and in :math:`h^{-1}\mathrm{Mpc}` units, we need to specify a fiducial value for the Hubble rate (provided in the parameter dictionary). This is required to convert the native emulator output from Mpc to Mpc/h units.
 
 .. code-block:: python
 
@@ -265,7 +258,7 @@ Providing different $k$-scales
 
 There are multiple options for specifying the scales for which to compute the multipoles: if given as a number or numpy array all specified multipoles will be computed for those scales, if given as a list, however, then the first entry of the list is evaluated for the first multipole, the second for the second multipole, etc.
 
-We can output at a single scale and single multipole number, e.g. for the quadrupole at $k = 0.1\,h\,\mathrm{Mpc}^{-1}$:
+We can output at a single scale and single multipole number, e.g. for the quadrupole at :math:`k = 0.1\,h\,\mathrm{Mpc}^{-1}`:
 
 .. code-block:: python
 
@@ -285,12 +278,14 @@ Or at different scales for different multipoles (providing a list of numbers or 
 
 *Note: In this case, the length of the list must match the length of the specified multipoles (\ ``ell``\ ).*
 
-Performance-wise it is advisable to compute all required multipoles and scales via the same function call (i.e., avoid calling ``Pell`` for individual wavemodes).
+.. note::
+
+   Performance-wise it is advisable to compute all required multipoles and scales via the same function call (i.e., avoid calling ``Pell`` for individual wavemodes).
 
 Speedup when changing just bias parameters
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-It is a common task to test the models at fixed cosmological parameters, and in that case COMET provides the function ``Pell_fixed_cosmo_boost``\ , which accelerates the model computation. It computes all individual model contributions, which are kept fixed as long as the cosmological parameters are not changed, such that changing the bias parameters only is sped up drastically. In the following cells the diferences on time can be seen, which reflects a speed up of around 3 orders of magnitude.
+It is a common task to test the models at fixed cosmological parameters, and in that case COMET provides the function ``Pell_fixed_cosmo_boost``\ , which accelerates the model computation. It computes all individual model contributions, which are kept fixed as long as the cosmological parameters are not changed, such that changing the bias parameters only is sped up drastically. In the following cells the differences on time can be seen, which reflects a speed up of around 3 orders of magnitude.
 
 .. code-block:: python
 
@@ -300,16 +295,17 @@ It is a common task to test the models at fixed cosmological parameters, and in 
 
    %timeit EFT.Pell_fixed_cosmo_boost(k_hMpc, params, ell=[0,2,4], de_model="lambda")
 
-*Note: Since the computation of all the individual contributions takes more time than the direct evaluation of the multipoles, this is really only useful at fixed cosmological parameters.*
+.. note::
+
+   Since the computation of all the individual contributions takes more time than the direct evaluation of the multipoles, this is really only useful at fixed cosmological parameters.
 
 Using different bases for galaxy bias
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 By default COMET uses the galaxy bias expansion proposed in Eggemeier et al. (2019), but it is also possible to specify bias parameters of two other bases from:
 
-
-* Assassi et al. (2014), used e.g. in the analysis by Ivanov et al. (2019)
-* d'Amico et al. (2019)
+- Assassi et al. (2014), used e.g. in the analysis by Ivanov et al. (2019)
+- d'Amico et al. (2019)
 
 The bias basis is defined at initialisation using the argument ``bias_basis``\ , which can take the strings ``"EggScoSmi"`` (for the Eggemeier et al. basis), ``"AssBauGre"`` (for the Assassi et al. basis), or ``"AmiGleKok"`` (for the D'Amico et al. basis). It is also possible to change the bias basis later via the function ``change_bias_basis``\ , e.g.:
 
@@ -336,7 +332,7 @@ Let's change back to the default for the remainder of the tutorial:
 
    EFT.change_bias_basis("EggScoSmi")
 
-Beyond $P_{\ell}$ predictions
+Beyond :math:`P_{\ell}` predictions
 -----------------------------
 
 In the following we demonstrate a number of additional outputs that COMET can provide. Specifically:
