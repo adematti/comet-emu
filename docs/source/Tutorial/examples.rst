@@ -426,10 +426,56 @@ Let's plot the ratio of the de-wiggled linear power spectrum over the linear pow
 
 .. image:: images/fig04.png
 
+
+
+Tree-level bispectrum
+^^^^^^^^^^^^^^^^^^^^^
+
+COMET can also output the tree-level bispectrum (in real-space, for the ``RS`` model) and its multipoles (in redshift-space, for the ``EFT`` model). These predictions are not emulated, but computed from the emulated de-wiggled power spectrum directly. For that purpose we provide the function ``Bell`` and in order to demonstrate its usage let's first generate a set of triangle configurations:
+
+.. code-block:: python
+
+   k_hMpc_lin = np.arange(0.005, 0.3, 0.005)
+   tri =[]
+   for i1,k1 in enumerate(k_hMpc_lin):
+       for i2,k2 in enumerate(k_hMpc_lin[:i1+1]):
+           for i3,k3 in enumerate(k_hMpc_lin[:i2+1]):
+               if k2 + k3 >= k1:
+                   tri.append([k1, k2, k3])
+   tri=np.asarray(tri)
+
+The ``Bell`` function has the same arguments and functionality as the analogous ``Pell`` function for the power spectrum. However, it expects the triangle configurations to be always specified as a Numpy array containing :math:`k_1`, :math:`k_2`, :math:`k_3` (it is not possible to evaluate the multipoles for different triangles at the moment), and in addition it includes the argument ``kfun``\ , which is used for compressing the number of unique k-modes and is ideally chosen as a value that corresponds closely to the spacing between configurations (e.g. the bin-width for measured data), but must not be much larger. If in doubt, use a value much smaller than the typical spacing.
+
+.. code-block:: python
+
+   params['h'] = 0.69
+   params['z'] = 0.57
+   Bell = EFT.Bell(tri, params=params, ell=[0,2,4], de_model='lambda', kfun=0.005)
+
+.. note::
+
+   The very first call of ``Bell`` for a given set of configurations can take a little longer (depending on the total number of triangle configurations) as some lookup-tables are generated. All subsequent calls, even with changing cosmological parameters, are then much faster. That implicitly means that one should avoid calling ``Bell`` multiple times with different triangle configurations, but once for all triangle configurations.
+
+.. code-block:: python
+
+    fig, axs = plt.subplots(3,1, figsize=(10,5), sharex=True,)
+    for i in range(3):
+        axs[i].semilogy(np.arange(tri.shape[0]), Bell["ell"+str(2*i)],c='C'+str(2*i),ls='-')
+        axs[i].set_ylabel(f'$B_{i*2}(k)$',fontsize=15)
+
+    fig.tight_layout()
+    plt.subplots_adjust(wspace=0, hspace=0)
+    axs[-1].set_xlabel('Triangle index - $k$ [h/Mpc]',fontsize=15)
+    plt.show()
+
+.. image:: images/fig06.png
+
+
+
 Computing covariance matrices
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Apart from the multipoles we can also generate (Gaussian) covariance matrices, for which there are again different flags, that are either defined for the :math:`\sigma_{12}` or the dark energy parameter spaces. The first three arguments, ``k``\ , ``params``\ , and ``ell``\ , are identical to those for ``Pell``. In addition, we need to specify a binwidth ``dk`` and volume (both of which need to be given in the respective units for which the emulator is configured in), for example:
+Apart from the multipoles we can also generate (Gaussian) covariance matrices, for which there are again different flags, that are either defined for the :math:`\sigma_{12}` or the dark energy parameter spaces. For the power spectrum, the first three arguments, ``k``\ , ``params``\ , and ``ell``\ , are identical to those for ``Pell``. In addition, we need to specify a binwidth ``dk`` and volume (both of which need to be given in the respective units for which the emulator is configured in), for example:
 
 .. code-block:: python
 
@@ -473,47 +519,58 @@ For the version with specified dark energy model it is also possible (in additio
 
 As a further extension, in the case when using measurements from a periodic box that have been averaged over different lines of sight, we have added the averaging corrections for the covariance matrix. We have created the flags ``avg_cov`` (set to ``False`` by default) and ``avg_los`` (set to 3 by default) for the ``Pell_covariance`` function, so that when ``avg_cov=True`` it by default will compute the average along the three perpendicular axes (x,y,z), but it is also possible to average over just 2 directions. Note that this computation is quite slow since it involves a different  integral for each k-bin, it may be optimised in the future.
 
-Tree-level bispectrum
-^^^^^^^^^^^^^^^^^^^^^
-
-COMET can also output the tree-level bispectrum (in real-space, for the ``RS`` model) and its multipoles (in redshift-space, for the ``EFT`` model). These predictions are not emulated, but computed from the emulated de-wiggled power spectrum directly. For that purpose we provide the function ``Bell`` and in order to demonstrate its usage let's first generate a set of triangle configurations:
+Similarly, we can compute the Gaussian covariance matrix of the bispectrum using the function ``Bell_covariance``. Apart from the first argument, which specifies the triangle configurations (or a list of configurations for different multipoles), the arguments are identical to those of ``Pell_covariance``. In addition, one can also specify ``kfun`` as in case of ``Bell`` (see above), which by default is set to the bin width ``dk``. Let us compute the bispectrum covariance matrix for a reduced set of triangle configurations with different scale cuts for the monopole, quadrupole, and hexadecapole:
 
 .. code-block:: python
 
-   k_hMpc_lin = np.arange(0.005, 0.3, 0.005)
-   tri =[]
-   for i1,k1 in enumerate(k_hMpc_lin):
-       for i2,k2 in enumerate(k_hMpc_lin[:i1+1]):
-           for i3,k3 in enumerate(k_hMpc_lin[:i2+1]):
-               if k2 + k3 >= k1:
-                   tri.append([k1, k2, k3])
-   tri=np.asarray(tri)
+  id0p1 = np.where(tri[:,0] < 0.1)
+  id0p06 = np.where(tri[:,0] < 0.06)
+  id0p03 = np.where(tri[:,0] < 0.03)
 
-The ``Bell`` function has the same arguments and functionality as the analogous ``Pell`` function for the power spectrum. However, it expects the triangle configurations to be always specified as a Numpy array containing :math:`k_1`, :math:`k_2`, :math:`k_3` (it is not possible to evaluate the multipoles for different triangles at the moment), and in addition it includes the argument ``kfun``\ , which is used for compressing the number of unique k-modes and is ideally chosen as a value that corresponds closely to the spacing between configurations (e.g. the bin-width for measured data), but must not be much larger. If in doubt, use a value much smaller than the typical spacing.
+  # using the same scale cut for all multipoles
+  Cov_Bisp_hMpc = EFT.Bell_covariance(tri[id0p1], params, ell=[0,2,4], dk=0.005, de_model='lambda',
+                                      kfun=0.005, volume=3e9)
 
-.. code-block:: python
+  # using different scale cuts
+  Cov_Bisp_hMpc_diff_scale_cut = EFT.Bell_covariance([tri[id0p1],tri[id0p06],tri[id0p03]], params, ell=[0,2,4], dk=0.005, de_model='lambda',
+                                      kfun=0.005, volume=3e9)
 
-   params['h'] = 0.69
-   params['z'] = 0.57
-   Bell = EFT.Bell(tri, params=params, ell=[0,2,4], de_model='lambda', kfun=0.005)
-
-.. note::
-
-   The very first call of ``Bell`` for a given set of configurations can take a little longer (depending on the total number of triangle configurations) as some lookup-tables are generated. All subsequent calls, even with changing cosmological parameters, are then much faster. That implicitly means that one should avoid calling ``Bell`` multiple times with different triangle configurations, but once for all triangle configurations.
+In the Gaussian approximation each block in the bispectrum covariance matrix is diagonal. Let's plot these diagonals as a function of the triangle configuration index:
 
 .. code-block:: python
 
-    fig, axs = plt.subplots(3,1, figsize=(10,5), sharex=True,)
-    for i in range(3):
-        axs[i].semilogy(np.arange(tri.shape[0]), Bell["ell"+str(2*i)],c='C'+str(2*i),ls='-')
-        axs[i].set_ylabel(f'$B_{i*2}(k)$',fontsize=15)
+  fig, axs = plt.subplots(2,3, figsize=(10,5), sharex=True, sharey=True)
 
-    fig.tight_layout()
-    plt.subplots_adjust(wspace=0, hspace=0)
-    axs[-1].set_xlabel('Triangle index - $k$ [h/Mpc]',fontsize=15)
-    plt.show()
+  ntri = id0p1[0].shape[0]
 
-.. image:: images/fig06.png
+  labels = ['$C_{00}$', '$C_{22}$', '$C_{44}$', '$C_{02}$', '$C_{04}$', '$C_{24}$']
+  colors = ['C0','C1','C2','C3','C4','C5']
+  for i in range(3):
+      axs[0,i].semilogy(np.arange(ntri), np.diag(Cov_Bisp_hMpc[i*ntri:(i+1)*ntri,i*ntri:(i+1)*ntri]), c=colors[i], label=labels[i])
+      axs[0,i].legend(fontsize=15)
+
+  n = 0
+  for i in range(2):
+      for j in range(i,3):
+          if i != j:
+              axs[1,n].semilogy(np.arange(ntri), np.diag(Cov_Bisp_hMpc[i*ntri:(i+1)*ntri,j*ntri:(j+1)*ntri]), c=colors[n+3], label=labels[n+3])
+              axs[1,n].legend(fontsize=15)
+              axs[1,n].set_xlabel('Triangle Index',fontsize=15)
+              n += 1
+
+  fig.tight_layout()
+  plt.subplots_adjust(wspace=0, hspace=0)
+
+.. image:: images/fig08.png
+
+.. hint::
+
+  Note that both, ``Pell_covariance`` and ``Bell_covariance``, allow also to specify the number of fundamental modes and fundamental triangle per bin, respectively. This is possible by using the optional arguments ``Nmodes`` and ``Ntri``, which should be an array of the same length as either `k` or ```tri`` (and if either of these is given as a list, it should match the length of the longest entry in the list of scales or triangle configurations). If not provided, the following approximations are assumed when computing the covariance matrix:
+
+  .. math::
+
+    N_{\rm modes} \approx \frac{V}{6 \pi^2}\,\left[\left(k+\frac{\Delta k}{2}\right)^3 - \left(k-\frac{\Delta k}{2}\right)^3\right]\,, \\[1.5em]
+    N_{\rm tri} \approx \frac{V^2}{8 \pi^4}\,k_1\,k_2\,k_3\,\Delta k^3\,.
 
 
 

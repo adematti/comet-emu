@@ -2259,8 +2259,8 @@ class PTEmu:
             covariance (in units of radians). Defaults to
             :math:`15000\mathrm{deg}^2`.
         Nmodes: numpy.ndarray, optional
-            Number of fundamental modes per :math:`k`-shell. The size of the
-            array should match the size of `k`. Defaults to
+            Number of fundamental modes per :math:`k-shell. The size of the
+            array should match the size of ``k``. Defaults to
             :math:`4\pi/3\,\left[(k+\Delta k/2)^3 - (k-\Delta k/2)^3\right]
             /k_f^3`, where :math:`k_f^3 = (2 \pi)^3/V`.
         volfac: float, optional
@@ -2394,7 +2394,7 @@ class PTEmu:
             :math:`15000\mathrm{deg}^2`.
         Ntri: numpy.ndarray, optional
             Number of fundamental triangles per bin. The size of this array
-            should match the size of `tri`, or the longest array in `tri` if
+            should match the size of ``tri``, or the longest array in ``tri`` if
             given as a list. Defaults to :math:`8 \pi^2 k_1\,k_2\,k_3\,\Delta
             k^3\k_f^6`, where :math:`k_f^3 = (2\pi)^3/V`.
         volfac: float, optional
