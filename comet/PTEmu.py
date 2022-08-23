@@ -2199,12 +2199,12 @@ class PTEmu:
     def Pell_covariance(self, k, params, ell, dk, de_model=None,
                         q_tr_lo=None, W_damping=None,
                         volume=None, zmin=None, zmax=None,
-                        fsky=15000.0/(360.0**2/np.pi), volfac=1.0,
-                        avg_cov=False, avg_los=3):
-        r"""Compute the gaussian covariance of the power spectrum multipoles.
+                        fsky=15000.0/(360.0**2/np.pi), Nmodes=None,
+                        volfac=1.0, avg_cov=False, avg_los=3):
+        r"""Compute the Gaussian covariance of the power spectrum multipoles.
 
         Generates the selected power spectrum multipoles for the specified set
-        of parameters, and returns their gaussian covariance predictions at
+        of parameters, and returns their Gaussian covariance predictions at
         the specified wavemodes :math:`k`.
 
         Parameters
@@ -2258,6 +2258,11 @@ class PTEmu:
             Sky fraction of the volume used in the calculation of the gaussian
             covariance (in units of radians). Defaults to
             :math:`15000\mathrm{deg}^2`.
+        Nmodes: numpy.ndarray, optional
+            Number of fundamental modes per :math:`k`-shell. The size of the
+            array should match the size of `k`. Defaults to
+            :math:`4\pi/3\,\left[(k+\Delta k/2)^3 - (k-\Delta k/2)^3\right]
+            /k_f^3`, where :math:`k_f^3 = (2 \pi)^3/V`.
         volfac: float, optional
             Rescaling volume fraction. Defaults to :math:`1`.
 
@@ -2305,8 +2310,160 @@ class PTEmu:
                                                    return_indices=True)
                     ids_ij = np.intersect1d(k_all, kij, return_indices=True)[1]
                     cov_l1l2 = self.Gaussian_covariance(
-                        l1, l2, k_all, dk, Pell, volume,
+                        l1, l2, k_all, dk, Pell, volume, Nmodes,
                         avg_cov=avg_cov, avg_los=avg_los)[ids_ij]
+                    cov[sum(nbins[:i]):sum(nbins[:i+1]),
+                        sum(nbins[:j]):sum(nbins[:j+1])][id1, id2] = cov_l1l2
+                else:
+                    cov[sum(nbins[:i]):sum(nbins[:i+1]),
+                        sum(nbins[:j]):sum(nbins[:j+1])] = \
+                        cov[sum(nbins[:j]):sum(nbins[:j+1]),
+                            sum(nbins[:i]):sum(nbins[:i+1])].T
+
+        return cov
+
+    def Bell_covariance(self, tri, params, ell, dk, de_model=None,
+                        kfun=None, q_tr_lo=None, W_damping=None,
+                        volume=None, zmin=None, zmax=None,
+                        fsky=15000.0/(360.0**2/np.pi), Ntri=None,
+                        volfac=1.0):
+        r"""Compute the Gaussian covariance of the bispectrum multipoles.
+
+        Returns the Gaussian covariance predictions for the specified multipole
+        numbers at the given parameters and triangle configurations
+        :math:`k_1`, :math:`k_2`, :math:`k_3`.
+
+        Parameters
+        ----------
+        tri: numpy.ndarray or list of numpy.ndarray
+            Wavemodes :math:`k_1`, :math:`k_2`, :math:`k_3` at which to
+            evaluate the predictions. If a list is passed, it has to match the
+            size of `ell`, and in that case each set of configurations refers
+            to a given multipole.
+        params: dict
+            Dictionary containing the list of total model parameters which are
+            internally used by the emulator. The keyword/value pairs of the
+            dictionary specify the names and the values of the parameters,
+            respectively.
+        ell: int or list
+            pecific multipole order :math:`\ell`.
+            Can be chosen from the list [0,2,4], whose entries correspond to
+            monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`),
+            hexadecapole (:math:`\ell=4`) and octopole (:math:`\ell=6`).
+        dk: float
+            Width of the :math:`k` bins.
+        de_model: str, optional
+            String that determines the dark energy equation of state. Can be
+            chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
+            the standard cosmological parameters, or be left undefined to use
+            only :math:`\sigma_{12}`. Defaults to **None**.
+        k_fun: float, optional
+            Fundamental frequency of the grid that was used to compute the
+            bispectrum measurements. This is useful to specify if the triangle
+            configurations are not given in multiples of the fundamental
+            frequency, in which case a compression of the unique :math:`k`
+            modes is performed. Should not be much larger than the bin width.
+            Defaults to :math:`\Delta k`.
+        q_tr_lo: list or numpy.ndarray, optional
+            List containing the user-provided AP parameters, in the form
+            :math:`(q_\perp, q_\parallel)`. If provided, prevents
+            computation from correct formulas (ratios of angular diameter
+            distances and expansion factors wrt to the corresponding quantities
+            of the fiducial cosmology). Defaults to **None**.
+        W_damping: Callable[[float, float], float], optional
+            Function returning the shape of the pairwise velocity generating
+            function in the large scale limit, :math:`r\rightarrow\infty`. The
+            function accepts two floats as arguments, corresponding to the
+            wavemode :math:`k` and the cosinus of the angle between pair
+            separation and line of sight :math:`\mu`, and returns a float. This
+            function is used only with the **VDG_infty** model. If **None**, it
+            uses the free kurtosis distribution defined by **W_kurt**.
+            Defaults to **None**.
+        volume: float, optional
+            Reference volume to be used in the calculation of the gaussian
+            covariance. Defaults to **None**.
+        zmin: float, optional
+            Minimum redshift of the volume used in the calculation of the
+            gaussian covariance. Defaults to **None**.
+        zmin: float, optional
+            Maximum redshift of the volume used in the calculation of the
+            gaussian covariance. Defaults to **None**.
+        fsky: float, optional
+            Sky fraction of the volume used in the calculation of the gaussian
+            covariance (in units of radians). Defaults to
+            :math:`15000\mathrm{deg}^2`.
+        Ntri: numpy.ndarray, optional
+            Number of fundamental triangles per bin. The size of this array
+            should match the size of `tri`, or the longest array in `tri` if
+            given as a list. Defaults to :math:`8 \pi^2 k_1\,k_2\,k_3\,\Delta
+            k^3\k_f^6`, where :math:`k_f^3 = (2\pi)^3/V`.
+        volfac: float, optional
+            Rescaling volume fraction. Defaults to :math:`1`.
+
+        Returns
+        -------
+        cov: numpy.ndarray
+            Gaussian covariance of the selected bispectrum multipoles.
+        """
+        ell = [ell] if not isinstance(ell, list) else ell
+        if not isinstance(tri, list):
+            tri = [tri]*len(ell)
+        elif isinstance(tri, list) and len(tri) != len(ell):
+            raise ValueError("If 'k' is given as a list, it must match the "
+                             "length of 'ell'.")
+        for i in range(len(ell)):
+            if tri[i].ndim == 1:
+                tri[i] = tri[i][None,:]
+            tri_sorted = np.flip(np.sort(tri[i], axis=1), axis=1)
+            if np.any(tri[i] != tri_sorted):
+                tri[i] = tri_sorted
+                print('Warning. Triangle configurations sorted such that '
+                      'k1 >= k2 >= k3.')
+            if not tri[i].flags['CONTIGUOUS']:
+                tri[i] = np.ascontiguousarray(tri[i])
+
+        if not np.all(self.Bisp.tri == max(tri, key=len)):
+            if kfun is None:
+                kfun = dk
+                print('kfun not specified. Using kfun = {}'.format(kfun))
+            self.Bisp.set_tri(tri, ell, kfun)
+
+        nbins = [x.shape[0] for x in tri]
+        cov = np.zeros([sum(nbins), sum(nbins)])
+
+        ell_for_cov = [0, 2, 4] if not self.real_space else 0
+        Pell = self.Pell(self.Bisp.tri_unique, params, ell=ell_for_cov,
+                         de_model=de_model, q_tr_lo=q_tr_lo,
+                         W_damping=W_damping)
+        Pell['ell0'] += 1.0/self.nbar
+
+        if de_model is not None and volume is None:
+            Om0 = (self.params['wc']+self.params['wb'])/self.params['h']**2
+            H0 = 100.0*self.params['h']
+            self.cosmo.update_cosmology(Om0=Om0, H0=H0, Ok0=self.params['Ok'],
+                                        de_model=de_model,
+                                        w0=self.params['w0'],
+                                        wa=self.params['wa'])
+            volume = volfac*self.cosmo.comoving_volume(zmin, zmax, fsky)
+            if not self.use_Mpc:
+                volume *= self.params['h']**3
+        elif de_model is None and volume is None:
+            raise ValueError("If no dark energy model is specified, a value "
+                             "for the volume must be provided.")
+
+        tri_dtype = {'names':['f{}'.format(i) for i in range(3)],
+                     'formats':3 * [self.Bisp.tri.dtype]}
+
+        for i, l1 in enumerate(ell):
+            for j, l2 in enumerate(ell):
+                if j >= i:
+                    tri_ij, id1, id2 = np.intersect1d(tri[i].view(tri_dtype),
+                                                      tri[j].view(tri_dtype),
+                                                      return_indices=True)
+                    ids_ij = np.intersect1d(self.Bisp.tri.view(tri_dtype),
+                                            tri_ij, return_indices=True)[1]
+                    cov_l1l2 = self.Bisp.Gaussian_covariance(
+                        l1, l2, dk, Pell, volume, Ntri)[ids_ij]
                     cov[sum(nbins[:i]):sum(nbins[:i+1]),
                         sum(nbins[:j]):sum(nbins[:j+1])][id1, id2] = cov_l1l2
                 else:

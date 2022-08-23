@@ -48,6 +48,7 @@ class Bispectrum:
 
         self.kernels = {}
         self.I = {}
+        self.cov_mixing_kernel = {}
 
     def define_units(self, use_Mpc):
         r"""Define units for the bispectrum.
@@ -116,11 +117,15 @@ class Bispectrum:
                 for i,l in enumerate(ell):
                     self.ntri_ell[l] = tri.shape[0]
 
+        if not self.tri.flags['CONTIGUOUS']:
+            self.tri = np.ascontiguousarray(self.tri)
+
         self.kfun = kfun
         self.generate_index_arrays()
         self.compute_kernels()
         if not self.real_space:
             self.compute_mu123_integrals()
+        self.cov_mixing_kernel = {}
 
     def F2(self, k1, k2, k3):
         r"""Compute the second-order density kernel.
@@ -337,8 +342,8 @@ class Bispectrum:
         elif n2 == 1 and n3 == 0:
             I = -0.5/(2.0 + n1) * (k1**2 + k2**2 - k3**2)/(k1*k2)
         elif n2 == 2 and n3 == 0:
-            I = (4*k1**2*k3**2 + (k1**2 - k2**2 + k3**2)**2*n1) \
-                / (4.*k1**2*k3**2*(1 + n1)*(3 + n1))
+            I = (4*k1**2*k2**2 + (k1**2 + k2**2 - k3**2)**2*n1) \
+                / (4.*k1**2*k2**2*(1 + n1)*(3 + n1))
         elif n2 == 1 and n3 == 1:
             I = (-2*k1**2*(k2**2 + k3**2) - (k2**2 - k3**2)**2*n1 \
                 + k1**4*(2 + n1))/(4.*k1**2*k2*k3*(3 + 4*n1 + n1**2))
@@ -397,6 +402,14 @@ class Bispectrum:
                 *(3 + n1) - (k1**2 + k2**2 - k3**2)**4*(k1**2 - k2**2 + k3**2) \
                 *(3 + n1)*(5 + n1))) \
                 / (128.*k1**6*k2**5*k3*(1 + n1)*(3 + n1)*(5 + n1)*(7 + n1))
+        elif n2 == 6 and n3 == 0:
+            I = -0.015625*(15*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 \
+                + k3**2))**3 - 45*(k1**2 + k2**2 - k3**2)**2*(k1**4 + (k2**2 \
+                - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**2*(1 + n1) \
+                + 15*(k1 - k2 - k3)*(k1 + k2 - k3)*(k1 - k2 + k3)*(k1 + k2 \
+                + k3)*(k1**2 + k2**2 - k3**2)**4*(1 + n1)*(3 + n1) - (k1**2 \
+                + k2**2 - k3**2)**6*(1 + n1)*(3 + n1)*(5 + n1)) \
+                / (k1**6*k2**6*(1 + n1)*(3 + n1)*(5 + n1)*(7 + n1))
         elif n2 == 4 and n3 == 2:
             I = (-30*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**3 \
                 - 6*(k1**4 - 10*k1**2*(k2**2 - k3**2) - 15*(k2**2 - k3**2)**2) \
@@ -437,6 +450,97 @@ class Bispectrum:
                 + (k2**2 - k3**2)**4*(-15 + n1) + k1**8*(9 + n1) - 2*k1**4 \
                 * (k2 - k3)*(k2 + k3)*(-(k3**2*(9 + n1)) + k2**2*(21 + n1)))) \
                 / (k1**7*k2**4*k3**3*(2 + n1)*(4 + n1)*(6 + n1)*(8 + n1))
+        elif n2 == 8 and n3 == 0:
+            I = (105*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**4 \
+                - 420*(k1**2 + k2**2 - k3**2)**2*(k1**4 + (k2**2 - k3**2)**2 \
+                - 2*k1**2*(k2**2 + k3**2))**3*(1 + n1) + 210*(k1**2 + k2**2 \
+                - k3**2)**4*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 \
+                + k3**2))**2*(1 + n1)*(3 + n1) - 28*(k1 - k2 - k3)*(k1 + k2 \
+                - k3)*(k1 - k2 + k3)*(k1 + k2 + k3)*(k1**2 + k2**2 - k3**2)**6 \
+                * (1 + n1)*(3 + n1)*(5 + n1) + (k1**2 + k2**2 - k3**2)**8 \
+                * (1 + n1)*(3 + n1)*(5 + n1)*(7 + n1))/(256.*k1**8*k2**8 \
+                * (1 + n1)*(3 + n1)*(5 + n1)*(7 + n1)*(9 + n1))
+        elif n2 == 6 and n3 == 2:
+            I = (210*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 \
+                + k3**2))**4  - 2*(1 + n1)*(60*(k1**4 + 7*k1**2*(k2**2 \
+                - k3**2) + 7*(k2**2 - k3**2)**2)*(k1**4 + (k2**2 - k3**2)**2 \
+                - 2*k1**2*(k2**2 + k3**2))**3 + 30*(k1**2 + k2**2 \
+                - k3**2)**2*(k1**4 - 7*(k2**2 - k3**2)**2)*(k1**4 + (k2**2 \
+                - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**2*(3 + n1) \
+                - (k1**2 + k2**2 - k3**2)**4*(3 + n1)*(5 + n1) \
+                * (4*k1**6*(9*k2**2 - 5*k3**2) + 28*k1**2*(k2**2 - k3**2)**2 \
+                * (3*k2**2 + k3**2) + (k2**2 - k3**2)**4*(-21 + n1) + k1**8 \
+                * (3 + n1) - 2*k1**4*(k2 - k3)*(k2 + k3)*(-(k3**2*(-5 + n1)) \
+                + k2**2*(51 + n1)))))/(512.*k1**8*k2**6*k3**2*(1 + n1) \
+                * (3 + n1)*(5 + n1)*(7 + n1)*(9 + n1))
+        elif n2 == 4 and n3 == 4:
+            I = (210*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**4 \
+                + 8*(1 + n1)*(15*(k1**4 - 7*(k2**2 - k3**2)**2) \
+                * (k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**3 \
+                + (3*(3*k1**8 - 30*k1**4*(k2**2 - k3**2)**2 + 35*(k2**2 \
+                - k3**2)**4)*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 \
+                + k3**2))**2*(3 + n1))/2. + (k1 - k2 - k3)*(k1 + k2 - k3) \
+                * (k1 - k2 + k3)*(k1 + k2 + k3)*(k1**4 - 7*(k2**2 - k3**2)**2) \
+                * (k1**4 - (k2**2 - k3**2)**2)**2*(3 + n1)*(5 + n1) \
+                + ((k1**4 - (k2**2 - k3**2)**2)**4*(3 + n1)*(5 + n1) \
+                * (7 + n1))/4.))/(512.*k1**8*k2**4*k3**4*(1 + n1)*(3 + n1) \
+                * (5 + n1)*(7 + n1)*(9 + n1))
+        elif n2 == 8 and n3 == 2:
+            I = (-1890*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 \
+                + k3**2))**5 + 210*(k1 + k2 - k3)**4*(k1 - k2 + k3)**4 \
+                * (-k1 + k2 + k3)**4*(k1 + k2 + k3)**4*(k1**2 + 3*(k2 - k3) \
+                * (k2 + k3))*(13*k1**2 + 15*(k2 - k3)*(k2 + k3))*(1 + n1) \
+                + 420*(k1**2 + k2**2 - k3**2)**2*(k1**4 - 6*k1**2*(k2**2 \
+                - k3**2) - 15*(k2**2 - k3**2)**2)*(k1**4 + (k2**2 - k3**2)**2 \
+                - 2*k1**2*(k2**2 + k3**2))**3*(1 + n1)*(3 + n1) - 2*(k1**2 \
+                + k2**2 - k3**2)**4*(1 + n1)*(3 + n1)*(5 + n1)*(42*(k1**4 \
+                + 6*k1**2*(k2**2 - k3**2) - 15*(k2**2 - k3**2)**2)*(k1**4 \
+                + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**2 - (k1**2 \
+                + k2**2 - k3**2)**2*(7 + n1)*(4*k1**6*(20*k2**2 - 7*k3**2) \
+                + 36*k1**2*(k2**2 - k3**2)**2*(4*k2**2 + k3**2) + (k2**2 \
+                - k3**2)**4*(-36 + n1) + k1**8*(-4 + n1) - 2*k1**4 \
+                * (k2 - k3)*(k2 + k3)*(-(k3**2*(-16 + n1)) + k2**2 \
+                * (92 + n1)))))/(2048.*k1**10*k2**8*k3**2*(1 + n1)*(3 + n1) \
+                * (5 + n1)*(7 + n1)*(9 + n1)*(11 + n1))
+        elif n2 == 6 and n3 == 4:
+            I = -0.0009765625*(945*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2 \
+                * (k2**2 + k3**2))**5 + 315*(k1**4 - 6*k1**2*(k2**2 - k3**2) \
+                - 15*(k2**2 - k3**2)**2)*(k1**4 + (k2**2 - k3**2)**2 \
+                - 2*k1**2*(k2**2 + k3**2))**4*(1 + n1) + 30*(k1**8 - 28*k1**6 \
+                * (k2**2 - k3**2) - 42*k1**4*(k2**2 - k3**2)**2 + 84*k1**2 \
+                * (k2**2 - k3**2)**3 + 105*(k2**2 - k3**2)**4)*(k1**4 + (k2**2 \
+                - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**3*(1 + n1)*(3 + n1) \
+                - (k1**2 + k2**2 - k3**2)**2*(1 + n1)*(3 + n1)*(5 + n1) \
+                * (6*(k1**8 + 28*k1**6*(k2**2 - k3**2) - 42*k1**4*(k2**2 \
+                - k3**2)**2 - 84*k1**2*(k2**2 - k3**2)**3 + 105*(k2**2 \
+                - k3**2)**4)*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 \
+                + k3**2))**2 + 3*(k1 - k2 - k3)*(k1 + k2 - k3)*(k1 - k2 + k3) \
+                * (k1 + k2 + k3)*(k1**4 + 6*k1**2*(k2 - k3)*(k2 + k3) \
+                - 15*(k2**2 - k3**2)**2)*(k1**4 - (k2**2 - k3**2)**2)**2 \
+                * (7 + n1) + (k1**4 - (k2**2 - k3**2)**2)**4*(7 + n1) \
+                * (9 + n1)))/(k1**10*k2**6*k3**4*(1 + n1)*(3 + n1)*(5 + n1) \
+                * (7 + n1)*(9 + n1)*(11 + n1))
+        elif n2 == 8 and n3 == 4:
+            I = (20790*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 \
+                + k3**2))**6 - 2*(1 + n1)*(1890*(k1**4 + 22*k1**2*(k2**2 \
+                - k3**2) + 33*(k2**2 - k3**2)**2)*(k1**4 + (k2**2 - k3**2)**2 \
+                - 2*k1**2*(k2**2 + k3**2))**5 + 105*(17*k1**8 + 108*k1**6 \
+                * (k2**2 - k3**2) - 90*k1**4*(k2**2 - k3**2)**2 - 660*k1**2 \
+                * (k2**2 - k3**2)**3 - 495*(k2**2 - k3**2)**4)*(k1**4 \
+                + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**4*(3 + n1) \
+                + 420*(k1**2 + k2**2 - k3**2)**2*(k1**8 - 18*k1**4*(k2**2 \
+                - k3**2)**2 + 33*(k2**2 - k3**2)**4)*(k1**4 + (k2**2 \
+                - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**3*(3 + n1)*(5 + n1) \
+                + (k1**2 + k2**2 - k3**2)**4*(3 + n1)*(5 + n1)*(7 + n1) \
+                * (3*(17*k1**8 - 108*k1**6*(k2**2 - k3**2) - 90*k1**4 \
+                * (k2**2 - k3**2)**2 + 660*k1**2*(k2**2 - k3**2)**3 \
+                - 495*(k2**2 - k3**2)**4)*(k1**4 + (k2**2 - k3**2)**2 \
+                - 2*k1**2*(k2**2 + k3**2))**2 + 2*(k1 - k2 - k3)*(k1 + k2 \
+                - k3)*(k1 - k2 + k3)*(k1 + k2 + k3)*(k1**4 - (k2**2 \
+                - k3**2)**2)**2*(k1**4 + 33*(k2**2 - k3**2)**2 + 22*k1**2 \
+                * (-k2**2 + k3**2))*(9 + n1) - (k1**4 - (k2**2 - k3**2)**2)**4 \
+                * (9 + n1)*(11 + n1))))/(8192.*k1**12*k2**8*k3**4*(1 + n1) \
+                * (3 + n1)*(5 + n1)*(7 + n1)*(9 + n1)*(11 + n1)*(13 + n1))
         return I
 
     def compute_kernels(self):
@@ -499,6 +603,62 @@ class Bispectrum:
                     self.I[n123_perm_even] = np.roll(self.I[n123], -i, axis=1)
                     self.I[n123_perm_odd] = np.roll(self.I[n123_odd], -i,
                                                     axis=1)
+
+    def compute_covariance_mixing_kernel(self, l1, l2, l3, l4, l5):
+        def legendre_coeff(ell, n):
+            ln = np.math.factorial(ell-n)
+            ln2 = np.math.factorial(ell-2*n)
+            l2n2 = np.math.factorial(2*ell-2*n)
+            return (-1)**n*l2n2/(ln * ln2 * np.math.factorial(n))/2**ell
+
+        id_eq_k1k2 = np.where(self.tri[:,0] == self.tri[:,1])
+        id_eq_k2k3 = np.where(self.tri[:,1] == self.tri[:,2])
+        id_eq_k1k3 = np.where(self.tri[:,0] == self.tri[:,2])
+        deltaK_k1k2 = np.zeros(self.tri.shape[0])
+        deltaK_k2k3 = np.zeros(self.tri.shape[0])
+        deltaK_k1k3 = np.zeros(self.tri.shape[0])
+        deltaK_k1k2[id_eq_k1k2] = 1.0
+        deltaK_k2k3[id_eq_k2k3] = 1.0
+        deltaK_k1k3[id_eq_k1k3] = 1.0
+
+        ell_tuple = (l1,l2,l3,l4,l5)
+
+        self.cov_mixing_kernel[ell_tuple] = np.zeros(self.tri.shape[0])
+        for n1 in range(int(l1/2)+1):
+            C1 = legendre_coeff(l1, n1)
+            for n2 in range(int(l2/2)+1):
+                C2 = legendre_coeff(l2, n2)
+                for n3 in range(int(l3/2)+1):
+                    C3 = legendre_coeff(l3, n3)
+                    for n4 in range(int(l4/2)+1):
+                        C4 = legendre_coeff(l4, n4)
+                        for n5 in range(int(l5/2)+1):
+                            C5 = legendre_coeff(l5, n5)
+                            m1 = np.array([l1+l2+l3-2*(n1+n2+n3), l4-2*n4,
+                                           l5-2*n5])
+                            m2 = np.array([l1+l3-2*(n1+n3), l2+l4-2*(n2+n4),
+                                           l5-2*n5])
+                            m3 = np.array([l1+l3-2*(n1+n3), l4-2*n4,
+                                           l2+l5-2*(n2+n5)])
+                            if m1[2] <= m1[1]:
+                                I1 = self.mu123_integrals(*m1, *self.tri.T)
+                            else:
+                                I1 = self.mu123_integrals(*m1[[0,2,1]],
+                                    *self.tri[:,[0,2,1]].T)
+                            if m2[2] <= m2[1]:
+                                I2 = self.mu123_integrals(*m2, *self.tri.T)
+                            else:
+                                I2 = self.mu123_integrals(*m2[[0,2,1]],
+                                    *self.tri[:,[0,2,1]].T)
+                            if m3[2] <= m3[1]:
+                                I3 = self.mu123_integrals(*m3, *self.tri.T)
+                            else:
+                                I3 = self.mu123_integrals(*m3[[0,2,1]],
+                                    *self.tri[:,[0,2,1]].T)
+                            self.cov_mixing_kernel[ell_tuple] += \
+                                C1 * C2 * C3 * C4 * C5 * ((1. + \
+                                deltaK_k2k3)*I1 + (deltaK_k1k2 + \
+                                deltaK_k2k3)*I2 + 2*deltaK_k1k3*I3)
 
     def generate_index_arrays(self, round_decimals=2):
         r"""Generate arrays of indeces of triangular configurations.
@@ -651,3 +811,38 @@ class Bispectrum:
             Bell_dict['ell{}'.format(l)] = (B_SPT + B_stoch) / q6
 
         return Bell_dict
+
+    def Gaussian_covariance(self, l1, l2, dk, Pell, volume, Ntri=None):
+        if Ntri is None:
+            Ntri = volume**2 * 8*np.pi**2*np.prod(self.tri, axis=1) \
+                   * dk**3/(2*np.pi)**6
+
+        ell_for_cov = [0,2,4] if not self.real_space else [0]
+
+        for l3 in ell_for_cov:
+            for l4 in ell_for_cov:
+                for l5 in ell_for_cov:
+                    try:
+                        self.cov_mixing_kernel[(l1,l2,l3,l4,l5)]
+                    except KeyError:
+                        self.compute_covariance_mixing_kernel(l1,l2,l3,l4,l5)
+
+        Pell_array = np.zeros((self.tri_unique.shape[0],len(Pell.keys())))
+        for i,ell in enumerate(Pell.keys()):
+            Pell_array[:,i] = Pell[ell]
+
+        cov = np.zeros(self.tri.shape[0])
+        for i3,l3 in enumerate(ell_for_cov):
+            for i4,l4 in enumerate(ell_for_cov):
+                for i5,l5 in enumerate(ell_for_cov):
+                    mask = np.array([[False]*3]*3)
+                    mask[0,i3] = True
+                    mask[1,i4] = True
+                    mask[2,i5] = True
+                    cov += self.cov_mixing_kernel[(l1,l2,l3,l4,l5)] * \
+                        np.prod(Pell_array[self.tri_to_id], axis=(1,2),
+                                where=mask)
+
+        cov *= (2*l1+1) * (2*l2+1) * volume / Ntri
+
+        return cov
