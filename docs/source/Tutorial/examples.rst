@@ -468,7 +468,7 @@ The ``Bell`` function has the same arguments and functionality as the analogous 
     axs[-1].set_xlabel('Triangle index - $k$ [h/Mpc]',fontsize=15)
     plt.show()
 
-.. image:: images/fig06.png
+.. image:: images/fig09.png
 
 
 
