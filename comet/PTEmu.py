@@ -2040,7 +2040,9 @@ class PTEmu:
             print('Warning. Triangle configurations sorted such that '
                   'k1 >= k2 >= k3.')
 
-        if not np.all(self.Bisp.tri == tri):
+        if not np.all(self.Bisp.tri == tri) or \
+                list(self.Bisp.ntri_ell.keys()) != ell or \
+                kfun != self.Bisp.kfun:
             if kfun is None:
                 kfun = tri[0,0]
                 print('kfun not specified. Using kfun = {}'.format(kfun))
@@ -2553,7 +2555,8 @@ class PTEmu:
                        if self.data[oi].nbins[m] > 0]
 
             if self.data[oi].stat == 'bispectrum':
-                if kmax_updated or self.Bisp.tri is None:
+                if kmax_updated or self.Bisp.tri is None or \
+                        self.Bisp.kfun != self.data[oi].kfun:
                     self.Bisp.set_tri(self.data[oi].bins_kmax, ell[oi],
                                       self.data[oi].kfun)
                 chi2_decomposition = False # currently only implemented for Pk
@@ -2585,7 +2588,15 @@ class PTEmu:
                     Bell_list = np.hstack([Bell[m] for m in Bell.keys()])
 
                     diff = Bell_list - self.data[oi].signal_kmax
-                    Ldiff = self.data[oi].inverse_cov_kmax_cholesky @ diff
+                    if self.data[oi].cov_is_block_diagonal:
+                        Ldiff = 0.0
+                        for i,l in enumerate(Bell.keys()):
+                            Ldiff += \
+                                self.data[oi].cholesky_block[l] * \
+                                    diff[sum(self.data[oi].nbins[:i]):
+                                         sum(self.data[oi].nbins[:i+1])]
+                    else:
+                        Ldiff = self.data[oi].inverse_cov_kmax_cholesky @ diff
                     chi2 += np.sum(Ldiff**2)
         else:
             chi2 = 0.0

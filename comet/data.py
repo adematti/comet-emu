@@ -57,6 +57,10 @@ class MeasuredData:
             self.cov = kwargs.get('cov')
             if self.cov.ndim == 1:
                 self.cov = np.diag(self.cov)
+                self.cov_is_block_diagonal = True
+            else:
+                self.cov_is_block_diagonal = self.is_block_diagonal(self.cov,
+                                                                    self.n_ell)
         if 'bins_mixing_matrix' in kwargs:
             self.bins_mixing_matrix = kwargs.get('bins_mixing_matrix')
             self.bins_mixing_matrix_compressed = np.logspace(
@@ -141,6 +145,10 @@ class MeasuredData:
             self.cov = kwargs.get('cov')
             if self.cov.ndim == 1:
                 self.cov = np.diag(self.cov)
+                self.cov_is_block_diagonal = True
+            else:
+                self.cov_is_block_diagonal = self.is_block_diagonal(self.cov,
+                                                                    self.n_ell)
         if 'bins_mixing_matrix' in kwargs:
             self.bins_mixing_matrix = kwargs.get('bins_mixing_matrix')
             self.bins_mixing_matrix_compressed = np.logspace(
@@ -185,6 +193,19 @@ class MeasuredData:
         self.W_mixing_matrix = None
         self.kmax_is_set = False
 
+    def is_block_diagonal(self, arr, nblock):
+        def is_diagonal(arr):
+            return np.all(arr == np.diag(np.diag(arr)))
+
+        nbin_per_block = int(arr.shape[0]/nblock)
+        check = np.zeros((nblock,nblock), dtype=bool)
+        for i in range(nblock):
+            for j in range(nblock):
+                check[i,j] = is_diagonal(
+                    arr[i*nbin_per_block:(i+1)*nbin_per_block,
+                        j*nbin_per_block:(j+1)*nbin_per_block])
+        return np.all(check)
+
     def set_kmax(self, kmax):
         r"""Set the maximum mode used in the computation of the :math:`\chi^2`.
 
@@ -202,6 +223,9 @@ class MeasuredData:
             On the contrary, each entry of the **list** object is specific
             for a given multipole.
         """
+        def isdiagonal(arr):
+            return np.all(arr == np.diag(np.diag(arr)))
+
         if not isinstance(kmax, list):
             self.kmax = [kmax for i in range(self.n_ell)]
         else:
@@ -248,6 +272,16 @@ class MeasuredData:
         if self.stat == 'bispectrum':
             self.inverse_cov_kmax_cholesky = np.linalg.cholesky(
                 self.inverse_cov_kmax)
+            if self.cov_is_block_diagonal:
+                self.cholesky_block = {}
+                for i in range(self.n_ell):
+                    self.cholesky_block['ell{}'.format(2*i)] = 0.0
+                    for j in range(i,self.n_ell):
+                        self.cholesky_block['ell{}'.format(2*i)] += \
+                            np.diag(self.inverse_cov_kmax_cholesky[
+                                sum(self.nbins[:j]):sum(self.nbins[:j+1]),
+                                sum(self.nbins[:i]):sum(self.nbins[:i+1])
+                                ])
 
         self.SN_kmax = (self.signal_kmax @ self.inverse_cov_kmax @
                         self.signal_kmax)
