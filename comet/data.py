@@ -166,6 +166,11 @@ class MeasuredData:
 
         # update kmax-truncated data containers
         if self.kmax_is_set:
+            if len(self.kmax) != self.n_ell:
+                kmax_copy = self.kmax.copy()
+                self.kmax = []
+                for n in range(self.n_ell):
+                    self.kmax.append(kmax_copy[n] if n < len(kmax_copy) else 0)
             self.set_kmax(self.kmax)
 
     def clear_data(self):
