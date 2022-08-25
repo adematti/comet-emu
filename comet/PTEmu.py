@@ -2553,8 +2553,7 @@ class PTEmu:
                         self.chi2_decomposition = None
                         kmax_updated = True
 
-            ell[oi] = [2*m for m in range(self.data[oi].n_ell)
-                       if self.data[oi].nbins[m] > 0]
+            ell[oi] = [2*m for m in range(self.data[oi].n_ell)]
 
             if self.data[oi].stat == 'bispectrum':
                 ntri = list(self.Bisp.ntri_ell.values())

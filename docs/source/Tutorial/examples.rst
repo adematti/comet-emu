@@ -664,7 +664,7 @@ When providing a list of data identifiers, the ``kmax`` argument passed to ``chi
 
 .. code-block:: python
 
-   13454838417.038185
+   65495175908.83485
 
 .. note::
 
