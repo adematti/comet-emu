@@ -273,15 +273,28 @@ class MeasuredData:
             self.inverse_cov_kmax_cholesky = np.linalg.cholesky(
                 self.inverse_cov_kmax)
             if self.cov_is_block_diagonal:
-                self.cholesky_block = {}
+                tri_dtype = {'names':['f{}'.format(i) for i in range(3)],
+                             'formats':3 * [self.bins.dtype]}
+                self.cholesky_diag = {}
+                self.tri_id_ell2_in_ell1 = {}
+                self.tri_id_ell1_in_ell2 = {}
                 for i in range(self.n_ell):
-                    self.cholesky_block['ell{}'.format(2*i)] = 0.0
+                    ni1 = sum(self.nbins[:i])
+                    ni2 = sum(self.nbins[:i+1])
                     for j in range(i,self.n_ell):
-                        self.cholesky_block['ell{}'.format(2*i)] += \
-                            np.diag(self.inverse_cov_kmax_cholesky[
-                                sum(self.nbins[:j]):sum(self.nbins[:j+1]),
-                                sum(self.nbins[:i]):sum(self.nbins[:i+1])
-                                ])
+                        nj1 = sum(self.nbins[:j])
+                        nj2 = sum(self.nbins[:j+1])
+                        id1, id2 = np.sort(np.intersect1d(
+                            self.bins_kmax[i].view(tri_dtype),
+                            self.bins_kmax[j].view(tri_dtype),
+                            return_indices=True)[1:])
+                        self.tri_id_ell2_in_ell1[
+                            'ell{}ell{}'.format(2*i,2*j)] = id1
+                        self.tri_id_ell1_in_ell2[
+                            'ell{}ell{}'.format(2*i,2*j)] = id2
+                        self.cholesky_diag['ell{}ell{}'.format(2*i,2*j)] = \
+                            np.diag(self.inverse_cov_kmax_cholesky[nj1:nj2,
+                                ni1:ni2][id2[:,None],id1[None,:]])
 
         self.SN_kmax = (self.signal_kmax @ self.inverse_cov_kmax @
                         self.signal_kmax)

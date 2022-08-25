@@ -2042,6 +2042,8 @@ class PTEmu:
 
         if not np.all(self.Bisp.tri == tri) or \
                 list(self.Bisp.ntri_ell.keys()) != ell or \
+                all([list(self.Bisp.ntri_ell.keys()) == x for x in
+                    list(self.Bisp.ntri_ell.keys())]) or \
                 kfun != self.Bisp.kfun:
             if kfun is None:
                 kfun = tri[0,0]
@@ -2585,17 +2587,26 @@ class PTEmu:
                                self.Pdw_spline.derivative(n=1)(
                                    self.Bisp.tri_unique) / Pdw
                     Bell = self.Bisp.Bell(Pdw, neff, self.params, ell[oi])
-                    Bell_list = np.hstack([Bell[m] for m in Bell.keys()])
 
-                    diff = Bell_list - self.data[oi].signal_kmax
                     if self.data[oi].cov_is_block_diagonal:
-                        Ldiff = 0.0
+                        diff = {}
                         for i,l in enumerate(Bell.keys()):
-                            Ldiff += \
-                                self.data[oi].cholesky_block[l] * \
-                                    diff[sum(self.data[oi].nbins[:i]):
-                                         sum(self.data[oi].nbins[:i+1])]
+                            n1 = sum(self.data[oi].nbins[:i])
+                            n2 = sum(self.data[oi].nbins[:i+1])
+                            diff[l] = Bell[l] - self.data[oi].signal_kmax[n1:n2]
+                        Ldiff = np.zeros(sum(self.data[oi].nbins))
+                        for i,l1 in enumerate(Bell.keys()):
+                            for j,l2 in enumerate(list(Bell.keys())[i:]):
+                                n1 = sum(self.data[oi].nbins[:i+j])
+                                n2 = sum(self.data[oi].nbins[:i+j+1])
+                                ids_i = self.data[oi].tri_id_ell2_in_ell1[l1+l2]
+                                ids_j = self.data[oi].tri_id_ell1_in_ell2[l1+l2]
+                                Ldiff[n1:n2][ids_j] += \
+                                    self.data[oi].cholesky_diag[l1+l2] * \
+                                        diff[l1][ids_i]
                     else:
+                        Bell_list = np.hstack([Bell[m] for m in Bell.keys()])
+                        diff = Bell_list - self.data[oi].signal_kmax
                         Ldiff = self.data[oi].inverse_cov_kmax_cholesky @ diff
                     chi2 += np.sum(Ldiff**2)
         else:

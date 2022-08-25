@@ -120,6 +120,19 @@ class Bispectrum:
         if not self.tri.flags['CONTIGUOUS']:
             self.tri = np.ascontiguousarray(self.tri)
 
+        tri_dtype = {'names':['f{}'.format(i) for i in range(3)],
+                     'formats':3 * [self.tri.dtype]}
+        self.tri_id_ell = {}
+        if isinstance(tri, list):
+            for i,l in enumerate(ell):
+                self.tri_id_ell[l] = np.sort(np.intersect1d(
+                    self.tri.view(tri_dtype),
+                    np.ascontiguousarray(tri[i]).view(tri_dtype),
+                    return_indices=True)[1])
+        else:
+            for l in ell:
+                self.tri_id_ell[l] = np.arange(self.tri.shape[0])
+
         self.kfun = kfun
         self.generate_index_arrays()
         self.compute_kernels()
@@ -799,10 +812,10 @@ class Bispectrum:
 
         Bell_dict = {}
         for l in ell:
-            ntri = self.ntri_ell[l]
-            B_SPT = np.einsum("ij,ij->i", kernel[l][:ntri],
-                              P2[self.tri_to_id_sq][:ntri])
-            B_stoch = params['MB0'] * np.sum(PL_dw[self.tri_to_id][:ntri],
+            ids = self.tri_id_ell[l]
+            B_SPT = np.einsum("ij,ij->i", kernel[l][ids],
+                              P2[self.tri_to_id_sq][ids])
+            B_stoch = params['MB0'] * np.sum(PL_dw[self.tri_to_id][ids],
                                              axis=1) \
                       * kernel_stoch[l]
             if l == 0:
