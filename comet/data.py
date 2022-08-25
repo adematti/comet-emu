@@ -271,7 +271,7 @@ class MeasuredData:
 
         if self.stat == 'bispectrum':
             self.inverse_cov_kmax_cholesky = np.linalg.cholesky(
-                self.inverse_cov_kmax)
+                self.inverse_cov_kmax).T
             if self.cov_is_block_diagonal:
                 tri_dtype = {'names':['f{}'.format(i) for i in range(3)],
                              'formats':3 * [self.bins.dtype]}
@@ -293,8 +293,8 @@ class MeasuredData:
                         self.tri_id_ell1_in_ell2[
                             'ell{}ell{}'.format(2*i,2*j)] = id2
                         self.cholesky_diag['ell{}ell{}'.format(2*i,2*j)] = \
-                            np.diag(self.inverse_cov_kmax_cholesky[nj1:nj2,
-                                ni1:ni2][id2[:,None],id1[None,:]])
+                            np.diag(self.inverse_cov_kmax_cholesky[ni1:ni2,
+                                nj1:nj2][id1[:,None],id2[None,:]])
 
         self.SN_kmax = (self.signal_kmax @ self.inverse_cov_kmax @
                         self.signal_kmax)

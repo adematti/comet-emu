@@ -2042,7 +2042,7 @@ class PTEmu:
 
         if not np.all(self.Bisp.tri == tri) or \
                 list(self.Bisp.ntri_ell.keys()) != ell or \
-                all([list(self.Bisp.ntri_ell.keys()) == x for x in
+                not all([list(self.Bisp.ntri_ell.keys()) == x for x in
                     list(self.Bisp.ntri_ell.keys())]) or \
                 kfun != self.Bisp.kfun:
             if kfun is None:
@@ -2596,14 +2596,14 @@ class PTEmu:
                             diff[l] = Bell[l] - self.data[oi].signal_kmax[n1:n2]
                         Ldiff = np.zeros(sum(self.data[oi].nbins))
                         for i,l1 in enumerate(Bell.keys()):
+                            n1 = sum(self.data[oi].nbins[:i])
+                            n2 = sum(self.data[oi].nbins[:i+1])
                             for j,l2 in enumerate(list(Bell.keys())[i:]):
-                                n1 = sum(self.data[oi].nbins[:i+j])
-                                n2 = sum(self.data[oi].nbins[:i+j+1])
                                 ids_i = self.data[oi].tri_id_ell2_in_ell1[l1+l2]
                                 ids_j = self.data[oi].tri_id_ell1_in_ell2[l1+l2]
-                                Ldiff[n1:n2][ids_j] += \
+                                Ldiff[n1:n2][ids_i] += \
                                     self.data[oi].cholesky_diag[l1+l2] * \
-                                        diff[l1][ids_i]
+                                        diff[l2][ids_j]
                     else:
                         Bell_list = np.hstack([Bell[m] for m in Bell.keys()])
                         diff = Bell_list - self.data[oi].signal_kmax
