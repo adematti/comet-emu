@@ -57,6 +57,10 @@ class MeasuredData:
             self.cov = kwargs.get('cov')
             if self.cov.ndim == 1:
                 self.cov = np.diag(self.cov)
+                self.cov_is_block_diagonal = True
+            else:
+                self.cov_is_block_diagonal = self.is_block_diagonal(self.cov,
+                                                                    self.n_ell)
         if 'bins_mixing_matrix' in kwargs:
             self.bins_mixing_matrix = kwargs.get('bins_mixing_matrix')
             self.bins_mixing_matrix_compressed = np.logspace(
@@ -141,6 +145,10 @@ class MeasuredData:
             self.cov = kwargs.get('cov')
             if self.cov.ndim == 1:
                 self.cov = np.diag(self.cov)
+                self.cov_is_block_diagonal = True
+            else:
+                self.cov_is_block_diagonal = self.is_block_diagonal(self.cov,
+                                                                    self.n_ell)
         if 'bins_mixing_matrix' in kwargs:
             self.bins_mixing_matrix = kwargs.get('bins_mixing_matrix')
             self.bins_mixing_matrix_compressed = np.logspace(
@@ -166,6 +174,11 @@ class MeasuredData:
 
         # update kmax-truncated data containers
         if self.kmax_is_set:
+            if len(self.kmax) != self.n_ell:
+                kmax_copy = self.kmax.copy()
+                self.kmax = []
+                for n in range(self.n_ell):
+                    self.kmax.append(kmax_copy[n] if n < len(kmax_copy) else 0)
             self.set_kmax(self.kmax)
 
     def clear_data(self):
@@ -179,6 +192,19 @@ class MeasuredData:
         self.bins_mixing_matrix = None
         self.W_mixing_matrix = None
         self.kmax_is_set = False
+
+    def is_block_diagonal(self, arr, nblock):
+        def is_diagonal(arr):
+            return np.all(arr == np.diag(np.diag(arr)))
+
+        nbin_per_block = int(arr.shape[0]/nblock)
+        check = np.zeros((nblock,nblock), dtype=bool)
+        for i in range(nblock):
+            for j in range(nblock):
+                check[i,j] = is_diagonal(
+                    arr[i*nbin_per_block:(i+1)*nbin_per_block,
+                        j*nbin_per_block:(j+1)*nbin_per_block])
+        return np.all(check)
 
     def set_kmax(self, kmax):
         r"""Set the maximum mode used in the computation of the :math:`\chi^2`.
@@ -197,6 +223,9 @@ class MeasuredData:
             On the contrary, each entry of the **list** object is specific
             for a given multipole.
         """
+        def isdiagonal(arr):
+            return np.all(arr == np.diag(np.diag(arr)))
+
         if not isinstance(kmax, list):
             self.kmax = [kmax for i in range(self.n_ell)]
         else:
@@ -242,7 +271,30 @@ class MeasuredData:
 
         if self.stat == 'bispectrum':
             self.inverse_cov_kmax_cholesky = np.linalg.cholesky(
-                self.inverse_cov_kmax)
+                self.inverse_cov_kmax).T
+            if self.cov_is_block_diagonal:
+                tri_dtype = {'names':['f{}'.format(i) for i in range(3)],
+                             'formats':3 * [self.bins.dtype]}
+                self.cholesky_diag = {}
+                self.tri_id_ell2_in_ell1 = {}
+                self.tri_id_ell1_in_ell2 = {}
+                for i in range(self.n_ell):
+                    ni1 = sum(self.nbins[:i])
+                    ni2 = sum(self.nbins[:i+1])
+                    for j in range(i,self.n_ell):
+                        nj1 = sum(self.nbins[:j])
+                        nj2 = sum(self.nbins[:j+1])
+                        id1, id2 = np.sort(np.intersect1d(
+                            self.bins_kmax[i].view(tri_dtype),
+                            self.bins_kmax[j].view(tri_dtype),
+                            return_indices=True)[1:])
+                        self.tri_id_ell2_in_ell1[
+                            'ell{}ell{}'.format(2*i,2*j)] = id1
+                        self.tri_id_ell1_in_ell2[
+                            'ell{}ell{}'.format(2*i,2*j)] = id2
+                        self.cholesky_diag['ell{}ell{}'.format(2*i,2*j)] = \
+                            np.diag(self.inverse_cov_kmax_cholesky[ni1:ni2,
+                                nj1:nj2][id1[:,None],id2[None,:]])
 
         self.SN_kmax = (self.signal_kmax @ self.inverse_cov_kmax @
                         self.signal_kmax)
