@@ -2042,8 +2042,8 @@ class PTEmu:
 
         if not np.all(self.Bisp.tri == tri) or \
                 list(self.Bisp.ntri_ell.keys()) != ell or \
-                not all([list(self.Bisp.ntri_ell.keys())[0] == x for x in
-                    list(self.Bisp.ntri_ell.keys())]) or \
+                not all([list(self.Bisp.ntri_ell.values())[0] == x for x in
+                    list(self.Bisp.ntri_ell.values())]) or \
                 kfun != self.Bisp.kfun:
             if kfun is None:
                 kfun = tri[0,0]
