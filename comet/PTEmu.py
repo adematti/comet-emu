@@ -10,6 +10,7 @@ import pickle
 from comet.cosmology import Cosmology
 from comet.data import MeasuredData
 from comet.tables import Tables
+from comet.grid import Grid
 from comet.bispectrum import Bispectrum
 import os
 
@@ -134,6 +135,7 @@ class PTEmu:
         self.k_table_max = {}
 
         self.data = {}
+        self.grid = None
 
         self.splines_up_to_date = False
         self.dw_spline_up_to_date = False
@@ -1336,8 +1338,8 @@ class PTEmu:
 
         return Pell
 
-    def Pell(self, k, params, ell, de_model=None, obs_id=None, q_tr_lo=None,
-             W_damping=None, ell_for_recon=None):
+    def Pell(self, k, params, ell, de_model=None, binning=None, obs_id=None,
+             q_tr_lo=None, W_damping=None, ell_for_recon=None):
         r"""Compute the power spectrum multipoles.
 
         Main method to compute the galaxy power spectrum multipoles.
@@ -1364,6 +1366,8 @@ class PTEmu:
             chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
             the standard cosmological parameters, or be left undefined to use
             only :math:`\sigma_{12}`. Defaults to **None**.
+        binning: dict, optional
+
         obs_id: str, optional
             If not **None** the returned power spectrum will be convolved with
             a survey window function. In that case the string must be a valid
@@ -1399,38 +1403,6 @@ class PTEmu:
         if ell_for_recon is None:
             ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
 
-        def P2d(q, mu):
-            t = 0.0
-            for m in ell_for_recon:
-                t += eval_legendre(m, mu) * self.eval_Pell_spline(q, m)
-            return t
-
-        if self.RSD_model == 'EFT':
-
-            def integrand(mu):
-                mu2 = mu**2
-                APfac = np.sqrt(mu2/self.params['q_lo']**2 +
-                                (1.0 - mu2)/self.params['q_tr']**2)
-                kp = k*APfac
-                mup = mu/self.params['q_lo']/APfac
-                return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
-
-        elif self.RSD_model == 'VDG_infty':
-            if W_damping is None:
-                W_damping = self.W_kurt
-
-            def integrand(mu):
-                mu2 = mu**2
-                APfac = np.sqrt(mu2/self.params['q_lo']**2 +
-                                (1.0 - mu2)/self.params['q_tr']**2)
-                kp = k*APfac
-                mup = mu/self.params['q_lo']/APfac
-                P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
-                return np.outer(P2d_damped, eval_legendre(ell, mu))
-
-        else:
-            raise ValueError('Unsupported RSD model.')
-
         ell = [ell] if not isinstance(ell, list) else ell
 
         if isinstance(k, list):
@@ -1442,6 +1414,97 @@ class PTEmu:
                 k = np.unique(np.hstack(k_list))
         else:
             k_list = [k]*len(ell)
+
+        use_effective_modes = False
+        if binning is not None:
+            if self.grid is None:
+                self.grid = Grid(binning['kf'], binning['dk'])
+            else:
+                self.grid.update(binning['kf'], binning['dk'])
+            if binning.get('do_rounding') is None:
+                self.grid.find_discrete_modes(k)
+                if binning.get('effective') is not None:
+                    use_effective_modes = binning['effective']
+                    if use_effective_modes:
+                        self.grid.compute_effective_modes(k)
+            else:
+                self.grid.find_discrete_modes(k, binning['do_rounding'],
+                                              binning['decimals'])
+                if binning.get('effective') is not None:
+                    use_effective_modes = binning['effective']
+                    if use_effective_modes:
+                        self.grid.compute_effective_modes(k,
+                            binning['do_rounding'], binning['decimals'])
+
+        keff = self.grid.keff if use_effective_modes else k
+
+        def P2d(q, mu):
+            t = 0.0
+            for m in ell_for_recon:
+                t += eval_legendre(m, mu) * self.eval_Pell_spline(q, m)
+            return t
+
+        if self.RSD_model == 'EFT':
+
+            if binning is None or use_effective_modes:
+                def integrand(mu):
+                    mu2 = mu**2
+                    APfac = np.sqrt(mu2/self.params['q_lo']**2 +
+                                    (1.0 - mu2)/self.params['q_tr']**2)
+                    kp = keff*APfac
+                    mup = mu/self.params['q_lo']/APfac
+                    return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
+            else:
+                def  shell_average():
+                    mu2 = self.grid.mu**2
+                    APfac = np.sqrt(mu2/self.params['q_lo']**2 +
+                                    (1.0 - mu2)/self.params['q_tr']**2)
+                    kp = self.grid.k*APfac
+                    mup = self.grid.mu/self.params['q_lo']/APfac
+                    legendre = np.array([eval_legendre(l, self.grid.mu)
+                                         for l in ell])
+                    prod = P2d(kp, mup) * legendre
+                    avg = np.zeros([len(self.grid.nmodes)-1, len(ell)])
+                    for i in range(len(self.grid.nmodes)-1):
+                        n1 = self.grid.nmodes[i]
+                        n2 = self.grid.nmodes[i+1]
+                        avg[i] = np.average(prod[:,n1:n2], axis=1,
+                                            weights=self.grid.weights[n1:n2])
+                    return avg
+
+        elif self.RSD_model == 'VDG_infty':
+            if W_damping is None:
+                W_damping = self.W_kurt
+
+            if binning is None or use_effective_modes:
+                def integrand(mu):
+                    mu2 = mu**2
+                    APfac = np.sqrt(mu2/self.params['q_lo']**2 +
+                                    (1.0 - mu2)/self.params['q_tr']**2)
+                    kp = keff*APfac
+                    mup = mu/self.params['q_lo']/APfac
+                    P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
+                    return np.outer(P2d_damped, eval_legendre(ell, mu))
+            else:
+                def  shell_average():
+                    mu2 = self.grid.mu**2
+                    APfac = np.sqrt(mu2/self.params['q_lo']**2 +
+                                    (1.0 - mu2)/self.params['q_tr']**2)
+                    kp = self.grid.k*APfac
+                    mup = self.grid.mu/self.params['q_lo']/APfac
+                    legendre = np.array([eval_legendre(l, self.grid.mu)
+                                         for l in ell])
+                    prod = P2d(kp, mup) * W_damping(kp, mup) * legendre
+                    avg = np.zeros([len(self.grid.nmodes)-1, len(ell)])
+                    for i in range(len(self.grid.nmodes)-1):
+                        n1 = self.grid.nmodes[i]
+                        n2 = self.grid.nmodes[i+1]
+                        avg[i] = np.average(prod[:,n1:n2], axis=1,
+                                            weights=self.grid.weights[n1:n2])
+                    return avg
+
+        else:
+            raise ValueError('Unsupported RSD model.')
 
         if obs_id is None:
             params_updated = [params[p] != self.params[p] for p in params.keys()]
@@ -1463,7 +1526,10 @@ class PTEmu:
                                   q_tr_lo=q_tr_lo)
             q3 = self.params['q_tr']**2 * self.params['q_lo']
 
-            Pell_model = quad_vec(integrand, 0.0, 1.0)[0]
+            if binning is None or use_effective_modes:
+                Pell_model = quad_vec(integrand, 0.0, 1.0)[0]
+            else:
+                Pell_model = shell_average()
             Pell_model *= (2.0*np.array(ell)+1.0) / q3
 
             Pell_dict = {}
