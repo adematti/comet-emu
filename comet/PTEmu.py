@@ -1507,7 +1507,8 @@ class PTEmu:
             raise ValueError('Unsupported RSD model.')
 
         if obs_id is None:
-            params_updated = [params[p] != self.params[p] for p in params.keys()]
+            params_updated = [params[p] != self.params[p] for p in
+                              params.keys()]
             params_nonzero = [x for x in self.bias_params_list +
                               self.RSD_params_list if self.params[x] != 0]
 

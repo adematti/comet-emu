@@ -9,13 +9,18 @@ class Grid:
         self.kf = kf
         self.dk = dk
         self.kbin = None
-        # self.N = 2*int(self.kNyq/self.kf)
+        self.keff_all = None
+        self.do_rounding = True
+        self.decimals = [1,3]
 
     def update(self, kf, dk):
         if self.kf != kf or self.dk != dk:
             self.kf = kf
             self.dk = dk
             self.kbin = None
+            self.keff_all = None
+            self.do_rounding = True
+            self.decimals = [1,3]
 
     def find_discrete_modes(self, kbin, do_rounding=True, decimals=[1,3]):
         def id_to_mode(ii):
@@ -23,9 +28,12 @@ class Grid:
             mode[ii > self.N/2] -= self.N
             return mode
 
-        if self.kbin is None or not np.all(np.isin(kbin, self.kbin)):
+        if self.kbin is None or not np.all(np.isin(kbin, self.kbin)) \
+                or self.do_rounding != do_rounding or self.decimals != decimals:
             self.kbin = kbin
             self.N = 2*int(np.ceil((self.kbin[-1]+self.dk/2)/self.kf))
+            self.do_rounding = do_rounding
+            self.decimals = decimals
 
             ii = np.indices((self.N, self.N, self.N))
             kk = id_to_mode(ii)
@@ -65,8 +73,9 @@ class Grid:
             self.mu = self.mu_all
             self.weights = self.weights_all
             self.nmodes = self.nmodes_all
+            self.keff_all = np.zeros(len(self.nmodes_all)-1)
         elif kbin.size != self.kbin.size:
-            ids = np.intersect1d(kbin, self.kbin)
+            ids = np.intersect1d(kbin, self.kbin, return_indices=True)[2]
             self.k = None
             self.mu = None
             self.weights = None
@@ -83,11 +92,25 @@ class Grid:
                                           self.weights_all[n1:n2])) \
                     if self.weights is not None else self.weights_all[n1:n2]
                 self.nmodes.append(self.nmodes[-1] + self.nmodes_all[i+1]
-                                   - self.nmodes_all[i-1])
+                                   - self.nmodes_all[i])
+        else:
+            self.k = self.k_all
+            self.mu = self.mu_all
+            self.weights = self.weights_all
+            self.nmodes = self.nmodes_all
+
 
     def compute_effective_modes(self, kbin, do_rounding=True, decimals=[1,3]):
         self.find_discrete_modes(kbin, do_rounding, decimals)
-        self.keff = np.zeros(len(self.nmodes)-1)
-        for i in range(self.keff.size):
-            self.keff[i] = np.average(self.k[self.nmodes[i]:self.nmodes[i+1]],
-                weights=self.weights[self.nmodes[i]:self.nmodes[i+1]])
+        if np.all(self.keff_all == 0):
+            for i in range(self.keff_all.size):
+                n1 = self.nmodes[i]
+                n2 = self.nmodes[i+1]
+                self.keff_all[i] = np.average(self.k[n1:n2],
+                                              weights=self.weights[n1:n2])
+                self.keff = self.keff_all
+        elif kbin.size != self.kbin.size:
+            ids = np.intersect1d(kbin, self.kbin, return_indices=True)[2]
+            self.keff = self.keff_all[ids]
+        else:
+            self.keff = self.keff_all
