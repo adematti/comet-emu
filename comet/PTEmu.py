@@ -788,8 +788,7 @@ class PTEmu:
 
             if self.Pk_lin is None or emu_params_updated:
                 sigma12 = self.training['SHAPE'].transform_inv(
-                    self.emu['s12'].predict(params_shape[None, :])[0][0],
-                    's12')
+                    self.emu['s12'].predict(params_shape[None, :])[0][0], 's12')
                 self.Pk_lin = self.training['SHAPE'].transform_inv(
                     self.emu['PL'].predict(params_shape[None, :])[0][0], 'PL')
                 self.Pk_lin *= (self.params['s12']/sigma12)**2
@@ -809,8 +808,7 @@ class PTEmu:
         else:
             if self.Pk_lin is None or emu_params_updated:
                 sigma12 = self.training['SHAPE'].transform_inv(
-                    self.emu['s12'].predict(params_shape[None, :])[0][0],
-                    's12')
+                    self.emu['s12'].predict(params_shape[None, :])[0][0], 's12')
                 self.Pk_lin = self.training['SHAPE'].transform_inv(
                     self.emu['PL'].predict(params_shape[None, :])[0][0], 'PL')
 
@@ -1415,27 +1413,19 @@ class PTEmu:
                 k = np.unique(np.hstack(k_list))
         else:
             k_list = [k]*len(ell)
+            k = np.unique(np.hstack(k_list))
 
         use_effective_modes = False
         if binning is not None:
             if self.grid is None:
-                self.grid = Grid(binning['kf'], binning['dk'])
+                self.grid = Grid(binning['kfun'], binning['dk'])
             else:
-                self.grid.update(binning['kf'], binning['dk'])
-            if binning.get('do_rounding') is None:
-                self.grid.find_discrete_modes(k)
-                if binning.get('effective') is not None:
-                    use_effective_modes = binning['effective']
-                    if use_effective_modes:
-                        self.grid.compute_effective_modes(k)
-            else:
-                self.grid.find_discrete_modes(k, binning['do_rounding'],
-                                              binning['decimals'])
-                if binning.get('effective') is not None:
-                    use_effective_modes = binning['effective']
-                    if use_effective_modes:
-                        self.grid.compute_effective_modes(k,
-                            binning['do_rounding'], binning['decimals'])
+                self.grid.update(binning['kfun'], binning['dk'])
+            self.grid.find_discrete_modes(k, **binning)
+            if binning.get('effective') is not None:
+                use_effective_modes = binning['effective']
+                if use_effective_modes:
+                    self.grid.compute_effective_modes(k, **binning)
 
         keff = self.grid.keff if use_effective_modes else k
 
@@ -1963,9 +1953,9 @@ class PTEmu:
         use_effective_modes = False
         if binning is not None:
             if self.grid is None:
-                self.grid = Grid(binning['kf'], binning['dk'])
+                self.grid = Grid(binning['kfun'], binning['dk'])
             else:
-                self.grid.update(binning['kf'], binning['dk'])
+                self.grid.update(binning['kfun'], binning['dk'])
             if binning.get('do_rounding') is None:
                 self.grid.find_discrete_modes(k)
                 if binning.get('effective') is not None:
@@ -2168,7 +2158,7 @@ class PTEmu:
 
         return PX_ell_dict
 
-    def Bell(self, tri, params, ell, de_model=None, kfun=None,
+    def Bell(self, tri, params, ell, de_model=None, kfun=None, binning=None,
              q_tr_lo=None, ell_for_recon=None):
         ell = [ell] if not isinstance(ell, list) else ell
         if tri.ndim == 1:
@@ -2183,20 +2173,29 @@ class PTEmu:
                 list(self.Bisp.ntri_ell.keys()) != ell or \
                 not all([list(self.Bisp.ntri_ell.values())[0] == x for x in
                     list(self.Bisp.ntri_ell.values())]) or \
-                kfun != self.Bisp.kfun:
+                kfun != self.Bisp.kfun or binning != self.Bisp_binning:
             if kfun is None:
-                kfun = tri[0,0]
-                print('kfun not specified. Using kfun = {}'.format(kfun))
-            self.Bisp.set_tri(tri, ell, kfun)
+                if binning is not None and binning.get('kfun') is not None:
+                    kfun = binning['kfun']
+                else:
+                    kfun = tri[0,0]
+                    print('kfun not specified. Using kfun = {}'.format(kfun))
+            self.Bisp_binning = binning
+            self.Bisp.set_tri(tri, ell, kfun, binning)
 
-        Pdw = self.Pdw(self.Bisp.tri_unique, params, de_model=de_model,
+        if binning:
+            tri_unique = self.Bisp.tri_eff_unique
+        else:
+            tri_unique = self.Bisp.tri_unique
+
+        Pdw = self.Pdw(tri_unique, params, de_model=de_model,
                        ell_for_recon=ell_for_recon)
 
         if self.real_space:
             neff = None
         else:
-            neff = self.Bisp.tri_unique * self.Pdw_spline.derivative(n=1)(
-                       self.Bisp.tri_unique) / Pdw
+            neff = tri_unique * self.Pdw_spline.derivative(n=1)(tri_unique) \
+                   / Pdw
 
         self.update_AP_params(params, de_model=de_model,
                               q_tr_lo=q_tr_lo)
