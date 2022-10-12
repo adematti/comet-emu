@@ -222,8 +222,9 @@ class PTEmu:
         self.RSD_model = hdul['MODEL_FULL'].header['RSD_model']
 
         if self.RSD_model == 'VDG_infty':
-            self.RSD_params_list.append('avir')
+            self.RSD_params_list += ['avir','avirB']
             self.params['avir'] = 0.0
+            self.params['avirB'] = 0.0
 
         self.training['SHAPE'].assign_samples(hdul['PARAMS_SHAPE'])
         self.training['SHAPE'].assign_table(hdul['MODEL_SHAPE'],
@@ -235,7 +236,7 @@ class PTEmu:
             self.s12_for_P6 = hdul['MODEL_Pell6'].header['SIG12']
             self.P6 = hdul['MODEL_Pell6'].data['P_all']
 
-        self.Bisp = Bispectrum(self.real_space, self.use_Mpc)
+        self.Bisp = Bispectrum(self.real_space, self.RSD_model, self.use_Mpc)
 
     def load_emulator(self, fname_base, data_type=None):
         r"""Load the emulator from pickle file.
@@ -901,6 +902,16 @@ class PTEmu:
         t1 = (self.params['f']*k*mu)**2
         t2 = 1.0 + t1*self.params['avir']**2
         return 1.0/np.sqrt(t2)*np.exp(-t1*self.params['sv']**2/t2)
+
+    def WB_kurt(self, tri, mu1, mu2, mu3):
+        # including AP effect!
+        k1 = tri[:,0].reshape((-1,1))
+        k2 = tri[:,1].reshape((-1,1))
+        k3 = tri[:,2].reshape((-1,1))
+        lsq = (self.params['f']/self.params['q_lo'])**2 \
+            * (np.outer(k1,mu1)**2 + (k2*mu2)**2 + (k3*mu3)**2)
+        t = 1.0 + lsq*self.params['avirB']**2
+        return 1.0/np.sqrt(t) * np.exp(-lsq*self.params['sv']**2/t)
 
     def build_Pell_spline(self, Pell, ell):
         r"""Build spline object for power spectrum multipoles.
@@ -2159,7 +2170,7 @@ class PTEmu:
         return PX_ell_dict
 
     def Bell(self, tri, params, ell, de_model=None, kfun=None, binning=None,
-             q_tr_lo=None, ell_for_recon=None):
+             q_tr_lo=None, W_damping=None, ell_for_recon=None, gl_deg=8):
         ell = [ell] if not isinstance(ell, list) else ell
         if tri.ndim == 1:
             tri = tri[None,:]
@@ -2168,6 +2179,12 @@ class PTEmu:
             tri = tri_sorted
             print('Warning. Triangle configurations sorted such that '
                   'k1 >= k2 >= k3.')
+
+        if self.RSD_model == 'VDG_infty':
+            if W_damping is None:
+                W_damping = self.WB_kurt
+        else:
+            W_damping = None
 
         if not np.all(self.Bisp.tri == tri) or \
                 list(self.Bisp.ntri_ell.keys()) != ell or \
@@ -2181,7 +2198,7 @@ class PTEmu:
                     kfun = tri[0,0]
                     print('kfun not specified. Using kfun = {}'.format(kfun))
             self.Bisp_binning = binning
-            self.Bisp.set_tri(tri, ell, kfun, binning)
+            self.Bisp.set_tri(tri, ell, kfun, gl_deg, binning)
 
         if binning:
             tri_unique = self.Bisp.tri_eff_unique
@@ -2194,13 +2211,12 @@ class PTEmu:
         if self.real_space:
             neff = None
         else:
-            neff = tri_unique * self.Pdw_spline.derivative(n=1)(tri_unique) \
-                   / Pdw
+            neff = tri_unique*self.Pdw_spline.derivative(n=1)(tri_unique)/Pdw
 
         self.update_AP_params(params, de_model=de_model,
                               q_tr_lo=q_tr_lo)
 
-        Bell_dict = self.Bisp.Bell(Pdw, neff, self.params, ell)
+        Bell_dict = self.Bisp.Bell(Pdw, neff, self.params, ell, W_damping)
         return Bell_dict
 
     def Avg_covariance(self, l1, l2, k, Pl, sigma_d, avg_los=3):

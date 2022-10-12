@@ -7,7 +7,7 @@ class Bispectrum:
     r"""Main class for the emulator of the bispectrum multipoles.
     """
 
-    def __init__(self, real_space, use_Mpc):
+    def __init__(self, real_space, model, use_Mpc):
         r"""Class constructor
 
         Parameters
@@ -21,6 +21,7 @@ class Bispectrum:
             :math:`h^{-1}\mathrm{Mpc}` (**False**) units. Defaults to **True**.
         """
         self.real_space = real_space
+        self.RSD_model = model
         self.use_Mpc = use_Mpc
         self.discrete_average = False
         self.use_effective_triangles = False
@@ -94,7 +95,7 @@ class Bispectrum:
         """
         self.nbar = np.copy(nbar)
 
-    def set_tri(self, tri, ell, kfun, binning=None):
+    def set_tri(self, tri, ell, kfun, gl_deg=8, binning=None):
         r"""Define triangular configurations and compute kernels.
 
         Reads the list of triangular configurations and the request fundamental
@@ -153,7 +154,10 @@ class Bispectrum:
             self.use_effective_triangles = False
             self.compute_kernels(self.tri)
             if not self.real_space:
-                self.compute_mu123_integrals(self.tri)
+                if self.RSD_model == 'VDG_infty':
+                    self.Gauss_Legendre_mu123_integrals(self.tri, gl_deg)
+                else:
+                    self.compute_mu123_integrals(self.tri)
         else:
             if self.grid is None:
                 self.grid = Grid(binning['kfun'], binning['dk'])
@@ -681,21 +685,6 @@ class Bispectrum:
                 + ((k1**4 - (k2**2 - k3**2)**2)**4*(3 + n1)*(5 + n1) \
                 * (7 + n1))/4.))/(512.*k1**8*k2**4*k3**4*(1 + n1)*(3 + n1) \
                 * (5 + n1)*(7 + n1)*(9 + n1))
-        # elif n2 == 6 and n3 == 3:
-        #     I = (315*(k1**2 + 3*k2**2 - 3*k3**2)*(k1**4 + (k2**2 - k3**2)**2 \
-        #         - 2*k1**2*(k2**2 + k3**2))**4*n1 + n1*(2 + n1)*(60*(2*k1**6 \
-        #         - 21*k1**2*(k2**2 - k3**2)**2 - 21*(k2**2 - k3**2)**3) \
-        #         * (k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**3 \
-        #         + 18*(k1**2 + k2**2 - k3**2)**2*(k1**6 - 7*k1**4*(k2**2 \
-        #         - k3**2) - 7*k1**2*(k2**2 - k3**2)**2 + 21*(k2**2 - k3**2)**3) \
-        #         * (k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**2 \
-        #         * (4 + n1) - (k1**2 + k2**2 - k3**2)**4*(k1**2 - k2**2 \
-        #         + k3**2) *(4 + n1)*(6 + n1)*(24*k1**6*(k2 - k3)*(k2 + k3) \
-        #         + 48*k1**2*(2*k2**6 - 3*k2**4*k3**2 + k3**6) + (k2**2 \
-        #         - k3**2)**4*(-28 + n1) + k1**8*(8 + n1) - 2*k1**4*(k2 - k3) \
-        #         * (k2 + k3)*(-(k3**2*(2 + n1)) + k2**2*(50 + n1))))) \
-        #         / (512.*k1**9*k2**6*k3**3*n1*(2 + n1)*(4 + n1)*(6 + n1) \
-        #         * (8 + n1)*(10 + n1))
         elif n2 == 5 and n3 == 4:
             I = -0.00390625*((105*(k1**2 + 9*k2**2 - 9*k3**2)*(k1**4 + (k2**2 \
                 - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**4*n1)/2. + 30*(k1**6 \
@@ -794,6 +783,77 @@ class Bispectrum:
                 self.kernels['db2_dlnk2'] = 0.0
                 self.kernels['db2_dlnk3'] = 0.0
 
+    def Gauss_Legendre_mu123_integrals(self, tri, deg):
+        def muphi_to_mu123(mu_ij, phi_ij, k1, k2, k3):
+            mu12 = (k3**2-k1**2-k2**2)/(2*k1*k2)
+            mu1 = mu_ij
+            dmu1sq = (1-mu1**2).clip(min=0.0)
+            dmu1 = np.sqrt(dmu1sq)
+            dmu12sq = (1-mu12**2).clip(min=0.0)
+            dmu12 = np.sqrt(dmu12sq)
+            mu2 = np.outer(mu1,mu12) - np.outer(dmu1*np.cos(phi_ij),dmu12)
+            mu3 = -np.outer(mu1,k1/k3) - k2/k3*mu2
+            return mu1.flatten(), mu2.T, mu3.T
+
+        def I(n1, n2, n3, mu1, mu2, mu3):
+            return mu1**n1 * mu2**n2 * mu3**n3
+
+        # first, find all n1,n2,n3 tuples
+        self.n123_tuples_all = np.array([0,0,0])
+        kernel_names = ['F2','G2','k31','k32']
+        for kk in kernel_names:
+            self.I[kk] = {}
+            n123_tuples = self.kernel_mu_tuples[kk]
+            for n123 in n123_tuples:
+                for i in range(3):
+                    n123_new = np.copy(n123)
+                    n123_new[i] += 2
+                    n123_tuples = np.vstack((n123_tuples, n123_new))
+            n123_tuples = np.unique(n123_tuples, axis=0)
+            for n123 in n123_tuples:
+                self.I[kk][tuple(n123)] = {}
+                for ell in [0,2,4]:
+                    for i in range(3):
+                        n123_perm_even = np.roll(np.array(n123), i)
+                        n123_perm_even[0] += ell
+                        self.n123_tuples_all = np.vstack(
+                            (self.n123_tuples_all, n123_perm_even))
+        self.n123_tuples_all = np.unique(self.n123_tuples_all, axis=0)
+
+        self.I_tuples_dict = {}
+        for kk in self.I.keys():
+            self.I_tuples_dict[kk] = {}
+            for n123 in self.I[kk].keys():
+                self.I_tuples_dict[kk][n123] = {}
+                for ell in [0,2,4]:
+                    self.I_tuples_dict[kk][n123][ell] = []
+                    for i in range(3):
+                        n123_perm_even = np.roll(np.array(n123), i)
+                        n123_perm_even[0] += ell
+                        id = np.where(
+                            (self.n123_tuples_all == n123_perm_even).all(
+                                axis=1))[0][0]
+                        self.I_tuples_dict[kk][n123][ell].append(id)
+
+        #compute mu1, mu2, mu3 at Gauss-Legendre sampling points
+        gl_x, gl_weights = np.polynomial.legendre.leggauss(deg)
+        mu = gl_x
+        phi = np.pi*gl_x + np.pi
+        mu_ij, phi_ij = np.meshgrid(mu, phi)
+        # shapes of mu1, mu2, mu3: deg^2, (ntri, deg^2), (ntri, deg^2)
+        self.gl_mu1, self.gl_mu2, self.gl_mu3 = muphi_to_mu123(mu_ij, phi_ij,
+                                                               *tri.T)
+        self.gl_weights_ij = np.outer(gl_weights, gl_weights).reshape(
+            [1, deg**2])
+
+        # evaluate mu1^n1 mu2^n2 mu3^n3 for all n1, n2, n3
+        self.gl_I_weights = np.zeros([self.n123_tuples_all.shape[0],
+                                      tri.shape[0], deg**2])
+        for i, n123 in enumerate(self.n123_tuples_all):
+            self.gl_I_weights[i] = I(*n123, self.gl_mu1, self.gl_mu2,
+                                     self.gl_mu3)
+        self.gl_I_weights *= self.gl_weights_ij
+
     def compute_mu123_integrals(self, tri):
         """Compute angular integrals for all triangle configurations.
 
@@ -822,6 +882,19 @@ class Bispectrum:
                         self.I[kk][tuple(n123)][ell][:,i] = \
                             self.mu123_integrals(*n123_perm_even[ii],
                                                  *tri[:,ii].T)
+
+        self.I['b2'] = self.I['F2']
+        self.I['K'] = self.I['F2']
+
+    def compute_damped_mu123_integrals(self, tri, W_damping):
+        gl_W_damping = W_damping(tri, self.gl_mu1, self.gl_mu2, self.gl_mu3)
+
+        I_damped = 0.25 * np.sum(self.gl_I_weights*gl_W_damping, axis=2)
+        for kk in self.I_tuples_dict.keys():
+            for n123 in self.I_tuples_dict[kk].keys():
+                for ell in [0,2,4]:
+                    ids = self.I_tuples_dict[kk][n123][ell]
+                    self.I[kk][n123][ell] = I_damped[ids].T
 
         self.I['b2'] = self.I['F2']
         self.I['K'] = self.I['F2']
@@ -1086,31 +1159,6 @@ class Bispectrum:
         self.kj_eff = np.searchsorted(self.tri_eff_unique, self.kj_eff)
         self.tri_eff_unique *= self.kfun
 
-    def join_kernel_mu123_integral_old(self, K, n123_tuples, neff, coeff,
-                                   q_tr, q_lo):
-        K_neff1 = neff[self.tri_to_id]*self.kernels[K]
-        K_neff2 = neff[self.tri_to_id[:,[1,2,0]]]*self.kernels[K]
-        K_deriv_sum = np.sum([self.kernels['d{}_dlnk{}'.format(K,i+1)]
-                              for i in range(3)])
-        DeltaB_K = 0.0
-        for i, n123 in enumerate(n123_tuples):
-            t1 = self.I[n123] * ((1.0 + (q_tr-q_lo)*sum(n123)) * \
-                                       self.kernels[K] \
-                                       + (1.0-q_tr) * K_deriv_sum \
-                                       + (1.0-q_tr) * (K_neff1 + K_neff2))
-            t2 = self.I[n123[0]+2,n123[1],n123[2]] * (q_tr - q_lo) \
-                 * (self.kernels['d{}_dlnk1'.format(K)] + K_neff1 \
-                    - n123[0]*self.kernels[K])
-            t3 = self.I[n123[0],n123[1]+2,n123[2]] * (q_tr - q_lo) \
-                 * (self.kernels['d{}_dlnk2'.format(K)] + K_neff2 \
-                    - n123[1]*self.kernels[K])
-            t4 = self.I[n123[0],n123[1],n123[2]+2] * (q_tr - q_lo) \
-                 * (self.kernels['d{}_dlnk3'.format(K)] \
-                    - n123[2]*self.kernels[K])
-            DeltaB_K += coeff[i] * (t1 + t2 + t3 + t4)
-
-        return DeltaB_K
-
     def join_kernel_mu123_integral(self, K, n123_tuples, ell, neff, coeff,
                                    q_tr, q_lo):
         K_neff1 = neff[self.tri_to_id]*self.kernels[K]
@@ -1118,6 +1166,7 @@ class Bispectrum:
         K_deriv_sum = np.sum([self.kernels['d{}_dlnk{}'.format(K,i+1)]
                               for i in range(3)])
         DeltaB_K = 0.0
+
         for i, n123 in enumerate(n123_tuples):
             t1 = self.I[K][n123][ell] * ((1.0 + (q_tr-q_lo)*sum(n123)) * \
                                          self.kernels[K] \
@@ -1172,7 +1221,7 @@ class Bispectrum:
 
         return DeltaB_K
 
-    def Bell(self, PL_dw, neff, params, ell=[0]):
+    def Bell(self, PL_dw, neff, params, ell=[0], W_damping=None):
         kernel = {}
         kernel_stoch = {}
         if self.real_space:
@@ -1201,6 +1250,10 @@ class Bispectrum:
             params_K = 2*params['g2'] * np.array([b1sq, b1f, b1f, f2])
             params_G2 = 2*params['f'] * np.array([b1sq, b1f, b1f, f2])
             params_mixed = -b1f * np.array([b1sq, b1f, 2*b1f, f2, 2*f2, f4/b1f])
+
+            if self.RSD_model == 'VDG_infty':
+                if not self.discrete_average:
+                    self.compute_damped_mu123_integrals(self.tri, W_damping)
 
             for l in np.arange(0, max(ell)+1, 2):
                 if self.discrete_average:
@@ -1259,9 +1312,14 @@ class Bispectrum:
                         'k32', self.kernel_mu_tuples['k32'], l, neff,
                         params_mixed, params['q_tr'], params['q_lo']
                     )
-                    kernel_stoch_b1 = b1sq * self.I['b2'][0,0,0][l][0,0]
-                    kernel_stoch_b1f = b1f * self.I['b2'][2,0,0][l][0,0]
-                    kernel_stoch_f2 = f2 * self.I['b2'][4,0,0][l][0,0]
+                    if self.RSD_model == 'VDG_infty':
+                        kernel_stoch_b1 = b1sq * self.I['b2'][0,0,0][l]
+                        kernel_stoch_b1f = b1f * self.I['b2'][2,0,0][l]
+                        kernel_stoch_f2 = f2 * self.I['b2'][4,0,0][l]
+                    else:
+                        kernel_stoch_b1 = b1sq * self.I['b2'][0,0,0][l][0,0]
+                        kernel_stoch_b1f = b1f * self.I['b2'][2,0,0][l][0,0]
+                        kernel_stoch_f2 = f2 * self.I['b2'][4,0,0][l][0,0]
 
                 # kernel[l] = kernel_F2
                 kernel[l] = kernel_F2 + kernel_b2 + kernel_K + kernel_G2 \
@@ -1293,7 +1351,7 @@ class Bispectrum:
             ids = self.tri_id_ell[l]
             B_SPT = np.einsum("ij,ij->i", kernel[l][ids],
                               P2[tri_to_id_sq][ids])
-            if self.discrete_average:
+            if self.discrete_average or self.RSD_model == 'VDG_infty':
                 B_stoch = params['MB0'] * np.einsum("ij,ij->i",
                     kernel_stoch[l][ids],PL_dw[tri_to_id][ids])
             else:
