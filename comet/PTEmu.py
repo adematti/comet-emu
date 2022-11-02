@@ -1331,18 +1331,18 @@ class PTEmu:
 
                 Pell[:, i] = np.dot(bij, Pk_bij.T)
 
-                # add shot noise
-                if m == 0:
-                    N0 = self.params['NP0'] if self.use_Mpc \
-                        else self.params['NP0']/self.params['h']**3
-                    N20 = self.params['NP20'] if self.use_Mpc \
-                        else self.params['NP20']/self.params['h']**5
-                    Pell[:, i] += (np.ones_like(self.k_table)*N0/self.nbar +
-                                   self.k_table**2*N20/self.nbar)
-                elif m == 2:
-                    N22 = self.params['NP22'] if self.use_Mpc \
-                        else self.params['NP22']/self.params['h']**5
-                    Pell[:, i] += self.k_table**2*N22/self.nbar
+                # add shot noise (now done in Pell)
+                # if m == 0:
+                #     N0 = self.params['NP0'] if self.use_Mpc \
+                #         else self.params['NP0']/self.params['h']**3
+                #     N20 = self.params['NP20'] if self.use_Mpc \
+                #         else self.params['NP20']/self.params['h']**5
+                #     Pell[:, i] += (np.ones_like(self.k_table)*N0/self.nbar +
+                #                    self.k_table**2*N20/self.nbar)
+                # elif m == 2:
+                #     N22 = self.params['NP22'] if self.use_Mpc \
+                #         else self.params['NP22']/self.params['h']**5
+                #     Pell[:, i] += self.k_table**2*N22/self.nbar
             else:
                 bij_for_P6 = self.get_bias_coeff_for_P6()
                 Pell[:, i] = np.dot(bij_for_P6, self.P6.T)
@@ -1447,6 +1447,11 @@ class PTEmu:
                 t += eval_legendre(m, mu) * self.eval_Pell_spline(q, m)
             return t
 
+        def P2d_stoch(q, mu):
+            t = self.params['NP0'] + q**2 * (self.params['NP20'] \
+                + self.params['NP22']*eval_legendre(2,mu))
+            return t/self.nbar
+
         if self.RSD_model == 'EFT':
 
             if binning is None or use_effective_modes:
@@ -1456,7 +1461,8 @@ class PTEmu:
                                     (1.0 - mu2)/self.params['q_tr']**2)
                     kp = keff*APfac
                     mup = mu/self.params['q_lo']/APfac
-                    return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
+                    P2d_tot = P2d(kp, mup) + P2d_stoch(kp, mup)
+                    return np.outer(P2d_tot, eval_legendre(ell, mu))
             else:
                 def  shell_average():
                     mu2 = self.grid.mu**2
@@ -1466,7 +1472,7 @@ class PTEmu:
                     mup = self.grid.mu/self.params['q_lo']/APfac
                     legendre = np.array([eval_legendre(l, self.grid.mu)
                                          for l in ell])
-                    prod = P2d(kp, mup) * legendre
+                    prod = (P2d(kp, mup) + P2d_stoch(kp, mup)) * legendre
                     avg = np.zeros([len(self.grid.nmodes)-1, len(ell)])
                     for i in range(len(self.grid.nmodes)-1):
                         n1 = self.grid.nmodes[i]
@@ -1487,7 +1493,8 @@ class PTEmu:
                     kp = keff*APfac
                     mup = mu/self.params['q_lo']/APfac
                     P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
-                    return np.outer(P2d_damped, eval_legendre(ell, mu))
+                    P2d_tot = P2d_damped + P2d_stoch(kp, mup)
+                    return np.outer(P2d_tot, eval_legendre(ell, mu))
             else:
                 def  shell_average():
                     mu2 = self.grid.mu**2
@@ -1497,7 +1504,8 @@ class PTEmu:
                     mup = self.grid.mu/self.params['q_lo']/APfac
                     legendre = np.array([eval_legendre(l, self.grid.mu)
                                          for l in ell])
-                    prod = P2d(kp, mup) * W_damping(kp, mup) * legendre
+                    P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
+                    prod = (P2d_damped + P2d_stoch(kp, mup)) * legendre
                     avg = np.zeros([len(self.grid.nmodes)-1, len(ell)])
                     for i in range(len(self.grid.nmodes)-1):
                         n1 = self.grid.nmodes[i]
@@ -2023,6 +2031,9 @@ class PTEmu:
             if W_damping is None:
                 W_damping = self.W_kurt
 
+            if X in ['Pnoise_NP0', 'Pnoise_NP20', 'Pnoise_NP22']:
+                W_damping = lambda k,mu: 1.0
+
             if binning is None or use_effective_modes:
                 def integrand(mu):
                     mu2 = mu**2
@@ -2077,8 +2088,8 @@ class PTEmu:
                                 self.Pk_ratios[m][ids[0]:ids[1]]
                         else:
                             PX_ell[:, i] = self.PX_ell6_novir_noAP(X_emu)
-                PX_ell[:, :len(ell_eval_emu)] = (PX_ell[:, :len(ell_eval_emu)].T *
-                                                 self.Pk_lin).T
+                PX_ell[:,:len(ell_eval_emu)] = (PX_ell[:,:len(ell_eval_emu)].T \
+                                                * self.Pk_lin).T
             else:
                 if X_emu == 'Pnoise_NP0':
                     PX_ell[:, 0] = np.ones_like(self.k_table)
