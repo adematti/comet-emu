@@ -142,6 +142,7 @@ class PTEmu:
         self.X_splines_up_to_date = {X: False for X in self.diagrams_all}
         self.X_obs_id = None
         self.X_binning = None
+        self.Bisp_binning = None
         self.emu_params_updated = False
 
         self.chi2_decomposition = None

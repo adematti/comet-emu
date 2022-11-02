@@ -1250,6 +1250,7 @@ class Bispectrum:
             params_K = 2*params['g2'] * np.array([b1sq, b1f, b1f, f2])
             params_G2 = 2*params['f'] * np.array([b1sq, b1f, b1f, f2])
             params_mixed = -b1f * np.array([b1sq, b1f, 2*b1f, f2, 2*f2, f4/b1f])
+            params_stoch = params['MB0']/self.nbar * np.array([b1sq, b1f])
 
             if self.RSD_model == 'VDG_infty':
                 if not self.discrete_average:
@@ -1312,20 +1313,13 @@ class Bispectrum:
                         'k32', self.kernel_mu_tuples['k32'], l, neff,
                         params_mixed, params['q_tr'], params['q_lo']
                     )
-                    if self.RSD_model == 'VDG_infty':
-                        kernel_stoch_b1 = b1sq * self.I['b2'][0,0,0][l]
-                        kernel_stoch_b1f = b1f * self.I['b2'][2,0,0][l]
-                        kernel_stoch_f2 = f2 * self.I['b2'][4,0,0][l]
-                    else:
-                        kernel_stoch_b1 = b1sq * self.I['b2'][0,0,0][l][0,0]
-                        kernel_stoch_b1f = b1f * self.I['b2'][2,0,0][l][0,0]
-                        kernel_stoch_f2 = f2 * self.I['b2'][4,0,0][l][0,0]
+                    kernel_stoch[l] = self.join_kernel_mu123_integral(
+                        'b2', [(0,0,0),(2,0,0)], l, neff, params_stoch,
+                        params['q_tr'], params['q_lo']
+                    )
 
-                # kernel[l] = kernel_F2
                 kernel[l] = kernel_F2 + kernel_b2 + kernel_K + kernel_G2 \
                     + kernel_k31 + kernel_k32
-                kernel_stoch[l] = 1.0/self.nbar \
-                    * (kernel_stoch_b1 + kernel_stoch_b1f + kernel_stoch_f2)
 
             # normalisation????
             if 4 in ell:
@@ -1351,14 +1345,14 @@ class Bispectrum:
             ids = self.tri_id_ell[l]
             B_SPT = np.einsum("ij,ij->i", kernel[l][ids],
                               P2[tri_to_id_sq][ids])
-            if self.discrete_average or self.RSD_model == 'VDG_infty':
-                B_stoch = params['MB0'] * np.einsum("ij,ij->i",
-                    kernel_stoch[l][ids],PL_dw[tri_to_id][ids])
-            else:
-                B_stoch = params['MB0'] * np.sum(PL_dw[tri_to_id][ids],
-                                                 axis=1) * kernel_stoch[l]
+            B_stoch = np.einsum("ij,ij->i", kernel_stoch[l][ids],
+                                PL_dw[tri_to_id][ids])
             if l == 0:
-                B_stoch += params['NB0']/self.nbar**2
+                if self.RSD_model == 'VDG_infty':
+                    B_stoch += params['NB0']/self.nbar**2 \
+                               * self.I['b2'][0,0,0][0][:,0]
+                else:
+                    B_stoch += params['NB0']/self.nbar**2
 
             Bell_dict['ell{}'.format(l)] = (B_SPT + B_stoch) / q6
 
