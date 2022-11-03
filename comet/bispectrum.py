@@ -57,11 +57,16 @@ class Bispectrum:
             self.kernel_mu_tuples['k32'] = [(0,1,1), (0,3,1), (2,1,1),
                                             (4,1,1), (2,3,1), (4,3,1)]
 
+            self.n123_tuples_stoch_all = np.array([[0,0,0],[2,0,0],[0,2,0],
+                                                   [0,0,2],[4,0,0],[2,2,0],
+                                                   [2,0,2]])
+
         self.grid = None
 
         self.kernels = {}
         self.kernels_shell_average = {}
         self.I = {}
+        self.I_stoch = {}
         self.cov_mixing_kernel = {}
 
     def define_units(self, use_Mpc):
@@ -854,6 +859,30 @@ class Bispectrum:
                                      self.gl_mu3)
         self.gl_I_weights *= self.gl_weights_ij
 
+        self.gl_I_stoch_weights = \
+            np.zeros([3*self.n123_tuples_stoch_all.shape[0], 3,
+                      tri.shape[0], deg**2])
+        n = 0
+        for n123 in self.n123_tuples_stoch_all:
+            if np.all(n123 == [0,0,0]):
+                for ell in [0,2,4]:
+                    n123_temp = np.copy(n123)
+                    n123_temp[0] += ell
+                    self.gl_I_stoch_weights[n,0] = I(*n123_temp, self.gl_mu1,
+                                                     self.gl_mu2, self.gl_mu3)
+                    self.gl_I_stoch_weights[n,1] = self.gl_I_stoch_weights[n,0]
+                    self.gl_I_stoch_weights[n,2] = self.gl_I_stoch_weights[n,0]
+                    n += 1
+            else:
+                for ell in [0,2,4]:
+                    for i in range(3):
+                        n123_perm_even = np.roll(np.array(n123), i)
+                        n123_perm_even[0] += ell
+                        self.gl_I_stoch_weights[n,i] = I(*n123_perm_even,
+                            self.gl_mu1, self.gl_mu2, self.gl_mu3)
+                    n += 1
+        self.gl_I_stoch_weights *= self.gl_weights_ij
+
     def compute_mu123_integrals(self, tri):
         """Compute angular integrals for all triangle configurations.
 
@@ -886,10 +915,21 @@ class Bispectrum:
         self.I['b2'] = self.I['F2']
         self.I['K'] = self.I['F2']
 
-    def compute_damped_mu123_integrals(self, tri, W_damping):
-        gl_W_damping = W_damping(tri, self.gl_mu1, self.gl_mu2, self.gl_mu3)
+        n = 0
+        for n123 in self.n123_tuples_stoch_all:
+            self.I_stoch[tuple(n123)] = {}
+            for ell in [0,2,4]:
+                self.I_stoch[tuple(n123)][ell] = self.I['b2'][tuple(n123)][ell]
+                n += 1
 
-        I_damped = 0.25 * np.sum(self.gl_I_weights*gl_W_damping, axis=2)
+    def compute_damped_mu123_integrals(self, tri, W_damping):
+        gl_W3p_damping = W_damping(tri, self.gl_mu1, self.gl_mu2, self.gl_mu3)
+        gl_W2p_damping = np.zeros((3, tri.shape[0], self.gl_mu1.shape[0]))
+        gl_W2p_damping[0] = W_damping(tri, self.gl_mu1, 0.0, 0.0)
+        gl_W2p_damping[1] = W_damping(tri, 0.0, self.gl_mu2, 0.0)
+        gl_W2p_damping[2] = W_damping(tri, 0.0, 0.0, self.gl_mu3)
+
+        I_damped = 0.25 * np.sum(self.gl_I_weights*gl_W3p_damping, axis=2)
         for kk in self.I_tuples_dict.keys():
             for n123 in self.I_tuples_dict[kk].keys():
                 for ell in [0,2,4]:
@@ -898,6 +938,15 @@ class Bispectrum:
 
         self.I['b2'] = self.I['F2']
         self.I['K'] = self.I['F2']
+
+        n = 0
+        I_stoch_damped = 0.25 * np.sum(self.gl_I_stoch_weights*gl_W2p_damping,
+                                       axis=3)
+        for n123 in self.n123_tuples_stoch_all:
+            self.I_stoch[tuple(n123)] = {}
+            for ell in [0,2,4]:
+                self.I_stoch[tuple(n123)][ell] = I_stoch_damped[n].T
+                n += 1
 
     def compute_kernels_shell_average(self):
         def I(n1, n2, n3, mu1, mu2, mu3):
@@ -1185,6 +1234,23 @@ class Bispectrum:
 
         return DeltaB_K
 
+    def join_stoch_kernel_mu123_integral(self, n123_tuples, ell, neff, coeff,
+                                         q_tr, q_lo):
+        DeltaB_stoch = 0.0
+
+        for i, n123 in enumerate(n123_tuples):
+            t1 = self.I_stoch[n123][ell] * (1.0 + (q_tr-q_lo)*sum(n123) \
+                                            + (1.0-q_tr)*neff[self.tri_to_id])
+            t2 = self.I_stoch[n123[0]+2,n123[1],n123[2]][ell] * (q_tr - q_lo) \
+                 * (neff[self.tri_to_id] - n123[0])
+            t3 = - self.I_stoch[n123[0],n123[1]+2,n123[2]][ell] \
+                 * (q_tr - q_lo) * n123[1]
+            t4 = - self.I_stoch[n123[0],n123[1],n123[2]+2][ell] \
+                 * (q_tr - q_lo) * n123[2]
+            DeltaB_stoch += coeff[i] * (t1 + t2 + t3 + t4)
+
+        return DeltaB_stoch
+
     def join_kernel_mu123_shell_average(self, K, n123_tuples, ell, neff, coeff,
                                         q_tr, q_lo):
         DeltaB_K = 0.0
@@ -1313,8 +1379,8 @@ class Bispectrum:
                         'k32', self.kernel_mu_tuples['k32'], l, neff,
                         params_mixed, params['q_tr'], params['q_lo']
                     )
-                    kernel_stoch[l] = self.join_kernel_mu123_integral(
-                        'b2', [(0,0,0),(2,0,0)], l, neff, params_stoch,
+                    kernel_stoch[l] = self.join_stoch_kernel_mu123_integral(
+                        [(0,0,0),(2,0,0)], l, neff, params_stoch,
                         params['q_tr'], params['q_lo']
                     )
 
@@ -1348,11 +1414,7 @@ class Bispectrum:
             B_stoch = np.einsum("ij,ij->i", kernel_stoch[l][ids],
                                 PL_dw[tri_to_id][ids])
             if l == 0:
-                if self.RSD_model == 'VDG_infty':
-                    B_stoch += params['NB0']/self.nbar**2 \
-                               * self.I['b2'][0,0,0][0][:,0]
-                else:
-                    B_stoch += params['NB0']/self.nbar**2
+                B_stoch += params['NB0']/self.nbar**2
 
             Bell_dict['ell{}'.format(l)] = (B_SPT + B_stoch) / q6
 
