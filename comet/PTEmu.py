@@ -912,7 +912,7 @@ class PTEmu:
         lsq = 0.5 * (self.params['f']/self.params['q_lo'])**2 \
             * (np.outer(k1,mu1)**2 + (k2*mu2)**2 + (k3*mu3)**2)
         t = 1.0 + lsq*self.params['avirB']**2
-        return 1.0/np.sqrt(t**3) * np.exp(-lsq*self.params['sv']**2/t)
+        return 1.0/np.sqrt(t) * np.exp(-lsq*self.params['sv']**2/t)
 
     def build_Pell_spline(self, Pell, ell):
         r"""Build spline object for power spectrum multipoles.
@@ -2734,21 +2734,32 @@ class PTEmu:
                                       self.data[oi].kfun)
                 chi2_decomposition = False # currently only implemented for Pk
 
+        if W_damping is None:
+            W_damping = {}
+            for oi in obs_id:
+                W_damping[oi] = None
+
         if not chi2_decomposition:
             chi2 = 0.0
             for oi in obs_id:
                 if self.data[oi].stat == 'powerspectrum':
+                    if self.RSD_model == 'VDG_infty':
+                        if W_damping[oi] is None:
+                            W_damping[oi] = self.W_kurt
                     convolve_oi = oi if convolve_window else None
                     Pell = self.Pell(self.data[oi].bins_kmax, params, ell[oi],
                                      de_model=de_model, binning=binning,
                                      obs_id=convolve_oi, q_tr_lo=q_tr_lo,
-                                     W_damping=W_damping,
+                                     W_damping=W_damping[oi],
                                      ell_for_recon=ell_for_recon)
                     Pell_list = np.hstack([Pell[m] for m in Pell.keys()])
 
                     diff = Pell_list - self.data[oi].signal_kmax
                     chi2 += diff @ self.data[oi].inverse_cov_kmax @ diff.T
                 elif self.data[oi].stat == 'bispectrum':
+                    if self.RSD_model == 'VDG_infty':
+                        if W_damping[oi] is None:
+                            W_damping[oi] = self.WB_kurt
                     Pdw = self.Pdw(self.Bisp.tri_unique,
                                    params, de_model=de_model,
                                    ell_for_recon=ell_for_recon)
@@ -2758,7 +2769,8 @@ class PTEmu:
                         neff = self.Bisp.tri_unique * \
                                self.Pdw_spline.derivative(n=1)(
                                    self.Bisp.tri_unique) / Pdw
-                    Bell = self.Bisp.Bell(Pdw, neff, self.params, ell[oi])
+                    Bell = self.Bisp.Bell(Pdw, neff, self.params, ell[oi],
+                                          W_damping[oi])
 
                     if self.data[oi].cov_is_block_diagonal:
                         diff = {}
