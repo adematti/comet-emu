@@ -2726,7 +2726,10 @@ class PTEmu:
             ell[oi] = [2*m for m in range(self.data[oi].n_ell)]
 
             if self.data[oi].stat == 'bispectrum':
-                ntri = list(self.Bisp.ntri_ell.values())
+                if self.Bisp.tri is not None:
+                    ntri = list(self.Bisp.ntri_ell.values())
+                else:
+                    ntri = None
                 if kmax_updated or self.Bisp.tri is None or \
                         ntri != self.data[oi].nbins or \
                         self.Bisp.kfun != self.data[oi].kfun:
