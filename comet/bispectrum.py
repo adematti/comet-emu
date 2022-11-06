@@ -1,12 +1,13 @@
 """Bispectrum module."""
 
 import numpy as np
+from comet.grid import Grid
 
 class Bispectrum:
     r"""Main class for the emulator of the bispectrum multipoles.
     """
 
-    def __init__(self, real_space, use_Mpc):
+    def __init__(self, real_space, model, use_Mpc):
         r"""Class constructor
 
         Parameters
@@ -20,7 +21,10 @@ class Bispectrum:
             :math:`h^{-1}\mathrm{Mpc}` (**False**) units. Defaults to **True**.
         """
         self.real_space = real_space
+        self.RSD_model = model
         self.use_Mpc = use_Mpc
+        self.discrete_average = False
+        self.use_effective_triangles = False
         self.nbar = 1.0 # in units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
         self.tri = None
 
@@ -45,9 +49,24 @@ class Bispectrum:
                                   (7,3,0), (6,4,0), (10,1,1), (9,2,1), (8,2,2),
                                   (7,3,2), (6,4,2), (10,3,1), (9,4,1), (8,5,1),
                                   (8,3,3), (7,6,1), (7,4,3)]
+            self.kernel_mu_tuples = {}
+            self.kernel_mu_tuples['F2'] = [(0,0,0), (2,0,0), (0,2,0), (2,2,0)]
+            self.kernel_mu_tuples['G2'] = [(0,0,2), (2,0,2), (0,2,2), (2,2,2)]
+            self.kernel_mu_tuples['k31'] = [(1,0,1), (3,0,1), (1,2,1),
+                                            (1,4,1), (3,2,1), (3,4,1)]
+            self.kernel_mu_tuples['k32'] = [(0,1,1), (0,3,1), (2,1,1),
+                                            (4,1,1), (2,3,1), (4,3,1)]
+
+            self.n123_tuples_stoch_all = np.array([[0,0,0],[2,0,0],[0,2,0],
+                                                   [0,0,2],[4,0,0],[2,2,0],
+                                                   [2,0,2]])
+
+        self.grid = None
 
         self.kernels = {}
+        self.kernels_shell_average = {}
         self.I = {}
+        self.I_stoch = {}
         self.cov_mixing_kernel = {}
 
     def define_units(self, use_Mpc):
@@ -81,7 +100,7 @@ class Bispectrum:
         """
         self.nbar = np.copy(nbar)
 
-    def set_tri(self, tri, ell, kfun):
+    def set_tri(self, tri, ell, kfun, gl_deg=8, binning=None):
         r"""Define triangular configurations and compute kernels.
 
         Reads the list of triangular configurations and the request fundamental
@@ -135,9 +154,39 @@ class Bispectrum:
 
         self.kfun = kfun
         self.generate_index_arrays()
-        self.compute_kernels()
-        if not self.real_space:
-            self.compute_mu123_integrals()
+        if binning is None:
+            self.discrete_average = False
+            self.use_effective_triangles = False
+            self.compute_kernels(self.tri)
+            if not self.real_space:
+                if self.RSD_model == 'VDG_infty':
+                    self.Gauss_Legendre_mu123_integrals(self.tri, gl_deg)
+                else:
+                    self.compute_mu123_integrals(self.tri)
+        else:
+            if self.grid is None:
+                self.grid = Grid(binning['kfun'], binning['dk'])
+            else:
+                self.grid.update(binning['kfun'], binning['dk'])
+            self.grid.find_discrete_triangles(self.tri_unique, self.tri_to_id,
+                                              **binning)
+            self.grid.compute_effective_triangles(self.tri_unique,
+                                                  self.tri_to_id,
+                                                  **binning)
+            self.tri_eff = np.copy(self.grid.k123eff)
+            self.tri_eff = np.flip(np.sort(self.tri_eff, axis=1), axis=1)
+            self.generate_eff_index_arrays()
+            if binning.get('effective') is not None \
+                    and binning['effective'] == True:
+                self.discrete_average = False
+                self.use_effective_triangles = True
+                self.compute_kernels(self.tri_eff)
+                if not self.real_space:
+                    self.compute_mu123_integrals(self.tri_eff)
+            else:
+                self.discrete_average = True
+                self.use_effective_triangles = False
+                self.compute_kernels_shell_average()
         self.cov_mixing_kernel = {}
 
     def F2(self, k1, k2, k3):
@@ -308,6 +357,117 @@ class Bispectrum:
         kernels['dk32_dlnk3'] = kernels['k32']
         return kernels
 
+
+    def kernels_real_space_arr(self, k1, k2, k3):
+        r"""Compute the kernels for the real-space bispectrum.
+
+        Computes the kernels required for the real-space bispectrum, and
+        returns them in a dictionary format. This includes only the
+        second-order density kernel :math:`F_2` and the Fourier-space kernel
+        of the second-order galileon :math:`K`
+
+        Parameters
+        ----------
+        k1: float
+            Wavemode :math:`k_1`.
+        k2: float
+            Wavemode :math:`k_2`.
+        k3: float
+            Wavemode :math:`k_3`.
+
+        Returns
+        -------
+        kernels: numpy.array
+            Array of size (k1.size, 3) with the first column corresponding to the F2 kernel, the second to the b_2 kernel and the third to the K kernel.
+        """
+        kernels = np.zeros([k1.size,3])
+        mu = (k3**2 - k1**2 - k2**2)/(2*k1*k2)
+        kernels[:,0] = 5.0/7.0 + mu/2 * (k1/k2 + k2/k1) + 2.0/7.0 * mu**2
+        kernels[:,1] = 1.0
+        kernels[:,2] = mu**2 - 1.0
+        return kernels
+
+    def kernels_redshift_space_arr(self, k1, k2, k3):
+        r"""Compute the kernels for the redshift-space bispectrum.
+
+        Computes the kernels required for the redshift-space bispectrum, and
+        returns them in a dictionary format. This includes the second-order
+        density and velocity divergence kernels, :math:`F_2` and :math:`G_2`,
+        the Fourier-space kernel of the second-order galileon :math:`K`, the
+        ratios of :math:`k_3` to the other two wavemodes, and the logarithmic
+        derivatives of the previous kernels with respect to :math:`k_1`,
+        :math:`k_2` and :math:`k_3`.
+
+        Parameters
+        ----------
+        k1: float
+            Wavemode :math:`k_1`.
+        k2: float
+            Wavemode :math:`k_2`.
+        k3: float
+            Wavemode :math:`k_3`.
+
+        Returns
+        -------
+        kernels: numpy.array
+            Array of size (k1.size, 20) with the columns corresponding to the following kernels:
+            - :math:`F_2`
+            - :math:`G_2`
+            - :math:`b_2`
+            - :math:`K`
+            - :math:`k_3/k_1`
+            - :math:`k_3/k_2`
+            - :math:`d F_2/d \log{k_1}`
+            - :math:`d F_2/d \log{k_2}`
+            - :math:`d F_2/d \log{k_3}`
+            - :math:`d G_2/d \log{k_1}`
+            - :math:`d G_2/d \log{k_2}`
+            - :math:`d G_2/d \log{k_3}`
+            - :math:`d K/d \log{k_1}`
+            - :math:`d K/d \log{k_2}`
+            - :math:`d K/d \log{k_3}`
+        """
+        kernels = np.zeros([k1.size,15])
+
+        k1sq = k1**2
+        k2sq = k2**2
+        k3sq = k3**2
+        mu = (k3sq - k1sq - k2sq)/(2*k1*k2)
+        mu2 = mu**2
+        k1muk2 = k1*mu/k2
+        k2muk1 = k2*mu/k1
+
+        kernels[:,0] = 5.0/7.0 + 0.5 * (k1muk2 + k2muk1) + 2.0/7.0 * mu2
+        kernels[:,1] = 3.0/7.0 + 0.5 * (k1muk2 + k2muk1) + 4.0/7.0 * mu2
+        kernels[:,2] = 1.0
+        kernels[:,3] = mu2 - 1.0
+        kernels[:,4] = k3/k1
+        kernels[:,5] = k3/k2
+
+        kernels[:,6] = -0.5 - 0.5*k1sq/k2sq - 4.0/7.0 * k1muk2 \
+                       - k2muk1 - 4.0/7.0*mu2
+        kernels[:,7] = -0.5 - 0.5*k2sq/k1sq - k1muk2 \
+                       - 4.0/7.0*k2muk1 - 4.0/7.0*mu2
+        kernels[:,8] = (k3sq*(7.0*(k1sq + k2sq) + 8.0*k1*k2*mu)) \
+                       / (14.0*k1sq*k2sq)
+
+        kernels[:,9] = kernels[:,5] - 4.0/7.0*(k1muk2 - mu2)
+        kernels[:,10] = kernels[:,6] - 4.0/7.0*(k2muk1 - mu2)
+        kernels[:,11] = kernels[:,7] + 4.0*k1*k2*mu/(7.0*k1sq*k2sq)
+
+        kernels[:,12] = -2.0*(k1muk2 + mu2)
+        kernels[:,13] = -2.0*(k2muk1 + mu2)
+        kernels[:,14] = 2.0*(k1muk2 + k2muk1) + 4.0*mu2
+
+        # kernels[:,14] = -kernels[:,3]
+        # kernels[:,15] = 0.0
+        # kernels[:,16] = kernels[:,3]
+        #
+        # kernels[:,17] = 0.0
+        # kernels[:,18] = -kernels[:,4]
+        # kernels[:,19] = kernels[:,4]
+        return kernels
+
     def mu123_integrals(self, n1, n2, n3, k1, k2, k3):
         r"""Angular integration.
 
@@ -388,6 +548,14 @@ class Bispectrum:
                 * (2 + n1)*(4 + n1) + k2**4*(-4 + n1*(6 + n1)) + k3**4 \
                 * (-4 + n1*(6 + n1)))) \
                 / (16.*k1**4*k2**2*k3**2*(1 + n1)*(3 + n1)*(5 + n1))
+        elif n2 == 5 and n3 == 0:
+            I = -0.03125*((k1**2 + k2**2 - k3**2)*(k1**8*(-3 + n1)*(-1 + n1) \
+                + (k2 - k3)**4*(k2 + k3)**4*(-3 + n1)*(-1 + n1) + 4*k1**6 \
+                * (-1 + n1)*(-(k3**2*(-3 + n1)) + k2**2*(7 + n1)) + 4*k1**2 \
+                * (k2**2 - k3**2)**2*(-1 + n1)*(-(k3**2*(-3 + n1)) + k2**2*(7 \
+                + n1)) + 2*k1**4*(3*k3**4*(-3 + n1)*(-1 + n1) - 2*k2**2*k3**2 \
+                * (-1 + n1)*(11 + 3*n1) + k2**4*(89 + n1*(28 + 3*n1))))) \
+                / (k1**5*k2**5*(2 + n1)*(4 + n1)*(6 + n1))
         elif n2 == 4 and n3 == 1:
             I = (-4*(k1**2 + k2**2 - k3**2)**4*(k1**2 - k2**2 + k3**2)
                 + (8*(k1 - k2 - k3)*(k1 + k2 - k3)*(k1 - k2 + k3) \
@@ -452,6 +620,17 @@ class Bispectrum:
                 - (k1**2 + k2**2 - k3**2)**6*(k1**2 - k2**2 + k3**2)*(2 + n1) \
                 * (4 + n1)*(6 + n1)) \
                 / (128.*k1**7*k2**6*k3*(2 + n1)*(4 + n1)*(6 + n1)*(8 + n1))
+        elif n2 == 5 and n3 == 2:
+            I = (15*(3*k1**2 + 7*k2**2 - 7*k3**2)*(k1**4 + (k2**2 - k3**2)**2 \
+                - 2*k1**2*(k2**2 + k3**2))**3*n1 + (k1**2 + k2**2 - k3**2) \
+                * n1*(2 + n1)*(15*(k1**4 - 2*k1**2*(k2**2 - k3**2) - 7*(k2**2 \
+                - k3**2)**2)*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 \
+                + k3**2))**2 - (k1**2 + k2**2 - k3**2)**2*(4 + n1)*(4*k1**6 \
+                * (5*k2**2 - 4*k3**2) + 12*k1**2*(k2**2 - k3**2)**2*(5*k2**2 \
+                + 2*k3**2) + (k2**2 - k3**2)**4*(-15 + n1) + k1**8*(5 + n1) \
+                - 2*k1**4*(k2 - k3)*(k2 + k3)*(-(k3**2*(-1 + n1)) + k2**2*(35 \
+                + n1)))))/(128.*k1**7*k2**5*k3**2*n1*(2 + n1)*(4 + n1) \
+                * (6 + n1)*(8 + n1))
         elif n2 == 4 and n3 == 3:
             I = -0.0078125*(15*(k1**2 + 7*k2**2 - 7*k3**2)*(k1**4 \
                 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**3 + 3*(3*k1**6\
@@ -486,6 +665,19 @@ class Bispectrum:
                 * (3 + n1) - 2*k1**4*(k2 - k3)*(k2 + k3)*(-(k3**2*(-5 + n1)) \
                 + k2**2*(51 + n1)))))/(512.*k1**8*k2**6*k3**2*(1 + n1) \
                 * (3 + n1)*(5 + n1)*(7 + n1)*(9 + n1))
+        elif n2 == 5 and n3 == 3:
+            I = -0.00390625*(105*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 \
+                + k3**2))**4 + 30*(k1**4 - 7*k1**2*(k2**2 - k3**2) - 14 \
+                * (k2**2 - k3**2)**2)*(k1**4 + (k2**2 - k3**2)**2 -2*k1**2 \
+                * (k2**2 + k3**2))**3*(1 + n1) - (k1**2 + k2**2 - k3**2) \
+                * (1 + n1)*(3 + n1)*(-30*(k2**2 - k3**2)*(-3*k1**4 + 7*(k2**2 \
+                - k3**2)**2)*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 \
+                + k3**2))**2 + (k1**2 + k2**2 - k3**2)**2*(k1**2 - k2**2 \
+                + k3**2)*(5 + n1)*(2*k1**6*(5*k2**2 - 9*k3**2) + 14*k1**2 \
+                * (k2**2 - k3**2)**2*(5*k2**2 + 3*k3**2) + (k2**2 - k3**2)**4 \
+                * (-21 + n1) + k1**8*(9 + n1) - 2*k1**4*(k2 - k3)*(k2 + k3) \
+                * (-(k3**2*(6 + n1)) + k2**2*(34 + n1)))))/(k1**8 \
+                * k2**5*k3**3*(1 + n1)*(3 + n1)*(5 + n1)*(7 + n1)*(9 + n1))
         elif n2 == 4 and n3 == 4:
             I = (210*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**4 \
                 + 8*(1 + n1)*(15*(k1**4 - 7*(k2**2 - k3**2)**2) \
@@ -498,6 +690,21 @@ class Bispectrum:
                 + ((k1**4 - (k2**2 - k3**2)**2)**4*(3 + n1)*(5 + n1) \
                 * (7 + n1))/4.))/(512.*k1**8*k2**4*k3**4*(1 + n1)*(3 + n1) \
                 * (5 + n1)*(7 + n1)*(9 + n1))
+        elif n2 == 5 and n3 == 4:
+            I = -0.00390625*((105*(k1**2 + 9*k2**2 - 9*k3**2)*(k1**4 + (k2**2 \
+                - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**4*n1)/2. + 30*(k1**6 \
+                + 7*k1**4*(k2**2 - k3**2) - 7*k1**2*(k2**2 - k3**2)**2 - 21 \
+                * (k2**2 - k3**2)**3)*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2 \
+                * (k2**2 + k3**2))**3*n1*(2 + n1) + (k1**2 + k2**2 - k3**2) \
+                * n1*(2 + n1)*(4 + n1)*(3*(3*k1**8 + 12*k1**6*(k2**2 - k3**2) \
+                - 42*k1**4*(k2**2 - k3**2)**2 - 28*k1**2*(k2**2 - k3**2)**3 \
+                + 63*(k2**2 - k3**2)**4)*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2 \
+                * (k2**2 + k3**2))**2 + 2*(k1 - k2 - k3)*(k1 + k2 - k3)*(k1 \
+                - k2 + k3)*(k1 + k2 + k3)*(k1**4 + 2*k1**2*(k2 - k3)*(k2 + k3) \
+                - 9*(k2**2 - k3**2)**2)*(k1**4 - (k2**2 - k3**2)**2)**2 \
+                * (6 + n1) + ((k1**4 - (k2**2 - k3**2)**2)**4*(6 + n1) \
+                * (8 + n1))/2.))/(k1**9*k2**5*k3**4*n1*(2 + n1)*(4 + n1) \
+                * (6 + n1)*(8 + n1)*(10 + n1))
         elif n2 == 8 and n3 == 2:
             I = (-1890*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 \
                 + k3**2))**5 + 210*(k1 + k2 - k3)**4*(k1 - k2 + k3)**4 \
@@ -556,7 +763,7 @@ class Bispectrum:
                 * (3 + n1)*(5 + n1)*(7 + n1)*(9 + n1)*(11 + n1)*(13 + n1))
         return I
 
-    def compute_kernels(self):
+    def compute_kernels(self, tri):
         r"""Compute kernels for all triangle configurations.
 
         Computes the kernels for the various triangle configurations, by
@@ -564,10 +771,10 @@ class Bispectrum:
         in real- or redshift-space), and stores them into a class attribute.
         """
         for kk in self.kernel_names:
-            self.kernels[kk] = np.zeros([self.tri.shape[0],3])
+            self.kernels[kk] = np.zeros([tri.shape[0],3])
 
         for i in range(3):
-            k123_perm = np.roll(self.tri, -i, axis=1).T
+            k123_perm = np.roll(tri, -i, axis=1).T
             if self.real_space:
                 kernels = self.kernels_real_space(*k123_perm)
                 for kk in self.kernel_names:
@@ -581,41 +788,279 @@ class Bispectrum:
                 self.kernels['db2_dlnk2'] = 0.0
                 self.kernels['db2_dlnk3'] = 0.0
 
-    def compute_mu123_integrals(self):
+    def Gauss_Legendre_mu123_integrals(self, tri, deg):
+        def muphi_to_mu123(mu_ij, phi_ij, k1, k2, k3):
+            mu12 = (k3**2-k1**2-k2**2)/(2*k1*k2)
+            mu1 = mu_ij
+            dmu1sq = (1-mu1**2).clip(min=0.0)
+            dmu1 = np.sqrt(dmu1sq)
+            dmu12sq = (1-mu12**2).clip(min=0.0)
+            dmu12 = np.sqrt(dmu12sq)
+            mu2 = np.outer(mu1,mu12) - np.outer(dmu1*np.cos(phi_ij),dmu12)
+            mu3 = -np.outer(mu1,k1/k3) - k2/k3*mu2
+            return mu1.flatten(), mu2.T, mu3.T
+
+        def I(n1, n2, n3, mu1, mu2, mu3):
+            return mu1**n1 * mu2**n2 * mu3**n3
+
+        # first, find all n1,n2,n3 tuples
+        self.n123_tuples_all = np.array([0,0,0])
+        kernel_names = ['F2','G2','k31','k32']
+        for kk in kernel_names:
+            self.I[kk] = {}
+            n123_tuples = self.kernel_mu_tuples[kk]
+            for n123 in n123_tuples:
+                for i in range(3):
+                    n123_new = np.copy(n123)
+                    n123_new[i] += 2
+                    n123_tuples = np.vstack((n123_tuples, n123_new))
+            n123_tuples = np.unique(n123_tuples, axis=0)
+            for n123 in n123_tuples:
+                self.I[kk][tuple(n123)] = {}
+                for ell in [0,2,4]:
+                    for i in range(3):
+                        n123_perm_even = np.roll(np.array(n123), i)
+                        n123_perm_even[0] += ell
+                        self.n123_tuples_all = np.vstack(
+                            (self.n123_tuples_all, n123_perm_even))
+        self.n123_tuples_all = np.unique(self.n123_tuples_all, axis=0)
+
+        self.I_tuples_dict = {}
+        for kk in self.I.keys():
+            self.I_tuples_dict[kk] = {}
+            for n123 in self.I[kk].keys():
+                self.I_tuples_dict[kk][n123] = {}
+                for ell in [0,2,4]:
+                    self.I_tuples_dict[kk][n123][ell] = []
+                    for i in range(3):
+                        n123_perm_even = np.roll(np.array(n123), i)
+                        n123_perm_even[0] += ell
+                        id = np.where(
+                            (self.n123_tuples_all == n123_perm_even).all(
+                                axis=1))[0][0]
+                        self.I_tuples_dict[kk][n123][ell].append(id)
+
+        #compute mu1, mu2, mu3 at Gauss-Legendre sampling points
+        gl_x, gl_weights = np.polynomial.legendre.leggauss(deg)
+        mu = gl_x
+        phi = np.pi*gl_x + np.pi
+        mu_ij, phi_ij = np.meshgrid(mu, phi)
+        # shapes of mu1, mu2, mu3: deg^2, (ntri, deg^2), (ntri, deg^2)
+        self.gl_mu1, self.gl_mu2, self.gl_mu3 = muphi_to_mu123(mu_ij, phi_ij,
+                                                               *tri.T)
+        self.gl_weights_ij = np.outer(gl_weights, gl_weights).reshape(
+            [1, deg**2])
+
+        # evaluate mu1^n1 mu2^n2 mu3^n3 for all n1, n2, n3
+        self.gl_I_weights = np.zeros([self.n123_tuples_all.shape[0],
+                                      tri.shape[0], deg**2])
+        for i, n123 in enumerate(self.n123_tuples_all):
+            self.gl_I_weights[i] = I(*n123, self.gl_mu1, self.gl_mu2,
+                                     self.gl_mu3)
+        self.gl_I_weights *= self.gl_weights_ij
+
+        self.gl_I_stoch_weights = \
+            np.zeros([3*self.n123_tuples_stoch_all.shape[0], 3,
+                      tri.shape[0], deg**2])
+        n = 0
+        for n123 in self.n123_tuples_stoch_all:
+            if np.all(n123 == [0,0,0]):
+                for ell in [0,2,4]:
+                    n123_temp = np.copy(n123)
+                    n123_temp[0] += ell
+                    self.gl_I_stoch_weights[n,0] = I(*n123_temp, self.gl_mu1,
+                                                     self.gl_mu2, self.gl_mu3)
+                    self.gl_I_stoch_weights[n,1] = self.gl_I_stoch_weights[n,0]
+                    self.gl_I_stoch_weights[n,2] = self.gl_I_stoch_weights[n,0]
+                    n += 1
+            else:
+                for ell in [0,2,4]:
+                    for i in range(3):
+                        n123_perm_even = np.roll(np.array(n123), i)
+                        n123_perm_even[0] += ell
+                        self.gl_I_stoch_weights[n,i] = I(*n123_perm_even,
+                            self.gl_mu1, self.gl_mu2, self.gl_mu3)
+                    n += 1
+        self.gl_I_stoch_weights *= self.gl_weights_ij
+
+    def compute_mu123_integrals(self, tri):
         """Compute angular integrals for all triangle configurations.
 
         Computes the angular integrals for the various triangle configurations,
         by calling the class method **mu123_integrals**, and stores them into
         a class attribute.
         """
-        for n123 in self.I_tuples_ell0 + self.I_tuples_ell2 \
-                + self.I_tuples_ell4:
-            self.I[n123] = np.zeros([self.tri.shape[0],3])
-            if n123[0] != n123[1] and n123[1] != n123[2]:
-                n123_odd = (n123[0], n123[2], n123[1])
-                self.I[n123_odd] = np.zeros([self.tri.shape[0],3])
+        kernel_names = ['F2','G2','k31','k32']
+        for kk in kernel_names:
+            self.I[kk] = {}
+            n123_tuples = self.kernel_mu_tuples[kk]
+            for n123 in n123_tuples:
+                for i in range(3):
+                    n123_new = np.copy(n123)
+                    n123_new[i] += 2
+                    n123_tuples = np.vstack((n123_tuples, n123_new))
+            n123_tuples = np.unique(n123_tuples, axis=0)
+            for n123 in n123_tuples:
+                self.I[kk][tuple(n123)] = {}
+                for ell in [0,2,4]:
+                    self.I[kk][tuple(n123)][ell] = np.zeros([tri.shape[0],3])
+                    for i in range(3):
+                        n123_perm_even = np.roll(np.array(n123), i)
+                        n123_perm_even[0] += ell
+                        ii = np.argsort(n123_perm_even)[::-1]
+                        self.I[kk][tuple(n123)][ell][:,i] = \
+                            self.mu123_integrals(*n123_perm_even[ii],
+                                                 *tri[:,ii].T)
+
+        self.I['b2'] = self.I['F2']
+        self.I['K'] = self.I['F2']
+
+        n = 0
+        for n123 in self.n123_tuples_stoch_all:
+            self.I_stoch[tuple(n123)] = {}
+            for ell in [0,2,4]:
+                self.I_stoch[tuple(n123)][ell] = self.I['b2'][tuple(n123)][ell]
+                n += 1
+
+    def compute_damped_mu123_integrals(self, tri, W_damping):
+        gl_W3p_damping = W_damping(tri, self.gl_mu1, self.gl_mu2, self.gl_mu3)
+        gl_W2p_damping = np.zeros((3, tri.shape[0], self.gl_mu1.shape[0]))
+        gl_W2p_damping[0] = W_damping(tri, self.gl_mu1, 0.0, 0.0)
+        gl_W2p_damping[1] = W_damping(tri, 0.0, self.gl_mu2, 0.0)
+        gl_W2p_damping[2] = W_damping(tri, 0.0, 0.0, self.gl_mu3)
+
+        I_damped = 0.25 * np.sum(self.gl_I_weights*gl_W3p_damping, axis=2)
+        for kk in self.I_tuples_dict.keys():
+            for n123 in self.I_tuples_dict[kk].keys():
+                for ell in [0,2,4]:
+                    ids = self.I_tuples_dict[kk][n123][ell]
+                    self.I[kk][n123][ell] = I_damped[ids].T
+
+        self.I['b2'] = self.I['F2']
+        self.I['K'] = self.I['F2']
+
+        n = 0
+        I_stoch_damped = 0.25 * np.sum(self.gl_I_stoch_weights*gl_W2p_damping,
+                                       axis=3)
+        for n123 in self.n123_tuples_stoch_all:
+            self.I_stoch[tuple(n123)] = {}
+            for ell in [0,2,4]:
+                self.I_stoch[tuple(n123)][ell] = I_stoch_damped[n].T
+                n += 1
+
+    def compute_kernels_shell_average(self):
+        def I(n1, n2, n3, mu1, mu2, mu3):
+            return mu1**n1 * mu2**n2 * mu3**n3
+
+        def init_kernel(kk, kernel_names_all, n123, ell):
+            self.kernels_shell_average[kk][n123][ell] = \
+                np.zeros((self.tri.shape[0],3))
+            for krest in list(set(kernel_names_all)-set([kk])):
+                self.kernels_shell_average[krest][n123][ell] = \
+                    np.zeros((self.tri.shape[0],3))
+
+        def shell_average(kernels, kernel_names, n123, ell, perm):
+            for i in range(self.tri.shape[0]):
+                n1 = self.grid.ntri[i]
+                n2 = self.grid.ntri[i+1]
+                kernels_avg = np.average(kernels[n1:n2], axis=0,
+                    weights=self.grid.weights[n1:n2])
+                for j,kk in enumerate(kernel_names):
+                    self.kernels_shell_average[kk][n123][ell][i,perm] = \
+                        kernels_avg[j]
+
+        if self.real_space:
             for i in range(3):
-                k123_perm_even = np.roll(self.tri, -i, axis=1).T
-                self.I[n123][:,i] = self.mu123_integrals(*n123, *k123_perm_even)
-                if n123[0] != n123[1] and n123[1] != n123[2]:
-                    n123_odd = (n123[0], n123[2], n123[1])
-                    k123_perm_odd = np.roll(self.tri[:,[0,2,1]], -i,
-                                            axis=1).T
-                    self.I[n123_odd][:,i] = self.mu123_integrals(*n123,
-                                                                 *k123_perm_odd)
-            if (n123[0] != n123[1] and n123[1] == n123[2]) or \
-                    (n123[0] == n123[1] and n123[1] != n123[2]):
-                for i in range(1,3):
-                    n123_perm = tuple(np.roll(np.array(n123), -i))
-                    self.I[n123_perm] = np.roll(self.I[n123], -i, axis=1)
-            elif n123[0] != n123[1] and n123[1] != n123[2]:
-                for i in range(1,3):
-                    n123_odd = (n123[0], n123[2], n123[1])
-                    n123_perm_even = tuple(np.roll(np.array(n123), -i))
-                    n123_perm_odd = tuple(np.roll(np.array(n123_odd), -i))
-                    self.I[n123_perm_even] = np.roll(self.I[n123], -i, axis=1)
-                    self.I[n123_perm_odd] = np.roll(self.I[n123_odd], -i,
-                                                    axis=1)
+                k123_perm_even = np.roll(self.grid.k123, -i, axis=1).T
+                kernels = self.kernels_real_space_arr(*k123_perm_even)
+                shell_average(kernels, ['F2','b2','K'], (0,0,0), 0, i)
+        else:
+            for i in range(3):
+                k123_perm = np.roll(self.grid.k123, -i, axis=1).T
+                kernels = self.kernels_redshift_space_arr(*k123_perm)
+                for kk in ['F2','G2','k31','k32']:
+                    #print(kk)
+                    if kk == 'F2':
+                        kernel_names_all = ['F2','b2','K',
+                                            'dF2_dlnk1','dF2_dlnk2','dF2_dlnk3',
+                                            'dK_dlnk1','dK_dlnk2','dK_dlnk3']
+                        kernel_ids = [0,2,3,6,7,8,12,13,14]
+                    elif kk == 'G2':
+                        kernel_names_all = \
+                            ['G2','dG2_dlnk1','dG2_dlnk2','dG2_dlnk3']
+                        kernel_ids = [1,9,10,11]
+                    elif kk == 'k31':
+                        kernel_names_all = ['k31']
+                        kernel_ids = [4]
+                    elif kk == 'k32':
+                        kernel_names_all = ['k32']
+                        kernel_ids = [5]
+                    if i == 0:
+                        self.kernels_shell_average[kk] = {}
+                        for krest in list(set(kernel_names_all)-set([kk])):
+                            self.kernels_shell_average[krest] = {}
+                    n123_tuples = self.kernel_mu_tuples[kk]
+                    for n123 in n123_tuples:
+                        for j in range(3):
+                            n123_new = np.copy(n123)
+                            n123_new[j] += 2
+                            n123_tuples = np.vstack((n123_tuples, n123_new))
+                    n123_tuples = np.unique(n123_tuples, axis=0)
+                    #print(n123_tuples)
+                    for n123 in n123_tuples:
+                        #print(n123)
+                        n123 = tuple(n123)
+                        if i == 0:
+                            self.kernels_shell_average[kk][n123] = {}
+                            for krest in list(set(kernel_names_all)-set([kk])):
+                                self.kernels_shell_average[krest][n123] = {}
+                        for ell in [0,2,4]:
+                            if i == 0:
+                                init_kernel(kk, kernel_names_all, n123, ell)
+                            n123_perm = np.roll(np.array(n123), i)
+                            n123_perm[0] += ell
+                            I123 = I(*n123_perm, *self.grid.mu123.T)
+                            kernelsI123 = kernels[:,kernel_ids] * I123[:,None]
+                            shell_average(kernelsI123, kernel_names_all, n123,
+                                          ell, i)
+            for i in range(3):
+                kk = 'db2_dlnk{}'.format(i+1)
+                self.kernels_shell_average[kk] = {}
+                for n123 in self.kernels_shell_average['b2'].keys():
+                    self.kernels_shell_average[kk][n123] = {}
+                    for ell in [0,2,4]:
+                        self.kernels_shell_average[kk][n123][ell] = \
+                            np.zeros((self.tri.shape[0],3))
+            for i in range(3):
+                kk = 'dk31_dlnk{}'.format(i+1)
+                self.kernels_shell_average[kk] = {}
+                for n123 in self.kernels_shell_average['k31'].keys():
+                    self.kernels_shell_average[kk][n123] = {}
+                    for ell in [0,2,4]:
+                        if i == 0:
+                            self.kernels_shell_average[kk][n123][ell] = \
+                                -self.kernels_shell_average['k31'][n123][ell]
+                        elif i == 1:
+                            self.kernels_shell_average[kk][n123][ell] = \
+                                np.zeros((self.tri.shape[0],3))
+                        else:
+                            self.kernels_shell_average[kk][n123][ell] = \
+                                self.kernels_shell_average['k31'][n123][ell]
+            for i in range(3):
+                kk = 'dk32_dlnk{}'.format(i+1)
+                self.kernels_shell_average[kk] = {}
+                for n123 in self.kernels_shell_average['k32'].keys():
+                    self.kernels_shell_average[kk][n123] = {}
+                    for ell in [0,2,4]:
+                        if i == 0:
+                            self.kernels_shell_average[kk][n123][ell] = \
+                                np.zeros((self.tri.shape[0],3))
+                        elif i == 1:
+                            self.kernels_shell_average[kk][n123][ell] = \
+                                -self.kernels_shell_average['k32'][n123][ell]
+                        else:
+                            self.kernels_shell_average[kk][n123][ell] = \
+                                self.kernels_shell_average['k32'][n123][ell]
 
     def compute_covariance_mixing_kernel(self, l1, l2, l3, l4, l5):
         def legendre_coeff(ell, n):
@@ -687,7 +1132,7 @@ class Bispectrum:
             with respect to the fundamental frequency. Deafults to 2.
         """
         self.tri_rounded = np.around(self.tri/self.kfun,
-                                           decimals=round_decimals)
+                                     decimals=round_decimals)
         self.tri_unique = np.unique(self.tri_rounded)
         self.ki, self.kj = np.meshgrid(self.tri_unique,
                                        self.tri_unique)
@@ -718,85 +1163,229 @@ class Bispectrum:
         self.kj = np.searchsorted(self.tri_unique, self.kj)
         self.tri_unique *= self.kfun
 
-    def join_kernel_mu123_integral(self, K, n123_tuples, neff, coeff,
+    def generate_eff_index_arrays(self, round_decimals=2):
+        r"""Generate arrays of indeces of effective triangular configurations.
+
+        Determines the unique wavemode bins in the effective triangle
+        configurations, approximating them to the ratio with respect to a given
+        fundamental frequency.
+
+        Parameters
+        ----------
+        round_decimals: int, optional
+            Number of decimal digits used in the approximation of the ratios
+            with respect to the fundamental frequency. Deafults to 2.
+        """
+        self.tri_eff_rounded = np.around(self.tri_eff/self.kfun,
+                                         decimals=round_decimals)
+        self.tri_eff_unique = np.unique(self.tri_eff_rounded)
+        self.ki_eff, self.kj_eff = np.meshgrid(self.tri_eff_unique,
+                                               self.tri_eff_unique)
+        ids = np.where(self.ki_eff >= self.kj_eff)
+        self.ki_eff = self.ki_eff[ids]
+        self.kj_eff = self.kj_eff[ids]
+
+        self.tri_eff_to_id = np.zeros_like(self.tri_eff, dtype=int)
+        self.tri_eff_to_id_sq = np.zeros_like(self.tri_eff, dtype=int)
+        for n in range(self.tri_eff.shape[0]):
+            self.tri_eff_to_id[n,0] = np.where(
+                self.tri_eff_unique == self.tri_eff_rounded[n,0])[0]
+            self.tri_eff_to_id[n,1] = np.where(
+                self.tri_eff_unique == self.tri_eff_rounded[n,1])[0]
+            self.tri_eff_to_id[n,2] = np.where(
+                self.tri_eff_unique == self.tri_eff_rounded[n,2])[0]
+            self.tri_eff_to_id_sq[n,0] = np.where(
+                (self.ki_eff == self.tri_eff_rounded[n,0]) & \
+                (self.kj_eff == self.tri_eff_rounded[n,1]))[0]
+            self.tri_eff_to_id_sq[n,1] = np.where(
+                (self.ki_eff == self.tri_eff_rounded[n,1]) & \
+                (self.kj_eff == self.tri_eff_rounded[n,2]))[0]
+            self.tri_eff_to_id_sq[n,2] = np.where(
+                (self.ki_eff == self.tri_eff_rounded[n,0]) & \
+                (self.kj_eff == self.tri_eff_rounded[n,2]))[0]
+
+        self.ki_eff = np.searchsorted(self.tri_eff_unique, self.ki_eff)
+        self.kj_eff = np.searchsorted(self.tri_eff_unique, self.kj_eff)
+        self.tri_eff_unique *= self.kfun
+
+    def join_kernel_mu123_integral(self, K, n123_tuples, ell, neff, coeff,
                                    q_tr, q_lo):
         K_neff1 = neff[self.tri_to_id]*self.kernels[K]
         K_neff2 = neff[self.tri_to_id[:,[1,2,0]]]*self.kernels[K]
         K_deriv_sum = np.sum([self.kernels['d{}_dlnk{}'.format(K,i+1)]
                               for i in range(3)])
         DeltaB_K = 0.0
+
         for i, n123 in enumerate(n123_tuples):
-            t1 = self.I[n123] * ((1.0 + (q_tr-q_lo)*sum(n123)) * \
-                                       self.kernels[K] \
-                                       + (1.0-q_tr) * K_deriv_sum \
-                                       + (1.0-q_tr) * (K_neff1 + K_neff2))
-            t2 = self.I[n123[0]+2,n123[1],n123[2]] * (q_tr - q_lo) \
+            t1 = self.I[K][n123][ell] * ((1.0 + (q_tr-q_lo)*sum(n123)) * \
+                                         self.kernels[K] \
+                                         + (1.0-q_tr) * K_deriv_sum \
+                                         + (1.0-q_tr) * (K_neff1 + K_neff2))
+            t2 = self.I[K][n123[0]+2,n123[1],n123[2]][ell] * (q_tr - q_lo) \
                  * (self.kernels['d{}_dlnk1'.format(K)] + K_neff1 \
                     - n123[0]*self.kernels[K])
-            t3 = self.I[n123[0],n123[1]+2,n123[2]] * (q_tr - q_lo) \
+            t3 = self.I[K][n123[0],n123[1]+2,n123[2]][ell] * (q_tr - q_lo) \
                  * (self.kernels['d{}_dlnk2'.format(K)] + K_neff2 \
                     - n123[1]*self.kernels[K])
-            t4 = self.I[n123[0],n123[1],n123[2]+2] * (q_tr - q_lo) \
+            t4 = self.I[K][n123[0],n123[1],n123[2]+2][ell] * (q_tr - q_lo) \
                  * (self.kernels['d{}_dlnk3'.format(K)] \
                     - n123[2]*self.kernels[K])
             DeltaB_K += coeff[i] * (t1 + t2 + t3 + t4)
 
         return DeltaB_K
 
-    def Bell(self, PL_dw, neff, params, ell=[0]):
+    def join_stoch_kernel_mu123_integral(self, n123_tuples, ell, neff, coeff,
+                                         q_tr, q_lo):
+        DeltaB_stoch = 0.0
+
+        for i, n123 in enumerate(n123_tuples):
+            t1 = self.I_stoch[n123][ell] * (1.0 + (q_tr-q_lo)*sum(n123) \
+                                            + (1.0-q_tr)*neff[self.tri_to_id])
+            t2 = self.I_stoch[n123[0]+2,n123[1],n123[2]][ell] * (q_tr - q_lo) \
+                 * (neff[self.tri_to_id] - n123[0])
+            t3 = - self.I_stoch[n123[0],n123[1]+2,n123[2]][ell] \
+                 * (q_tr - q_lo) * n123[1]
+            t4 = - self.I_stoch[n123[0],n123[1],n123[2]+2][ell] \
+                 * (q_tr - q_lo) * n123[2]
+            DeltaB_stoch += coeff[i] * (t1 + t2 + t3 + t4)
+
+        return DeltaB_stoch
+
+    def join_kernel_mu123_shell_average(self, K, n123_tuples, ell, neff, coeff,
+                                        q_tr, q_lo):
+        DeltaB_K = 0.0
+        for i, n123 in enumerate(n123_tuples):
+            neff1 = neff[self.tri_eff_to_id]
+            neff2 = neff[self.tri_eff_to_id[:,[1,2,0]]]
+            K_deriv_sum = np.sum(
+                [self.kernels_shell_average['d{}_dlnk{}'.format(K,j)][n123][ell]
+                 for j in range(1,4)])
+
+            n123p200 = tuple(np.array(n123)+np.array((2,0,0)))
+            n123p020 = tuple(np.array(n123)+np.array((0,2,0)))
+            n123p002 = tuple(np.array(n123)+np.array((0,0,2)))
+
+            kk1 = 'd{}_dlnk1'.format(K)
+            kk2 = 'd{}_dlnk2'.format(K)
+            kk3 = 'd{}_dlnk3'.format(K)
+
+            t1 = (1.0 + (q_tr - q_lo)*sum(n123)) \
+                 * self.kernels_shell_average[K][n123][ell] \
+                 + (1.0 - q_tr) * K_deriv_sum \
+                 + (1.0 - q_tr) * (neff1 + neff2) \
+                 * self.kernels_shell_average[K][n123][ell]
+            t2 = (q_tr - q_lo) \
+                 * (self.kernels_shell_average[kk1][n123p200][ell] \
+                 + (neff1-n123[0])*self.kernels_shell_average[K][n123p200][ell])
+            t3 = (q_tr - q_lo) \
+                 * (self.kernels_shell_average[kk2][n123p020][ell] \
+                 + (neff2-n123[1])*self.kernels_shell_average[K][n123p020][ell])
+            t4 = (q_tr - q_lo) \
+                 * (self.kernels_shell_average[kk3][n123p002][ell] \
+                 - n123[2]*self.kernels_shell_average[K][n123p002][ell])
+            DeltaB_K += coeff[i] * (t1 + t2 + t3 + t4)
+
+        return DeltaB_K
+
+    def Bell(self, PL_dw, neff, params, ell=[0], W_damping=None):
         kernel = {}
         kernel_stoch = {}
         if self.real_space:
             b1sq = params['b1']**2
-            kernel[0] = 2*b1sq * (params['b1']*self.kernels['F2'] \
-                                  + 0.5*params['b2'] + \
-                                  params['g2']*self.kernels['K'])
+            if self.discrete_average:
+                kernel[0] = 2*b1sq * \
+                    (params['b1']*self.kernels_shell_average['F2'][0,0,0][0] \
+                     + 0.5*params['b2'] \
+                     + params['g2']*self.kernels_shell_average['K'][0,0,0][0])
+            else:
+                kernel[0] = 2*b1sq * (params['b1']*self.kernels['F2'] \
+                                      + 0.5*params['b2'] + \
+                                      params['g2']*self.kernels['K'])
             kernel_stoch[0] = b1sq/self.nbar
         else:
             b1sq = params['b1']**2
+            b1f = params['b1']*params['f']
+            f2 = params['f']**2
+            f3 = params['f']**3
+            f4 = params['f']**4
             f2b1 = params['f']**2/params['b1']
             f3b1sq = params['f']**3/params['b1']**2
-            params_F2 = [params['b1'], params['f'], params['f'], f2b1]
-            params_b2 = [params['b1']*params['b2'], params['f']*params['b2'],
-                         params['f']*params['b2'], params['b2']*f2b1]
-            params_K = [params['b1']*params['g2'], params['f']*params['g2'],
-                        params['f']*params['g2'], params['g2']*f2b1]
-            params_G2 = [params['f'], f2b1, f2b1, f3b1sq]
-            params_mixed = [params['f'], f2b1, 2*f2b1, f3b1sq, 2*f3b1sq,
-                            f3b1sq*params['f']/params['b1']]
+
+            params_F2 = 2*params['b1'] * np.array([b1sq, b1f, b1f, f2])
+            params_b2 = params['b2'] * np.array([b1sq, b1f, b1f, f2])
+            params_K = 2*params['g2'] * np.array([b1sq, b1f, b1f, f2])
+            params_G2 = 2*params['f'] * np.array([b1sq, b1f, b1f, f2])
+            params_mixed = -b1f * np.array([b1sq, b1f, 2*b1f, f2, 2*f2, f4/b1f])
+            params_stoch = params['MB0']/self.nbar * np.array([b1sq, b1f])
+
+            if self.RSD_model == 'VDG_infty':
+                if not self.discrete_average:
+                    self.compute_damped_mu123_integrals(self.tri, W_damping)
 
             for l in np.arange(0, max(ell)+1, 2):
-                tuples_list_1 = [(l,0,0),(2+l,0,0),(l,2,0),(2+l,2,0)]
-                tuples_list_2 = [(l,0,2),(2+l,0,2),(l,2,2),(2+l,2,2)]
-                tuples_list_k31 = [(1+l,0,1),(3+l,0,1),(1+l,2,1),(1+l,4,1),
-                                   (3+l,2,1),(3+l,4,1)]
-                tuples_list_k32 = [(l,1,1),(l,3,1),(2+l,1,1),(4+l,1,1),
-                                   (2+l,3,1),(4+l,3,1)]
-
-                kernel_F2 = 2*b1sq * self.join_kernel_mu123_integral(
-                    'F2', tuples_list_1, neff, params_F2,
-                    params['q_tr'], params['q_lo'])
-                kernel_b2 = params['b1'] * self.join_kernel_mu123_integral(
-                    'b2', tuples_list_1, neff, params_b2,
-                    params['q_tr'], params['q_lo'])
-                kernel_K = 2*params['b1'] * self.join_kernel_mu123_integral(
-                    'K', tuples_list_1, neff, params_K,
-                    params['q_tr'], params['q_lo'])
-                kernel_G2 = 2*b1sq * self.join_kernel_mu123_integral(
-                    'G2', tuples_list_2, neff, params_G2,
-                    params['q_tr'], params['q_lo'])
-                kernel_k31 = - self.join_kernel_mu123_integral(
-                    'k31', tuples_list_k31, neff, params_mixed,
-                    params['q_tr'], params['q_lo'])
-                kernel_k32 = - self.join_kernel_mu123_integral(
-                    'k32', tuples_list_k32, neff, params_mixed,
-                    params['q_tr'], params['q_lo'])
+                if self.discrete_average:
+                    kernel_F2 = self.join_kernel_mu123_shell_average(
+                        'F2', self.kernel_mu_tuples['F2'], l, neff, params_F2,
+                        params['q_tr'], params['q_lo']
+                    )
+                    kernel_b2 = self.join_kernel_mu123_shell_average(
+                        'b2', self.kernel_mu_tuples['F2'], l, neff,
+                        params_b2, params['q_tr'], params['q_lo']
+                    )
+                    kernel_K = self.join_kernel_mu123_shell_average(
+                        'K', self.kernel_mu_tuples['F2'], l, neff,
+                        params_K, params['q_tr'], params['q_lo']
+                    )
+                    kernel_G2 = self.join_kernel_mu123_shell_average(
+                        'G2', self.kernel_mu_tuples['G2'], l, neff, params_G2,
+                        params['q_tr'], params['q_lo']
+                    )
+                    kernel_k31 = self.join_kernel_mu123_shell_average(
+                        'k31', self.kernel_mu_tuples['k31'], l, neff,
+                        params_mixed, params['q_tr'], params['q_lo']
+                    )
+                    kernel_k32 = self.join_kernel_mu123_shell_average(
+                        'k32', self.kernel_mu_tuples['k32'], l, neff,
+                        params_mixed, params['q_tr'], params['q_lo']
+                    )
+                    kernel_stoch_b1 = b1sq * \
+                        self.kernels_shell_average['b2'][0,0,0][l]
+                    kernel_stoch_b1f = b1f * \
+                        self.kernels_shell_average['b2'][2,0,0][l]
+                    kernel_stoch_f2 = f2 * \
+                        self.kernels_shell_average['b2'][4,0,0][l]
+                else:
+                    kernel_F2 = self.join_kernel_mu123_integral(
+                        'F2', self.kernel_mu_tuples['F2'], l, neff, params_F2,
+                        params['q_tr'], params['q_lo']
+                    )
+                    kernel_b2 = self.join_kernel_mu123_integral(
+                        'b2', self.kernel_mu_tuples['F2'], l, neff, params_b2,
+                        params['q_tr'], params['q_lo']
+                    )
+                    kernel_K = self.join_kernel_mu123_integral(
+                        'K', self.kernel_mu_tuples['F2'], l, neff, params_K,
+                        params['q_tr'], params['q_lo']
+                    )
+                    kernel_G2 = self.join_kernel_mu123_integral(
+                        'G2', self.kernel_mu_tuples['G2'], l, neff, params_G2,
+                        params['q_tr'], params['q_lo']
+                    )
+                    kernel_k31 = self.join_kernel_mu123_integral(
+                        'k31', self.kernel_mu_tuples['k31'], l, neff,
+                        params_mixed, params['q_tr'], params['q_lo']
+                    )
+                    kernel_k32 = self.join_kernel_mu123_integral(
+                        'k32', self.kernel_mu_tuples['k32'], l, neff,
+                        params_mixed, params['q_tr'], params['q_lo']
+                    )
+                    kernel_stoch[l] = self.join_stoch_kernel_mu123_integral(
+                        [(0,0,0),(2,0,0)], l, neff, params_stoch,
+                        params['q_tr'], params['q_lo']
+                    )
 
                 kernel[l] = kernel_F2 + kernel_b2 + kernel_K + kernel_G2 \
-                            + kernel_k31 + kernel_k32
-                kernel_stoch[l] = 1.0/self.nbar * (b1sq*self.I[l,0,0][0,0] \
-                                  + params['b1']*params['f'] \
-                                  * self.I[2+l,0,0][0,0])
+                    + kernel_k31 + kernel_k32
 
             # normalisation????
             if 4 in ell:
@@ -807,17 +1396,23 @@ class Bispectrum:
                 kernel[2] = 2.5 * (3*kernel[2] - kernel[0])
                 kernel_stoch[2] = 2.5 * (3*kernel_stoch[2] - kernel_stoch[0])
 
-        P2 = PL_dw[self.ki]*PL_dw[self.kj]
+        if self.discrete_average or self.use_effective_triangles:
+            P2 = PL_dw[self.ki_eff]*PL_dw[self.kj_eff]
+            tri_to_id = self.tri_eff_to_id
+            tri_to_id_sq = self.tri_eff_to_id_sq
+        else:
+            P2 = PL_dw[self.ki]*PL_dw[self.kj]
+            tri_to_id = self.tri_to_id
+            tri_to_id_sq = self.tri_to_id_sq
         q6 = params['q_tr']**4 * params['q_lo']**2
 
         Bell_dict = {}
         for l in ell:
             ids = self.tri_id_ell[l]
             B_SPT = np.einsum("ij,ij->i", kernel[l][ids],
-                              P2[self.tri_to_id_sq][ids])
-            B_stoch = params['MB0'] * np.sum(PL_dw[self.tri_to_id][ids],
-                                             axis=1) \
-                      * kernel_stoch[l]
+                              P2[tri_to_id_sq][ids])
+            B_stoch = np.einsum("ij,ij->i", kernel_stoch[l][ids],
+                                PL_dw[tri_to_id][ids])
             if l == 0:
                 B_stoch += params['NB0']/self.nbar**2
 

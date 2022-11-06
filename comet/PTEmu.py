@@ -10,6 +10,7 @@ import pickle
 from comet.cosmology import Cosmology
 from comet.data import MeasuredData
 from comet.tables import Tables
+from comet.grid import Grid
 from comet.bispectrum import Bispectrum
 import os
 
@@ -134,11 +135,14 @@ class PTEmu:
         self.k_table_max = {}
 
         self.data = {}
+        self.grid = None
 
         self.splines_up_to_date = False
         self.dw_spline_up_to_date = False
         self.X_splines_up_to_date = {X: False for X in self.diagrams_all}
         self.X_obs_id = None
+        self.X_binning = None
+        self.Bisp_binning = None
         self.emu_params_updated = False
 
         self.chi2_decomposition = None
@@ -219,8 +223,9 @@ class PTEmu:
         self.RSD_model = hdul['MODEL_FULL'].header['RSD_model']
 
         if self.RSD_model == 'VDG_infty':
-            self.RSD_params_list.append('avir')
+            self.RSD_params_list += ['avir','avirB']
             self.params['avir'] = 0.0
+            self.params['avirB'] = 0.0
 
         self.training['SHAPE'].assign_samples(hdul['PARAMS_SHAPE'])
         self.training['SHAPE'].assign_table(hdul['MODEL_SHAPE'],
@@ -232,7 +237,7 @@ class PTEmu:
             self.s12_for_P6 = hdul['MODEL_Pell6'].header['SIG12']
             self.P6 = hdul['MODEL_Pell6'].data['P_all']
 
-        self.Bisp = Bispectrum(self.real_space, self.use_Mpc)
+        self.Bisp = Bispectrum(self.real_space, self.RSD_model, self.use_Mpc)
 
     def load_emulator(self, fname_base, data_type=None):
         r"""Load the emulator from pickle file.
@@ -785,8 +790,7 @@ class PTEmu:
 
             if self.Pk_lin is None or emu_params_updated:
                 sigma12 = self.training['SHAPE'].transform_inv(
-                    self.emu['s12'].predict(params_shape[None, :])[0][0],
-                    's12')
+                    self.emu['s12'].predict(params_shape[None, :])[0][0], 's12')
                 self.Pk_lin = self.training['SHAPE'].transform_inv(
                     self.emu['PL'].predict(params_shape[None, :])[0][0], 'PL')
                 self.Pk_lin *= (self.params['s12']/sigma12)**2
@@ -806,8 +810,7 @@ class PTEmu:
         else:
             if self.Pk_lin is None or emu_params_updated:
                 sigma12 = self.training['SHAPE'].transform_inv(
-                    self.emu['s12'].predict(params_shape[None, :])[0][0],
-                    's12')
+                    self.emu['s12'].predict(params_shape[None, :])[0][0], 's12')
                 self.Pk_lin = self.training['SHAPE'].transform_inv(
                     self.emu['PL'].predict(params_shape[None, :])[0][0], 'PL')
 
@@ -900,6 +903,16 @@ class PTEmu:
         t1 = (self.params['f']*k*mu)**2
         t2 = 1.0 + t1*self.params['avir']**2
         return 1.0/np.sqrt(t2)*np.exp(-t1*self.params['sv']**2/t2)
+
+    def WB_kurt(self, tri, mu1, mu2, mu3):
+        # including AP effect!
+        k1 = tri[:,0].reshape((-1,1))
+        k2 = tri[:,1].reshape((-1,1))
+        k3 = tri[:,2].reshape((-1,1))
+        lsq = 0.5 * (self.params['f']/self.params['q_lo'])**2 \
+            * (np.outer(k1,mu1)**2 + (k2*mu2)**2 + (k3*mu3)**2)
+        t = 1.0 + lsq*self.params['avirB']**2
+        return 1.0/np.sqrt(t) * np.exp(-lsq*self.params['sv']**2/t)
 
     def build_Pell_spline(self, Pell, ell):
         r"""Build spline object for power spectrum multipoles.
@@ -1336,8 +1349,8 @@ class PTEmu:
 
         return Pell
 
-    def Pell(self, k, params, ell, de_model=None, obs_id=None, q_tr_lo=None,
-             W_damping=None, ell_for_recon=None):
+    def Pell(self, k, params, ell, de_model=None, binning=None, obs_id=None,
+             q_tr_lo=None, W_damping=None, ell_for_recon=None):
         r"""Compute the power spectrum multipoles.
 
         Main method to compute the galaxy power spectrum multipoles.
@@ -1364,6 +1377,8 @@ class PTEmu:
             chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
             the standard cosmological parameters, or be left undefined to use
             only :math:`\sigma_{12}`. Defaults to **None**.
+        binning: dict, optional
+
         obs_id: str, optional
             If not **None** the returned power spectrum will be convolved with
             a survey window function. In that case the string must be a valid
@@ -1399,6 +1414,33 @@ class PTEmu:
         if ell_for_recon is None:
             ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
 
+        ell = [ell] if not isinstance(ell, list) else ell
+
+        if isinstance(k, list):
+            if len(k) != len(ell):
+                raise ValueError("If 'k' is given as a list, it must match the"
+                                 " length of 'ell'.")
+            else:
+                k_list = k
+                k = np.unique(np.hstack(k_list))
+        else:
+            k_list = [k]*len(ell)
+            k = np.unique(np.hstack(k_list))
+
+        use_effective_modes = False
+        if binning is not None:
+            if self.grid is None:
+                self.grid = Grid(binning['kfun'], binning['dk'])
+            else:
+                self.grid.update(binning['kfun'], binning['dk'])
+            self.grid.find_discrete_modes(k, **binning)
+            if binning.get('effective') is not None:
+                use_effective_modes = binning['effective']
+                if use_effective_modes:
+                    self.grid.compute_effective_modes(k, **binning)
+
+        keff = self.grid.keff if use_effective_modes else k
+
         def P2d(q, mu):
             t = 0.0
             for m in ell_for_recon:
@@ -1412,46 +1454,72 @@ class PTEmu:
 
         if self.RSD_model == 'EFT':
 
-            def integrand(mu):
-                mu2 = mu**2
-                APfac = np.sqrt(mu2/self.params['q_lo']**2 +
-                                (1.0 - mu2)/self.params['q_tr']**2)
-                kp = k*APfac
-                mup = mu/self.params['q_lo']/APfac
-                P2d_tot = P2d(kp, mup) + P2d_stoch(kp, mup)
-                return np.outer(P2d_tot, eval_legendre(ell, mu))
+            if binning is None or use_effective_modes:
+                def integrand(mu):
+                    mu2 = mu**2
+                    APfac = np.sqrt(mu2/self.params['q_lo']**2 +
+                                    (1.0 - mu2)/self.params['q_tr']**2)
+                    kp = keff*APfac
+                    mup = mu/self.params['q_lo']/APfac
+                    P2d_tot = P2d(kp, mup) + P2d_stoch(kp, mup)
+                    return np.outer(P2d_tot, eval_legendre(ell, mu))
+            else:
+                def  shell_average():
+                    mu2 = self.grid.mu**2
+                    APfac = np.sqrt(mu2/self.params['q_lo']**2 +
+                                    (1.0 - mu2)/self.params['q_tr']**2)
+                    kp = self.grid.k*APfac
+                    mup = self.grid.mu/self.params['q_lo']/APfac
+                    legendre = np.array([eval_legendre(l, self.grid.mu)
+                                         for l in ell])
+                    prod = (P2d(kp, mup) + P2d_stoch(kp, mup)) * legendre
+                    avg = np.zeros([len(self.grid.nmodes)-1, len(ell)])
+                    for i in range(len(self.grid.nmodes)-1):
+                        n1 = self.grid.nmodes[i]
+                        n2 = self.grid.nmodes[i+1]
+                        avg[i] = np.average(prod[:,n1:n2], axis=1,
+                                            weights=self.grid.weights[n1:n2])
+                    return avg
 
         elif self.RSD_model == 'VDG_infty':
             if W_damping is None:
                 W_damping = self.W_kurt
 
-            def integrand(mu):
-                mu2 = mu**2
-                APfac = np.sqrt(mu2/self.params['q_lo']**2 +
-                                (1.0 - mu2)/self.params['q_tr']**2)
-                kp = k*APfac
-                mup = mu/self.params['q_lo']/APfac
-                P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
-                P2d_tot = P2d_damped + P2d_stoch(kp, mup)
-                return np.outer(P2d_tot, eval_legendre(ell, mu))
+            if binning is None or use_effective_modes:
+                def integrand(mu):
+                    mu2 = mu**2
+                    APfac = np.sqrt(mu2/self.params['q_lo']**2 +
+                                    (1.0 - mu2)/self.params['q_tr']**2)
+                    kp = keff*APfac
+                    mup = mu/self.params['q_lo']/APfac
+                    P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
+                    P2d_tot = P2d_damped + P2d_stoch(kp, mup)
+                    return np.outer(P2d_tot, eval_legendre(ell, mu))
+            else:
+                def  shell_average():
+                    mu2 = self.grid.mu**2
+                    APfac = np.sqrt(mu2/self.params['q_lo']**2 +
+                                    (1.0 - mu2)/self.params['q_tr']**2)
+                    kp = self.grid.k*APfac
+                    mup = self.grid.mu/self.params['q_lo']/APfac
+                    legendre = np.array([eval_legendre(l, self.grid.mu)
+                                         for l in ell])
+                    P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
+                    prod = (P2d_damped + P2d_stoch(kp, mup)) * legendre
+                    avg = np.zeros([len(self.grid.nmodes)-1, len(ell)])
+                    for i in range(len(self.grid.nmodes)-1):
+                        n1 = self.grid.nmodes[i]
+                        n2 = self.grid.nmodes[i+1]
+                        avg[i] = np.average(prod[:,n1:n2], axis=1,
+                                            weights=self.grid.weights[n1:n2])
+                    return avg
 
         else:
             raise ValueError('Unsupported RSD model.')
 
-        ell = [ell] if not isinstance(ell, list) else ell
-
-        if isinstance(k, list):
-            if len(k) != len(ell):
-                raise ValueError("If 'k' is given as a list, it must match the"
-                                 " length of 'ell'.")
-            else:
-                k_list = k
-                k = np.unique(np.hstack(k_list))
-        else:
-            k_list = [k]*len(ell)
-
         if obs_id is None:
-            params_updated = [params[p] != self.params[p] for p in params.keys()]
+            params_updated = [params[p] != self.params[p] for p in
+                              params.keys()]
             params_nonzero = [x for x in self.bias_params_list +
                               self.RSD_params_list if self.params[x] != 0]
 
@@ -1470,7 +1538,10 @@ class PTEmu:
                                   q_tr_lo=q_tr_lo)
             q3 = self.params['q_tr']**2 * self.params['q_lo']
 
-            Pell_model = quad_vec(integrand, 0.0, 1.0)[0]
+            if binning is None or use_effective_modes:
+                Pell_model = quad_vec(integrand, 0.0, 1.0)[0]
+            else:
+                Pell_model = shell_average()
             Pell_model *= (2.0*np.array(ell)+1.0) / q3
 
             Pell_dict = {}
@@ -1527,14 +1598,13 @@ class PTEmu:
                 print('Warning! Bins for mixing matrix and/or mixing matrix '
                       'itself not provided. Returning unconvolved power '
                       'spectrum.')
-                Pell_dict = self.Pell(k, params, ell, de_model, None,
+                Pell_dict = self.Pell(k, params, ell, de_model, binning, None,
                                       q_tr_lo, W_damping, ell_for_recon)
 
         return Pell_dict
 
     def Pell_fixed_cosmo_boost(self, k, params, ell, de_model=None,
-                               obs_id=None, q_tr_lo=None, W_damping=None,
-                               ell_for_recon=None):
+                               binning=None, obs_id=None, q_tr_lo=None, W_damping=None, ell_for_recon=None):
         r"""Compute the power spectrum multipoles (fast for fixed cosmology).
 
         Main method to compute the galaxy power spectrum multipoles.
@@ -1565,6 +1635,8 @@ class PTEmu:
             chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
             the standard cosmological parameters, or be left undefined to use
             only :math:`\sigma_{12}`. Defaults to **None**.
+        binning: dict, optional
+
         obs_id: str, optional
             If not **None** the returned power spectrum will be convolved with
             a survey window function. In that case the string must be a valid
@@ -1624,6 +1696,10 @@ class PTEmu:
             self.X_splines_up_to_date = {X: False for X in self.diagrams_all}
             self.X_obs_id = obs_id
 
+        if binning != self.X_binning:
+            self.X_splines_up_to_date = {X: False for X in self.diagrams_all}
+            self.X_binning = binning
+
         if (any(params[p] != self.params[p] for p in check_params) or
                 not all(self.X_splines_up_to_date.values())):
             self.PX_ell_list = {
@@ -1632,6 +1708,7 @@ class PTEmu:
                 for i, m in enumerate(ell)}
             for i, X in enumerate(self.diagrams_all):
                 PX_ell = self.PX_ell(k_list, params, ell, X, de_model=de_model,
+                                     binning=self.X_binning,
                                      obs_id=self.X_obs_id,
                                      q_tr_lo=q_tr_lo,
                                      W_damping=W_damping,
@@ -1801,8 +1878,8 @@ class PTEmu:
             P6X = f**6*self.P6[:, 27]*s12ratio
         return P6X
 
-    def PX_ell(self, k, params, ell, X, de_model=None, obs_id=None,
-               q_tr_lo=None, W_damping=None, ell_for_recon=None):
+    def PX_ell(self, k, params, ell, X, de_model=None, binning=None,
+               obs_id=None, q_tr_lo=None, W_damping=None, ell_for_recon=None):
         r"""Get the individual contribution to the power spectrum multipoles.
 
         Computes the individual contribution X to the galaxy power spectrum
@@ -1838,6 +1915,8 @@ class PTEmu:
             chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
             the standard cosmological parameters, or be left undefined to use
             only :math:`\sigma_{12}`. Defaults to **None**.
+        binning: dict, optional
+
         obs_id: str, optional
             If not **None** the returned power spectrum contribution will be
             convolved with a survey window function. In that case the string
@@ -1879,41 +1958,6 @@ class PTEmu:
         except Exception:
             pass
 
-        def P2d(q, mu):
-            t = 0.0
-            for m in ell_for_recon:
-                t += eval_legendre(m, mu) * self.PX_ell_spline[X][m](q)
-            return t
-
-        if self.RSD_model == 'EFT':
-
-            def integrand(mu):
-                mu2 = mu**2
-                APfac = np.sqrt(mu2/self.params['q_lo']**2 +
-                                (1.0 - mu2)/self.params['q_tr']**2)
-                kp = k*APfac
-                mup = mu/self.params['q_lo']/APfac
-                return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
-
-        elif self.RSD_model == 'VDG_infty':
-            if W_damping is None:
-                W_damping = self.W_kurt
-
-            if X in ['Pnoise_NP0', 'Pnoise_NP20', 'Pnoise_NP22']:
-                W_damping = lambda k,mu: 1.0
-
-            def integrand(mu):
-                mu2 = mu**2
-                APfac = np.sqrt(mu2/self.params['q_lo']**2 +
-                                (1.0 - mu2)/self.params['q_tr']**2)
-                kp = k*APfac
-                mup = mu/self.params['q_lo']/APfac
-                P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
-                return np.outer(P2d_damped, eval_legendre(ell, mu))
-
-        else:
-            raise ValueError('Unsupported RSD model.')
-
         ell = [ell] if not isinstance(ell, list) else ell
 
         if isinstance(k, list):
@@ -1925,6 +1969,100 @@ class PTEmu:
                 k = np.unique(np.hstack(k_list))
         else:
             k_list = [k]*len(ell)
+
+        use_effective_modes = False
+        if binning is not None:
+            if self.grid is None:
+                self.grid = Grid(binning['kfun'], binning['dk'])
+            else:
+                self.grid.update(binning['kfun'], binning['dk'])
+            if binning.get('do_rounding') is None:
+                self.grid.find_discrete_modes(k)
+                if binning.get('effective') is not None:
+                    use_effective_modes = binning['effective']
+                    if use_effective_modes:
+                        self.grid.compute_effective_modes(k)
+            else:
+                self.grid.find_discrete_modes(k, binning['do_rounding'],
+                                              binning['decimals'])
+                if binning.get('effective') is not None:
+                    use_effective_modes = binning['effective']
+                    if use_effective_modes:
+                        self.grid.compute_effective_modes(k,
+                            binning['do_rounding'], binning['decimals'])
+
+        keff = self.grid.keff if use_effective_modes else k
+
+        def P2d(q, mu):
+            t = 0.0
+            for m in ell_for_recon:
+                t += eval_legendre(m, mu) * self.PX_ell_spline[X][m](q)
+            return t
+
+        if self.RSD_model == 'EFT':
+
+            if binning is None or use_effective_modes:
+                def integrand(mu):
+                    mu2 = mu**2
+                    APfac = np.sqrt(mu2/self.params['q_lo']**2 +
+                                    (1.0 - mu2)/self.params['q_tr']**2)
+                    kp = keff*APfac
+                    mup = mu/self.params['q_lo']/APfac
+                    return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
+            else:
+                def  shell_average():
+                    mu2 = self.grid.mu**2
+                    APfac = np.sqrt(mu2/self.params['q_lo']**2 +
+                                    (1.0 - mu2)/self.params['q_tr']**2)
+                    kp = self.grid.k*APfac
+                    mup = self.grid.mu/self.params['q_lo']/APfac
+                    legendre = np.array([eval_legendre(l, self.grid.mu)
+                                         for l in ell])
+                    prod = P2d(kp, mup) * legendre
+                    avg = np.zeros([len(self.grid.nmodes)-1, len(ell)])
+                    for i in range(len(self.grid.nmodes)-1):
+                        n1 = self.grid.nmodes[i]
+                        n2 = self.grid.nmodes[i+1]
+                        avg[i] = np.average(prod[:,n1:n2], axis=1,
+                                            weights=self.grid.weights[n1:n2])
+                    return avg
+
+        elif self.RSD_model == 'VDG_infty':
+            if W_damping is None:
+                W_damping = self.W_kurt
+
+            if X in ['Pnoise_NP0', 'Pnoise_NP20', 'Pnoise_NP22']:
+                W_damping = lambda k,mu: 1.0
+
+            if binning is None or use_effective_modes:
+                def integrand(mu):
+                    mu2 = mu**2
+                    APfac = np.sqrt(mu2/self.params['q_lo']**2 +
+                                    (1.0 - mu2)/self.params['q_tr']**2)
+                    kp = keff*APfac
+                    mup = mu/self.params['q_lo']/APfac
+                    P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
+                    return np.outer(P2d_damped, eval_legendre(ell, mu))
+            else:
+                def  shell_average():
+                    mu2 = self.grid.mu**2
+                    APfac = np.sqrt(mu2/self.params['q_lo']**2 +
+                                    (1.0 - mu2)/self.params['q_tr']**2)
+                    kp = self.grid.k*APfac
+                    mup = self.grid.mu/self.params['q_lo']/APfac
+                    legendre = np.array([eval_legendre(l, self.grid.mu)
+                                         for l in ell])
+                    prod = P2d(kp, mup) * W_damping(kp, mup) * legendre
+                    avg = np.zeros([len(self.grid.nmodes)-1, len(ell)])
+                    for i in range(len(self.grid.nmodes)-1):
+                        n1 = self.grid.nmodes[i]
+                        n2 = self.grid.nmodes[i+1]
+                        avg[i] = np.average(prod[:,n1:n2], axis=1,
+                                            weights=self.grid.weights[n1:n2])
+                    return avg
+
+        else:
+            raise ValueError('Unsupported RSD model.')
 
         if obs_id is None:
             PX_ell = np.zeros([self.nk, len(ell_for_recon)])
@@ -1977,7 +2115,10 @@ class PTEmu:
                                   q_tr_lo=q_tr_lo)
             q3 = self.params['q_tr']**2 * self.params['q_lo']
 
-            PX_ell_model = quad_vec(integrand, 0.0, 1.0)[0]
+            if binning is None or use_effective_modes:
+                PX_ell_model = quad_vec(integrand, 0.0, 1.0)[0]
+            else:
+                PX_ell_model = shell_average()
             PX_ell_model *= (2.0*np.array(ell)+1.0) / q3
 
             PX_ell_dict = {}
@@ -2034,13 +2175,14 @@ class PTEmu:
                 print('Warning! Bins for mixing matrix and/or mixing matrix '
                       'itself not provided. Returning unconvolved power '
                       'spectrum.')
-                PX_ell_dict = self.PX_ell(k, params, ell, X, de_model, None,
-                                          q_tr_lo, W_damping, ell_for_recon)
+                PX_ell_dict = self.PX_ell(k, params, ell, X, de_model, binning,
+                                          None, q_tr_lo, W_damping,
+                                          ell_for_recon)
 
         return PX_ell_dict
 
-    def Bell(self, tri, params, ell, de_model=None, kfun=None,
-             q_tr_lo=None, ell_for_recon=None):
+    def Bell(self, tri, params, ell, de_model=None, kfun=None, binning=None,
+             q_tr_lo=None, W_damping=None, ell_for_recon=None, gl_deg=8):
         ell = [ell] if not isinstance(ell, list) else ell
         if tri.ndim == 1:
             tri = tri[None,:]
@@ -2050,29 +2192,43 @@ class PTEmu:
             print('Warning. Triangle configurations sorted such that '
                   'k1 >= k2 >= k3.')
 
+        if self.RSD_model == 'VDG_infty':
+            if W_damping is None:
+                W_damping = self.WB_kurt
+        else:
+            W_damping = None
+
         if not np.all(self.Bisp.tri == tri) or \
                 list(self.Bisp.ntri_ell.keys()) != ell or \
                 not all([list(self.Bisp.ntri_ell.values())[0] == x for x in
                     list(self.Bisp.ntri_ell.values())]) or \
-                kfun != self.Bisp.kfun:
+                kfun != self.Bisp.kfun or binning != self.Bisp_binning:
             if kfun is None:
-                kfun = tri[0,0]
-                print('kfun not specified. Using kfun = {}'.format(kfun))
-            self.Bisp.set_tri(tri, ell, kfun)
+                if binning is not None and binning.get('kfun') is not None:
+                    kfun = binning['kfun']
+                else:
+                    kfun = tri[0,0]
+                    print('kfun not specified. Using kfun = {}'.format(kfun))
+            self.Bisp_binning = binning
+            self.Bisp.set_tri(tri, ell, kfun, gl_deg, binning)
 
-        Pdw = self.Pdw(self.Bisp.tri_unique, params, de_model=de_model,
+        if binning:
+            tri_unique = self.Bisp.tri_eff_unique
+        else:
+            tri_unique = self.Bisp.tri_unique
+
+        Pdw = self.Pdw(tri_unique, params, de_model=de_model,
                        ell_for_recon=ell_for_recon)
 
         if self.real_space:
             neff = None
         else:
-            neff = self.Bisp.tri_unique * self.Pdw_spline.derivative(n=1)(
-                       self.Bisp.tri_unique) / Pdw
+            neff = tri_unique*self.Pdw_spline.derivative(n=1)(tri_unique)/Pdw
 
         self.update_AP_params(params, de_model=de_model,
                               q_tr_lo=q_tr_lo)
 
-        Bell_dict = self.Bisp.Bell(Pdw, neff, self.params, ell)
+        Bell_dict = self.Bisp.Bell(Pdw, neff, self.params, ell, W_damping)
         return Bell_dict
 
     def Avg_covariance(self, l1, l2, k, Pl, sigma_d, avg_los=3):
@@ -2488,9 +2644,9 @@ class PTEmu:
 
         return cov
 
-    def chi2(self, obs_id, params, kmax, de_model=None, convolve_window=False,
-             q_tr_lo=None, W_damping=None, chi2_decomposition=False,
-             ell_for_recon=None):
+    def chi2(self, obs_id, params, kmax, de_model=None, binning=None,
+             convolve_window=False, q_tr_lo=None, W_damping=None,
+             chi2_decomposition=False, ell_for_recon=None):
         r"""Compute the :math:`\chi^2 for the given configurations`.
 
         Generates the selected power spectrum multipoles for the specified set
@@ -2515,6 +2671,10 @@ class PTEmu:
             chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
             the standard cosmological parameters, or be left undefined to use
             only :math:`\sigma_{12}`. Defaults to **None**.
+        binning: dict, optional
+
+        convolve_window: bool, optional
+
         q_tr_lo: list or numpy.ndarray, optional
             List containing the user-provided AP parameters, in the form
             :math:`(q_\perp, q_\parallel)`. If provided, prevents
@@ -2566,7 +2726,10 @@ class PTEmu:
             ell[oi] = [2*m for m in range(self.data[oi].n_ell)]
 
             if self.data[oi].stat == 'bispectrum':
-                ntri = list(self.Bisp.ntri_ell.values())
+                if self.Bisp.tri is not None:
+                    ntri = list(self.Bisp.ntri_ell.values())
+                else:
+                    ntri = None
                 if kmax_updated or self.Bisp.tri is None or \
                         ntri != self.data[oi].nbins or \
                         self.Bisp.kfun != self.data[oi].kfun:
@@ -2574,20 +2737,32 @@ class PTEmu:
                                       self.data[oi].kfun)
                 chi2_decomposition = False # currently only implemented for Pk
 
+        if W_damping is None:
+            W_damping = {}
+            for oi in obs_id:
+                W_damping[oi] = None
+
         if not chi2_decomposition:
             chi2 = 0.0
             for oi in obs_id:
                 if self.data[oi].stat == 'powerspectrum':
+                    if self.RSD_model == 'VDG_infty':
+                        if W_damping[oi] is None:
+                            W_damping[oi] = self.W_kurt
                     convolve_oi = oi if convolve_window else None
                     Pell = self.Pell(self.data[oi].bins_kmax, params, ell[oi],
-                                     de_model=de_model, obs_id=convolve_oi,
-                                     q_tr_lo=q_tr_lo, W_damping=W_damping,
+                                     de_model=de_model, binning=binning,
+                                     obs_id=convolve_oi, q_tr_lo=q_tr_lo,
+                                     W_damping=W_damping[oi],
                                      ell_for_recon=ell_for_recon)
                     Pell_list = np.hstack([Pell[m] for m in Pell.keys()])
 
                     diff = Pell_list - self.data[oi].signal_kmax
                     chi2 += diff @ self.data[oi].inverse_cov_kmax @ diff.T
                 elif self.data[oi].stat == 'bispectrum':
+                    if self.RSD_model == 'VDG_infty':
+                        if W_damping[oi] is None:
+                            W_damping[oi] = self.WB_kurt
                     Pdw = self.Pdw(self.Bisp.tri_unique,
                                    params, de_model=de_model,
                                    ell_for_recon=ell_for_recon)
@@ -2597,7 +2772,8 @@ class PTEmu:
                         neff = self.Bisp.tri_unique * \
                                self.Pdw_spline.derivative(n=1)(
                                    self.Bisp.tri_unique) / Pdw
-                    Bell = self.Bisp.Bell(Pdw, neff, self.params, ell[oi])
+                    Bell = self.Bisp.Bell(Pdw, neff, self.params, ell[oi],
+                                          W_damping[oi])
 
                     if self.data[oi].cov_is_block_diagonal:
                         diff = {}
@@ -2637,6 +2813,10 @@ class PTEmu:
                     if 'Ok' not in params:
                         check_params.remove('Ok')
 
+                if binning != self.X_binning:
+                    self.chi2_decomposition = None
+                    self.X_binning = binning
+
                 if (any(params[p] != self.params[p] for p in check_params) or
                         self.chi2_decomposition is None):
                     convolve_oi = oi if convolve_window else None
@@ -2645,6 +2825,7 @@ class PTEmu:
                     for i, X in enumerate(self.diagrams_all):
                         PX_ell = self.PX_ell(self.data[oi].bins_kmax,
                                              params, ell[oi], X,
+                                             binning=binning,
                                              obs_id=convolve_oi,
                                              de_model=de_model,
                                              q_tr_lo=q_tr_lo,
