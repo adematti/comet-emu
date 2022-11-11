@@ -915,7 +915,7 @@ class PTEmu:
         lsq = 0.5 * (self.params['f']/self.params['q_lo'])**2 \
             * (np.outer(k1,mu1)**2 + (k2*mu2)**2 + (k3*mu3)**2)
         t = 1.0 + lsq*self.params['avirB']**2
-        return 1.0/np.sqrt(t) * np.exp(-lsq*self.params['sv']**2/t)
+        return 1.0/np.sqrt(t**3) * np.exp(-lsq*self.params['sv']**2/t)
 
     def build_Pell_spline(self, Pell, ell):
         r"""Build spline object for power spectrum multipoles.
