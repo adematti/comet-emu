@@ -226,6 +226,9 @@ class PTEmu:
             self.RSD_params_list += ['avir','avirB']
             self.params['avir'] = 0.0
             self.params['avirB'] = 0.0
+        else:
+            self.RSD_params_list += ['cnloB']
+            self.params['cnloB'] = 0.0
 
         self.training['SHAPE'].assign_samples(hdul['PARAMS_SHAPE'])
         self.training['SHAPE'].assign_table(hdul['MODEL_SHAPE'],

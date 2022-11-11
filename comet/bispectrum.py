@@ -31,24 +31,22 @@ class Bispectrum:
         if self.real_space:
             self.kernel_names = ['F2', 'K']
         else:
-            self.kernel_names = ['F2', 'G2', 'K', 'k31', 'k32',
-                                 'dF2_dlnk1', 'dF2_dlnk2', 'dF2_dlnk3',
-                                 'dG2_dlnk1', 'dG2_dlnk2', 'dG2_dlnk3',
-                                 'dK_dlnk1', 'dK_dlnk2', 'dK_dlnk3',
-                                 'dk31_dlnk1', 'dk31_dlnk2', 'dk31_dlnk3',
-                                 'dk32_dlnk1', 'dk32_dlnk2', 'dk32_dlnk3']
-            self.I_tuples_ell0 = [(0,0,0), (2,0,0), (1,1,0), (4,0,0), (3,1,0),
-                                  (2,2,0), (2,1,1), (6,0,0), (5,1,0), (4,2,0),
-                                  (4,1,1), (3,3,0), (3,2,1), (2,2,2), (6,1,1),
-                                  (5,2,1), (4,3,1), (4,2,2), (3,3,2), (6,3,1),
-                                  (5,4,1), (4,3,3)]
-            self.I_tuples_ell2 = [(8,0,0), (7,1,0), (6,2,0), (5,3,0), (4,4,0),
-                                  (8,1,1), (7,2,1), (6,2,2), (5,3,2), (4,4,2),
-                                  (8,3,1), (7,4,1), (6,5,1), (6,3,3), (5,4,3)]
-            self.I_tuples_ell4 = [(6,1,1), (10,0,0), (9,1,0), (8,2,0), (8,1,1),
-                                  (7,3,0), (6,4,0), (10,1,1), (9,2,1), (8,2,2),
-                                  (7,3,2), (6,4,2), (10,3,1), (9,4,1), (8,5,1),
-                                  (8,3,3), (7,6,1), (7,4,3)]
+            self.kernel_names = ['F2', 'G2', 'K', 'k31', 'k32']
+            if self.RSD_model == 'EFT':
+                kernel_names_ctr = []
+                for kk in self.kernel_names:
+                    for i in range(3):
+                        kk_ctr = 'k{}sq{}'.format(i+1,kk)
+                        kernel_names_ctr.append(kk_ctr)
+                kernel_names_ctr += ['k1sqb2', 'k2sqb2', 'k3sqb2']
+                self.kernel_names += kernel_names_ctr
+            kernel_names_deriv = []
+            for kk in self.kernel_names:
+                for i in range(3):
+                    kk_deriv = 'd{}_dlnk{}'.format(kk, i+1)
+                    kernel_names_deriv.append(kk_deriv)
+            self.kernel_names += kernel_names_deriv
+
             self.kernel_mu_tuples = {}
             self.kernel_mu_tuples['F2'] = [(0,0,0), (2,0,0), (0,2,0), (2,2,0)]
             self.kernel_mu_tuples['G2'] = [(0,0,2), (2,0,2), (0,2,2), (2,2,2)]
@@ -355,6 +353,27 @@ class Bispectrum:
         kernels['dk32_dlnk1'] = 0.0
         kernels['dk32_dlnk2'] = -kernels['k32']
         kernels['dk32_dlnk3'] = kernels['k32']
+
+        if self.RSD_model == 'EFT':
+            k123 = np.vstack((k1,k2,k3))
+            for kk in ['F2','G2','K','k31','k32']:
+                for i in range(3):
+                    kernels['k{}sq{}'.format(i+1,kk)] = k123[i]**2*kernels[kk]
+                    for j in range(3):
+                        kernels['dk{}sq{}_dlnk{}'.format(i+1,kk,j+1)] = \
+                            k123[i]**2*kernels['d{}_dlnk{}'.format(kk,j+1)]
+                        if i == j:
+                            kernels['dk{}sq{}_dlnk{}'.format(i+1,kk,j+1)] += \
+                                2*k123[i]**2*kernels[kk]
+            for i in range(3):
+                kernels['k{}sqb2'.format(i+1)] = k123[i]**2
+                for j in range(3):
+                    if i == j:
+                        kernels['dk{}sqb2_dlnk{}'.format(i+1,j+1)] = \
+                            2*k123[i]**2
+                    else:
+                        kernels['dk{}sqb2_dlnk{}'.format(i+1,j+1)] = 0.0
+
         return kernels
 
 
@@ -652,6 +671,18 @@ class Bispectrum:
                 * (1 + n1)*(3 + n1)*(5 + n1) + (k1**2 + k2**2 - k3**2)**8 \
                 * (1 + n1)*(3 + n1)*(5 + n1)*(7 + n1))/(256.*k1**8*k2**8 \
                 * (1 + n1)*(3 + n1)*(5 + n1)*(7 + n1)*(9 + n1))
+        elif n2 == 7 and n3 == 1:
+            I = (-210*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 \
+                + k3**2))**4 + 4*(k1**2 + k2**2 - k3**2)*(1 + n1)*(105*(k1**2 \
+                + 2*k2**2 - 2*k3**2)*(k1**4 + (k2**2 - k3**2)**2 -2*k1**2 \
+                * (k2**2 + k3**2))**3 - 105*(k2**2 - k3**2)*(k1**2 + k2**2 \
+                - k3**2)**2*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 \
+                + k3**2))**2*(3 + n1) - 7*(k1 - k2 - k3)*(k1 + k2 - k3)*(k1 \
+                - k2 + k3)*(k1 + k2 + k3)*(k1**2 + k2**2 - k3**2)**4*(k1**2 \
+                - 2*k2**2 + 2*k3**2)*(3 + n1)*(5 + n1) + ((k1**2 + k2**2 \
+                - k3**2)**6*(k1**2 - k2**2 + k3**2)*(3 + n1)*(5 + n1) \
+                * (7 + n1))/2.))/(512.*k1**8*k2**7*k3*(1 + n1)*(3 + n1) \
+                * (5 + n1)*(7 + n1)*(9 + n1))
         elif n2 == 6 and n3 == 2:
             I = (210*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 \
                 + k3**2))**4  - 2*(1 + n1)*(60*(k1**4 + 7*k1**2*(k2**2 \
@@ -690,6 +721,20 @@ class Bispectrum:
                 + ((k1**4 - (k2**2 - k3**2)**2)**4*(3 + n1)*(5 + n1) \
                 * (7 + n1))/4.))/(512.*k1**8*k2**4*k3**4*(1 + n1)*(3 + n1) \
                 * (5 + n1)*(7 + n1)*(9 + n1))
+        elif n2 == 6 and n3 == 3:
+            I = (315*(k1**2 + 3*k2**2 - 3*k3**2)*(k1**4 + (k2**2 - k3**2)**2 \
+                - 2*k1**2*(k2**2 + k3**2))**4*n1 + n1*(2 + n1)*(60*(2*k1**6 \
+                - 21*k1**2*(k2**2 - k3**2)**2 - 21*(k2**2 - k3**2)**3)*(k1**4 \
+                + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**3 + 18 \
+                * (k1**2 + k2**2 - k3**2)**2*(k1**6 - 7*k1**4*(k2**2 - k3**2) \
+                - 7*k1**2*(k2**2 - k3**2)**2 + 21*(k2**2 - k3**2)**3)*(k1**4 \
+                + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**2*(4 + n1) \
+                - (k1**2 + k2**2 - k3**2)**4*(k1**2 - k2**2 + k3**2)*(4 + n1) \
+                * (6 + n1)*(24*k1**6*(k2 - k3)*(k2 + k3) + 48*k1**2*(2*k2**6 \
+                - 3*k2**4*k3**2 + k3**6) + (k2**2 - k3**2)**4*(-28 + n1) \
+                + k1**8*(8 + n1) - 2*k1**4*(k2 - k3)*(k2 + k3)*(-(k3**2*(2 \
+                + n1)) + k2**2*(50 + n1)))))/(512.*k1**9*k2**6*k3**3*n1*(2 \
+                + n1)*(4 + n1)*(6 + n1)*(8 + n1)*(10 + n1))
         elif n2 == 5 and n3 == 4:
             I = -0.00390625*((105*(k1**2 + 9*k2**2 - 9*k3**2)*(k1**4 + (k2**2 \
                 - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**4*n1)/2. + 30*(k1**6 \
@@ -740,6 +785,21 @@ class Bispectrum:
                 * (7 + n1) + (k1**4 - (k2**2 - k3**2)**2)**4*(7 + n1) \
                 * (9 + n1)))/(k1**10*k2**6*k3**4*(1 + n1)*(3 + n1)*(5 + n1) \
                 * (7 + n1)*(9 + n1)*(11 + n1))
+        elif n2 == 5 and n3 == 5:
+            I = (945*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**5 \
+                + 525*(k1**4 - 9*(k2**2 - k3**2)**2)*(k1**4 + (k2**2 \
+                - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**4*(1 + n1) + 150 \
+                * (k1**8 - 14*k1**4*(k2**2 - k3**2)**2 + 21*(k2**2 \
+                - k3**2)**4)*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 \
+                + k3**2))**3*(1 + n1)*(3 + n1) + (k1**4 - (k2**2 - k3**2)**2) \
+                * (1 + n1)*(3 + n1)*(5 + n1)*(30*(k1**8 - 14*k1**4*(k2**2 \
+                - k3**2)**2 + 21*(k2**2 - k3**2)**4)*(k1**4 + (k2**2 \
+                - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**2 + 5*(k1 - k2 - k3) \
+                * (k1 + k2 - k3)*(k1 - k2 + k3)*(k1 + k2 + k3)*(k1**2 \
+                - 3*k2**2 + 3*k3**2)*(k1**2 + 3*(k2 - k3)*(k2 + k3))*(k1**4 \
+                - (k2**2 - k3**2)**2)**2*(7 + n1) + (k1**4 - (k2**2 \
+                - k3**2)**2)**4*(7 + n1)*(9 + n1)))/(1024.*k1**10*k2**5*k3**5 \
+                * (1 + n1)*(3 + n1)*(5 + n1)*(7 + n1)*(9 + n1)*(11 + n1))
         elif n2 == 8 and n3 == 4:
             I = (20790*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 \
                 + k3**2))**6 - 2*(1 + n1)*(1890*(k1**4 + 22*k1**2*(k2**2 \
@@ -900,6 +960,14 @@ class Bispectrum:
                     n123_new[i] += 2
                     n123_tuples = np.vstack((n123_tuples, n123_new))
             n123_tuples = np.unique(n123_tuples, axis=0)
+            if self.RSD_model == 'EFT':
+                # add tuples for bispectrum cnlo counterterm
+                for n123 in n123_tuples:
+                    for i in range(3):
+                        n123_new = np.copy(n123)
+                        n123_new[i] += 2
+                        n123_tuples = np.vstack((n123_tuples, n123_new))
+                n123_tuples = np.unique(n123_tuples, axis=0)
             for n123 in n123_tuples:
                 self.I[kk][tuple(n123)] = {}
                 for ell in [0,2,4]:
@@ -1209,13 +1277,27 @@ class Bispectrum:
         self.tri_eff_unique *= self.kfun
 
     def join_kernel_mu123_integral(self, K, n123_tuples, ell, neff, coeff,
-                                   q_tr, q_lo):
+                                   q_tr, q_lo, cnloB=None):
         K_neff1 = neff[self.tri_to_id]*self.kernels[K]
         K_neff2 = neff[self.tri_to_id[:,[1,2,0]]]*self.kernels[K]
-        K_deriv_sum = np.sum([self.kernels['d{}_dlnk{}'.format(K,i+1)]
-                              for i in range(3)])
-        DeltaB_K = 0.0
+        K_deriv_sum = 0.0
+        for i in range(3):
+            K_deriv_sum += self.kernels['d{}_dlnk{}'.format(K,i+1)]
 
+        if self.RSD_model == 'EFT':
+            Kctr_neff1 = np.zeros((3,self.tri.shape[0],3))
+            Kctr_neff2 = np.zeros((3,self.tri.shape[0],3))
+            Kctr_deriv_sum = np.zeros((3,self.tri.shape[0],3))
+            for i in range(3):
+                Kctr = 'k{}sq{}'.format(i+1,K)
+                Kctr_neff1[i] = neff[self.tri_to_id]*self.kernels[Kctr]
+                Kctr_neff2[i] = neff[self.tri_to_id[:,[1,2,0]]] \
+                                * self.kernels[Kctr]
+                for j in range(3):
+                    Kctr_deriv_sum[i] += \
+                        self.kernels['d{}_dlnk{}'.format(Kctr,j+1)]
+
+        DeltaB_K = 0.0
         for i, n123 in enumerate(n123_tuples):
             t1 = self.I[K][n123][ell] * ((1.0 + (q_tr-q_lo)*sum(n123)) * \
                                          self.kernels[K] \
@@ -1230,7 +1312,33 @@ class Bispectrum:
             t4 = self.I[K][n123[0],n123[1],n123[2]+2][ell] * (q_tr - q_lo) \
                  * (self.kernels['d{}_dlnk3'.format(K)] \
                     - n123[2]*self.kernels[K])
+
             DeltaB_K += coeff[i] * (t1 + t2 + t3 + t4)
+
+            if self.RSD_model == 'EFT':
+                for j in range(3):
+                    Kctr = 'k{}sq{}'.format(j+1,K)
+                    n123_j = np.copy(n123)
+                    n123_j[j] += 2
+                    tctr1 = self.I[K][tuple(n123_j)][ell] \
+                        * ((1.0 + (q_tr-q_lo)*sum(n123_j))*self.kernels[Kctr] \
+                           + (1.0-q_tr) * Kctr_deriv_sum[j] \
+                           + (1.0-q_tr) * (Kctr_neff1[j] + Kctr_neff2[j]))
+                    tctr2 = self.I[K][n123_j[0]+2,n123_j[1],n123_j[2]][ell] \
+                        * (q_tr - q_lo) \
+                        * (self.kernels['d{}_dlnk1'.format(Kctr)] \
+                           + Kctr_neff1[j] - n123_j[0]*self.kernels[Kctr])
+                    tctr3 = self.I[K][n123_j[0],n123_j[1]+2,n123_j[2]][ell] \
+                        * (q_tr - q_lo) \
+                        * (self.kernels['d{}_dlnk2'.format(Kctr)] \
+                           + Kctr_neff2[j] - n123_j[1]*self.kernels[Kctr])
+                    tctr4 = self.I[K][n123_j[0],n123_j[1],n123_j[2]+2][ell] \
+                        * (q_tr - q_lo) \
+                        * (self.kernels['d{}_dlnk3'.format(Kctr)] \
+                           - n123_j[2]*self.kernels[Kctr])
+
+                    DeltaB_K += coeff[i] * cnloB * (tctr1 + tctr2 + tctr3 \
+                                                    + tctr4)
 
         return DeltaB_K
 
@@ -1317,6 +1425,8 @@ class Bispectrum:
             params_G2 = 2*params['f'] * np.array([b1sq, b1f, b1f, f2])
             params_mixed = -b1f * np.array([b1sq, b1f, 2*b1f, f2, 2*f2, f4/b1f])
             params_stoch = params['MB0']/self.nbar * np.array([b1sq, b1f])
+            cnloB = params['cnloB']*params['f']**2 if self.RSD_model == 'EFT' \
+                    else None
 
             if self.RSD_model == 'VDG_infty':
                 if not self.discrete_average:
@@ -1357,27 +1467,27 @@ class Bispectrum:
                 else:
                     kernel_F2 = self.join_kernel_mu123_integral(
                         'F2', self.kernel_mu_tuples['F2'], l, neff, params_F2,
-                        params['q_tr'], params['q_lo']
+                        params['q_tr'], params['q_lo'], cnloB
                     )
                     kernel_b2 = self.join_kernel_mu123_integral(
                         'b2', self.kernel_mu_tuples['F2'], l, neff, params_b2,
-                        params['q_tr'], params['q_lo']
+                        params['q_tr'], params['q_lo'], cnloB
                     )
                     kernel_K = self.join_kernel_mu123_integral(
                         'K', self.kernel_mu_tuples['F2'], l, neff, params_K,
-                        params['q_tr'], params['q_lo']
+                        params['q_tr'], params['q_lo'], cnloB
                     )
                     kernel_G2 = self.join_kernel_mu123_integral(
                         'G2', self.kernel_mu_tuples['G2'], l, neff, params_G2,
-                        params['q_tr'], params['q_lo']
+                        params['q_tr'], params['q_lo'], cnloB
                     )
                     kernel_k31 = self.join_kernel_mu123_integral(
                         'k31', self.kernel_mu_tuples['k31'], l, neff,
-                        params_mixed, params['q_tr'], params['q_lo']
+                        params_mixed, params['q_tr'], params['q_lo'], cnloB
                     )
                     kernel_k32 = self.join_kernel_mu123_integral(
                         'k32', self.kernel_mu_tuples['k32'], l, neff,
-                        params_mixed, params['q_tr'], params['q_lo']
+                        params_mixed, params['q_tr'], params['q_lo'], cnloB
                     )
                     kernel_stoch[l] = self.join_stoch_kernel_mu123_integral(
                         [(0,0,0),(2,0,0)], l, neff, params_stoch,
