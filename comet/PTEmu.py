@@ -1695,6 +1695,10 @@ class PTEmu:
             if 'Ok' not in params:
                 check_params.remove('Ok')
 
+        for p in self.RSD_params_list:
+            if p not in params:
+                check_params.remove(p)
+
         if obs_id != self.X_obs_id:
             self.X_splines_up_to_date = {X: False for X in self.diagrams_all}
             self.X_obs_id = obs_id
