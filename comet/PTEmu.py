@@ -2820,6 +2820,10 @@ class PTEmu:
                     if 'Ok' not in params:
                         check_params.remove('Ok')
 
+                for p in self.RSD_params_list:
+                    if p not in params:
+                        check_params.remove(p)
+
                 if binning != self.X_binning:
                     self.chi2_decomposition = None
                     self.X_binning = binning
