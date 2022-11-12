@@ -21,7 +21,7 @@ Let’s first import ``comet`` as well as other required libraries:
    import Numpy as np
    import matplotlib.pyplot as plt
 
-At initialisation we only need to specify the perturbation theory model that we want to use: valid specifiers are currently either ``"EFT"`` (effective field theory model) or ``"RS"`` (real-space model); for an overview of the models implemented in COMET, see here. Moreover, we can configure COMET either in :math:`\mathrm{Mpc}` units (\ ``use_Mpc = True``\ , which is the default option) or in :math:`h^{-1}\mathrm{Mpc}` units (\ ``use_Mpc = False``\ ). All quantities that are not dimensionless are then returned or assumed to be given in the respective unit system. Let’s define an emulator object for the EFT model using the standard :math:`h^{-1}\mathrm{Mpc}` units:
+At initialisation we only need to specify the perturbation theory model that we want to use: valid specifiers are currently: either ``"EFT"`` (effective field theory model) or ``"RS"`` (real-space model); for an overview of the models implemented in COMET, see :ref:`models`. Moreover, we can configure COMET either in :math:`\mathrm{Mpc}` units (\ ``use_Mpc = True``\ , which is the default option) or in :math:`h^{-1}\mathrm{Mpc}` units (\ ``use_Mpc = False``\ ). All quantities that are not dimensionless are then returned or assumed to be given in the respective unit system. Let’s define an emulator object for the EFT model using the standard :math:`h^{-1}\mathrm{Mpc}` units:
 
 .. code-block:: python
 
@@ -393,6 +393,57 @@ Let's change back to the default for the remainder of the tutorial:
 
    EFT.change_bias_basis("EggScoSmi")
 
+Accounting for discreteness effects
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Power spectrum multipoles are estimated in Fourier space from discrete grids of wave vectors, which means that a given multipole at scale :math:`k` is an average over the discrete set of wave vectors :math:`\mathbf{q}` whose magnitude falls into the spherical shell defined by :math:`k - \Delta k/2 \leq |\mathbf{q}| \leq k + \Delta k/2`. This leads to differences from the theory predictions, which (per default) assume continuous wave vectors and infinitesimally thin shells (:math:`\Delta k \to 0`). However, the discreteness and finite bin width effects can be accounted for by averaging the anisotropic theory power spectrum over the same set of modes as those that are averaged over when performing the measurements.
+
+In COMET this can be done by specifying a binning dictionary, when calling ``Pell`` or ``Pell_fixed_cosmo_boost``. In order to compute the set of discrete modes, it is necessary to know the size (i.e., the fundamental frequency) of the Fourier grid used for the measurements, as well as the bin width. These can be specified via the keys ``'kfun'`` and ``'dk'`` in the binning dictionary. For example:
+
+.. code-block:: python
+
+   binning = {'kfun':0.005, 'dk':0.005}
+
+   k = 0.005 + np.arange(80)*0.005
+   Pell_discrete = EFT.Pell(k, params, [0,2,4], 'lambda', binning=binning)
+
+.. note::
+
+   When calling ``Pell`` with the binning dictionary, the wavemodes specified via the argument ``k`` are assumed to be the bin centres.
+
+.. hint::
+
+   Calling ``Pell`` for the first time with the binning dictionary takes a while longer as COMET has to find the set of discrete modes first. Subsequent calls (provided that the binning options or the maximum bin centre have not been changed) are much faster.
+
+A common approximation to account for the finite bin width is to evaluate the power spectrum multipoles at the so-called effective wave modes, which are weighted averages over the discrete modes in a given bin. If one wants to evaluate the power spectrum multipoles at those effective modes, one can specify the additional key ``'effective':True`` (``False`` by default) in the binning dictionary; the wave modes specified via ``k`` are still supposed to correspond to the bin centres also in this case.
+
+.. code-block:: python
+
+   Pell_discrete_eff = EFT.Pell(k, params, [0,2,4], 'lambda',
+                                binning={'kfun':0.005, 'dk':0.005, 'effective':True})
+
+Let's compare the two sets of predictions:
+
+.. code-block:: python
+
+   f = plt.figure(figsize=(10,5))
+   ax = f.add_subplot(111)
+
+   ax.plot(k, k*Pell_discrete['ell0'], 'o', c='C0', mfc='none', ms=3.5, label='discrete')
+   ax.plot(k, k*Pell_discrete['ell2'], 'o', c='C1', mfc='none', ms=3.5)
+   ax.plot(k, k*Pell_discrete['ell4'], 'o', c='C2', mfc='none', ms=3.5)
+
+   ax.plot(k, k*Pell_discrete_eff['ell0'], c='C0', label='effective')
+   ax.plot(k, k*Pell_discrete_eff['ell2'], c='C1')
+   ax.plot(k, k*Pell_discrete_eff['ell4'], c='C2')
+
+   ax.legend()
+   ax.set_xlabel('$k$ [$h/\mathrm{Mpc}$]',fontsize=15)
+   ax.set_ylabel('$k\,P_{\ell}(k)$ [$(h/\mathrm{Mpc})^2$]',fontsize=15)
+
+.. image:: images/fig_discreteness_effect.png
+
+
 Beyond :math:`P_{\ell}` predictions
 -----------------------------
 
@@ -468,7 +519,7 @@ The ``Bell`` function has the same arguments and functionality as the analogous 
     axs[-1].set_xlabel('Triangle index - $k$ [h/Mpc]',fontsize=15)
     plt.show()
 
-.. image:: images/fig09.png
+.. image:: images/fig_bispectrum.png
 
 
 
