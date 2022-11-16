@@ -72,16 +72,16 @@ class PTEmu:
 
         if self.bias_basis == 'EggScoSmi':
             self.bias_params_list = ['b1', 'b2', 'g2', 'g21', 'c0', 'c2', 'c4',
-                                     'cnlo', 'NP0', 'NP20', 'NP22', 'NB0',
-                                     'MB0']
+                                     'cnlo', 'cnloB', 'NP0', 'NP20', 'NP22',
+                                     'NB0', 'MB0']
         elif self.bias_basis == 'AssBauGre':
             self.bias_params_list = ['b1', 'b2', 'bG2', 'bGam3', 'c0', 'c2',
-                                     'c4', 'cnlo', 'NP0', 'NP20', 'NP22',
-                                     'NB0', 'MB0']
+                                     'c4', 'cnlo', 'cnloB', 'NP0', 'NP20',
+                                     'NP22', 'NB0', 'MB0']
         elif self.bias_basis == 'AmiGleKok':
             self.bias_params_list = ['b1t', 'b2t', 'b3t', 'b4t', 'c0', 'c2',
-                                     'c4', 'cnlo', 'NP0', 'NP20', 'NP22',
-                                     'NB0', 'MB0']
+                                     'c4', 'cnlo', 'cnloB', 'NP0', 'NP20',
+                                     'NP22', 'NB0', 'MB0']
         else:
             print('Warning. Bias basis not recognised, defaulting to '
                   '"EggScoSmi".')
@@ -226,9 +226,6 @@ class PTEmu:
             self.RSD_params_list += ['avir','avirB']
             self.params['avir'] = 0.0
             self.params['avirB'] = 0.0
-        else:
-            self.RSD_params_list += ['cnloB']
-            self.params['cnloB'] = 0.0
 
         self.training['SHAPE'].assign_samples(hdul['PARAMS_SHAPE'])
         self.training['SHAPE'].assign_table(hdul['MODEL_SHAPE'],
