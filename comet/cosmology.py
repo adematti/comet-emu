@@ -439,8 +439,7 @@ class Cosmology:
             a_eval = np.array([1.0/(1.0 + z_eval)])
             a_min = np.fmin(a_eval, 1E-4)*0.99
             a_max = a_eval*1.01
-            print(a_min[0], a_max[0], a_eval)
-
+            
             dic = solve_ivp(derivatives_D, (a_min[0], a_max[0]), [a_min[0], 1.0],
                             t_eval=a_eval, atol=1E-6, rtol=1E-6,
                             vectorized=True)
