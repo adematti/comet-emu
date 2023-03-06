@@ -439,8 +439,8 @@ class Cosmology:
             a_eval = np.array([1.0/(1.0 + z_eval)])
             a_min = np.fmin(a_eval, 1E-4)*0.99
             a_max = a_eval*1.01
-
-            dic = solve_ivp(derivatives_D, (a_min, a_max), [a_min, 1.0],
+            
+            dic = solve_ivp(derivatives_D, (a_min[0], a_max[0]), [a_min[0], 1.0],
                             t_eval=a_eval, atol=1E-6, rtol=1E-6,
                             vectorized=True)
             D = dic['y'][0, :]
@@ -450,7 +450,7 @@ class Cosmology:
 
             if get_growth_rate:
                 Dp = dic['y'][1, :]
-                f = np.float(a_eval*Dp/D)
+                f = np.float64(a_eval*Dp/D)
 
                 return [D[0], f]
             else:

@@ -1409,7 +1409,7 @@ class Bispectrum:
                 kernel[0] = 2*b1sq * (params['b1']*self.kernels['F2'] \
                                       + 0.5*params['b2'] + \
                                       params['g2']*self.kernels['K'])
-            kernel_stoch[0] = b1sq/self.nbar
+            kernel_stoch[0] = params['MB0']*b1sq/self.nbar
         else:
             b1sq = params['b1']**2
             b1f = params['b1']*params['f']
@@ -1521,8 +1521,12 @@ class Bispectrum:
             ids = self.tri_id_ell[l]
             B_SPT = np.einsum("ij,ij->i", kernel[l][ids],
                               P2[tri_to_id_sq][ids])
-            B_stoch = np.einsum("ij,ij->i", kernel_stoch[l][ids],
-                                PL_dw[tri_to_id][ids])
+            if self.real_space:
+                B_stoch = kernel_stoch[l]*np.sum(PL_dw[self.tri_to_id][ids],
+                                                 axis=1)
+            else:
+                B_stoch = np.einsum("ij,ij->i", kernel_stoch[l][ids],
+                                    PL_dw[tri_to_id][ids])
             if l == 0:
                 B_stoch += params['NB0']/self.nbar**2
 

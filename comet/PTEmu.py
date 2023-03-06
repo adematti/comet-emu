@@ -72,16 +72,16 @@ class PTEmu:
 
         if self.bias_basis == 'EggScoSmi':
             self.bias_params_list = ['b1', 'b2', 'g2', 'g21', 'c0', 'c2', 'c4',
-                                     'cnlo', 'NP0', 'NP20', 'NP22', 'NB0',
-                                     'MB0']
+                                     'cnlo', 'cnloB', 'NP0', 'NP20', 'NP22',
+                                     'NB0', 'MB0']
         elif self.bias_basis == 'AssBauGre':
             self.bias_params_list = ['b1', 'b2', 'bG2', 'bGam3', 'c0', 'c2',
-                                     'c4', 'cnlo', 'NP0', 'NP20', 'NP22',
-                                     'NB0', 'MB0']
+                                     'c4', 'cnlo', 'cnloB', 'NP0', 'NP20',
+                                     'NP22', 'NB0', 'MB0']
         elif self.bias_basis == 'AmiGleKok':
             self.bias_params_list = ['b1t', 'b2t', 'b3t', 'b4t', 'c0', 'c2',
-                                     'c4', 'cnlo', 'NP0', 'NP20', 'NP22',
-                                     'NB0', 'MB0']
+                                     'c4', 'cnlo', 'cnloB', 'NP0', 'NP20',
+                                     'NP22', 'NB0', 'MB0']
         else:
             print('Warning. Bias basis not recognised, defaulting to '
                   '"EggScoSmi".')
@@ -226,9 +226,6 @@ class PTEmu:
             self.RSD_params_list += ['avir','avirB']
             self.params['avir'] = 0.0
             self.params['avirB'] = 0.0
-        else:
-            self.RSD_params_list += ['cnloB']
-            self.params['cnloB'] = 0.0
 
         self.training['SHAPE'].assign_samples(hdul['PARAMS_SHAPE'])
         self.training['SHAPE'].assign_table(hdul['MODEL_SHAPE'],
@@ -317,16 +314,16 @@ class PTEmu:
             self.bias_basis = bias_basis
             if self.bias_basis == 'EggScoSmi':
                 self.bias_params_list = ['b1', 'b2', 'g2', 'g21', 'c0', 'c2',
-                                         'c4', 'cnlo', 'NP0', 'NP20', 'NP22',
-                                         'NB0', 'MB0']
+                                         'c4', 'cnlo', 'cnloB', 'NP0', 'NP20',
+                                         'NP22', 'NB0', 'MB0']
             elif self.bias_basis == 'AssBauGre':
                 self.bias_params_list = ['b1', 'b2', 'bG2', 'bGam3', 'c0', 'c2',
-                                         'c4', 'cnlo', 'NP0', 'NP20', 'NP22',
-                                         'NB0', 'MB0']
+                                         'c4', 'cnlo', 'cnloB', 'NP0', 'NP20',
+                                         'NP22', 'NB0', 'MB0']
             elif self.bias_basis == 'AmiGleKok':
                 self.bias_params_list = ['b1t', 'b2t', 'b3t', 'b4t', 'c0', 'c2',
-                                         'c4', 'cnlo', 'NP0', 'NP20', 'NP22',
-                                         'NB0', 'MB0']
+                                         'c4', 'cnlo', 'cnloB', 'NP0', 'NP20',
+                                         'NP22', 'NB0', 'MB0']
             self.init_params_dict()
             self.splines_up_to_date = False
             self.dw_spline_up_to_date = False
@@ -915,7 +912,7 @@ class PTEmu:
         lsq = 0.5 * (self.params['f']/self.params['q_lo'])**2 \
             * (np.outer(k1,mu1)**2 + (k2*mu2)**2 + (k3*mu3)**2)
         t = 1.0 + lsq*self.params['avirB']**2
-        return 1.0/np.sqrt(t) * np.exp(-lsq*self.params['sv']**2/t)
+        return 1.0/np.sqrt(t**3) * np.exp(-lsq*self.params['sv']**2/t)
 
     def build_Pell_spline(self, Pell, ell):
         r"""Build spline object for power spectrum multipoles.
@@ -1694,6 +1691,10 @@ class PTEmu:
                            + self.RSD_params_list
             if 'Ok' not in params:
                 check_params.remove('Ok')
+
+        for p in self.RSD_params_list:
+            if p not in params:
+                check_params.remove(p)
 
         if obs_id != self.X_obs_id:
             self.X_splines_up_to_date = {X: False for X in self.diagrams_all}
@@ -2815,6 +2816,10 @@ class PTEmu:
                                    + self.RSD_params_list
                     if 'Ok' not in params:
                         check_params.remove('Ok')
+
+                for p in self.RSD_params_list:
+                    if p not in params:
+                        check_params.remove(p)
 
                 if binning != self.X_binning:
                     self.chi2_decomposition = None

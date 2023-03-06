@@ -19,8 +19,8 @@ def download_data(download_dir):
     import gzip
     import glob
 
-    urls = ['https://www.ice.csic.es/owncloud/s/six47i7cceNkkp9/download',
-            'https://www.ice.csic.es/owncloud/s/6EYSaxPxRZ57iEc/download']
+    urls = ['https://saco.csic.es/index.php/s/gqe8KF8fCj7GLWS/download',
+            'https://saco.csic.es/index.php/s/b4ffX6CMHLAd6Jx/download']
     filenames = ['tables.zip', 'models.zip']
     out_filenames = ['tables', 'models']
 

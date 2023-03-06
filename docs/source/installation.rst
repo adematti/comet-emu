@@ -32,11 +32,16 @@ version as follow.
 Then you can follow the :ref:`examples` to learn how to train the *COMET* and make predictions.
 
 .. warning::
-   the comet emulator only works in a
-   Python 3 environment; the data file at its core cannot
-   be unpickled by Python 2.x; in case your ``pip``
-   command doesn't link to a Python 3 pip executable, please
-   modify the line above accordingly (e.g. with ``pip3`` instead of ``pip``)
+   The comet emulator only works in a Python 3 environment; the data file at
+   its core cannot be unpickled by Python 2.x; in case your ``pip`` command
+   doesn't link to a Python 3 pip executable, please modify the line above
+   accordingly (e.g. with ``pip3`` instead of ``pip``).
+   Also, notice that if you are working on an environment with a python ``version
+   > 3.7``, you should update ``setuptools`` and ``wheel`` packages as follow:
+
+   ::
+
+      pip install --upgrade pip setuptools wheel
 
 .. note::
   The comet emulator depends on the following external packages:
