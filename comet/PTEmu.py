@@ -2274,7 +2274,8 @@ class PTEmu:
         def P2d(q, mu):
             t = 0.0
             for m in ell_for_recon:
-                t += eval_legendre(m, mu) * self.PX_ell_spline[X][m](q)
+                t += self.PX_ell_spline[X][m](q).reshape(q.shape) \
+                     * eval_legendre(m, mu)
             return t
 
         if self.RSD_model == 'EFT':
@@ -2284,9 +2285,10 @@ class PTEmu:
                     mu2 = mu**2
                     APfac = np.sqrt(mu2/self.params['q_lo']**2 +
                                     (1.0 - mu2)/self.params['q_tr']**2)
-                    kp = keff*APfac
+                    kp = np.outer(keff, APfac)
                     mup = mu/self.params['q_lo']/APfac
-                    return np.outer(P2d(kp, mup), eval_legendre(ell, mu))
+                    legendre = np.array([eval_legendre(l, mu) for l in ell])
+                    return np.einsum("ab,cb->acb", P2d(kp, mup), legendre)
             else:
                 def  shell_average():
                     mu2 = self.grid.mu**2
@@ -2317,10 +2319,11 @@ class PTEmu:
                     mu2 = mu**2
                     APfac = np.sqrt(mu2/self.params['q_lo']**2 +
                                     (1.0 - mu2)/self.params['q_tr']**2)
-                    kp = keff*APfac
+                    kp = np.outer(keff, APfac)
                     mup = mu/self.params['q_lo']/APfac
                     P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
-                    return np.outer(P2d_damped, eval_legendre(ell, mu))
+                    legendre = np.array([eval_legendre(l, mu) for l in ell])
+                    return np.einsum("ab,cb->acb", P2d_damped, legendre)
             else:
                 def  shell_average():
                     mu2 = self.grid.mu**2
@@ -2394,7 +2397,8 @@ class PTEmu:
             q3 = self.params['q_tr']**2 * self.params['q_lo']
 
             if binning is None or use_effective_modes:
-                PX_ell_model = quad_vec(integrand, 0.0, 1.0)[0]
+                PX_ell_model = 0.5 * np.dot(integrand(self.gl_x),
+                                            self.gl_weights)
             else:
                 PX_ell_model = shell_average()
             PX_ell_model *= (2.0*np.array(ell)+1.0) / q3
