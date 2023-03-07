@@ -119,6 +119,8 @@ class PTEmu:
         self.Pk_ratios = {0: None, 2: None, 4: None}
 
         self.Pell_spline = {}
+        self.Pell_lowk_extrapolation = {}
+        self.Pell_highk_extrapolation = {}
         self.Pell_min = {}
         self.Pell_max = {}
         self.neff_min = {}
@@ -942,33 +944,44 @@ class PTEmu:
             hexadecapole (:math:`\ell=4`) and octopole (:math:`\ell=6`).
         """
         id_min = 0 if not ell == 6 else self.nk-self.nkloop
+        id_max = -1
+
         if self.use_Mpc:
             self.Pell_spline[ell] = UnivariateSpline(self.k_table, Pell,
                                                      k=3, s=0)
-            self.Pell_min[ell] = Pell[id_min]
-            self.Pell_max[ell] = Pell[-1]
             self.k_table_min[ell] = self.k_table[id_min]
-            self.k_table_max[ell] = self.k_table[-1]
-            dlP_min = np.log10(np.abs(Pell[id_min+2]/Pell[id_min]))
-            dlP_max = np.log10(np.abs(Pell[-1]/Pell[-3]))
-            dlk_min = np.log10(self.k_table[id_min+2]/self.k_table[id_min])
-            dlk_max = np.log10(self.k_table[-1]/self.k_table[-3])
-            self.neff_min[ell] = dlP_min/dlk_min
-            self.neff_max[ell] = dlP_max/dlk_max
+            self.k_table_max[ell] = self.k_table[id_max]
         else:
             Pell *= self.params['h']**3
             self.Pell_spline[ell] = UnivariateSpline(
                 self.k_table/self.params['h'], Pell, k=3, s=0)
-            self.Pell_min[ell] = Pell[id_min]
-            self.Pell_max[ell] = Pell[-1]
             self.k_table_min[ell] = self.k_table[id_min]/self.params['h']
-            self.k_table_max[ell] = self.k_table[-1]/self.params['h']
-            dlP_min = np.log10(np.abs(Pell[id_min+2]/Pell[id_min]))
-            dlP_max = np.log10(np.abs(Pell[-1]/Pell[-3]))
-            dlk_min = np.log10(self.k_table[id_min+2]/self.k_table[id_min])
-            dlk_max = np.log10(self.k_table[-1]/self.k_table[-3])
-            self.neff_min[ell] = dlP_min/dlk_min
+            self.k_table_max[ell] = self.k_table[id_max]/self.params['h']
+
+        # low-k extrapolation
+        self.Pell_min[ell] = Pell[id_min]
+        dlP_min = np.log10(np.abs(Pell[id_min+2]/Pell[id_min]))
+        dlk_min = np.log10(self.k_table[id_min+2]/self.k_table[id_min])
+        self.neff_min[ell] = dlP_min/dlk_min
+        self.Pell_lowk_extrapolation[ell] = lambda k: self.Pell_min[ell] \
+            * (k/self.k_table_min[ell])**self.neff_min[ell]
+
+        # high-k extrapolation
+        if np.abs(Pell[id_max]/Pell[id_max-2]) < 2 \
+                and np.abs(Pell[id_max-2]/Pell[id_max]) < 2:
+            self.Pell_max[ell] = Pell[id_max]
+            dlP_max = np.log10(np.abs(Pell[id_max]/Pell[id_max-2]))
+            dlk_max = np.log10(self.k_table[id_max]/self.k_table[id_max-2])
             self.neff_max[ell] = dlP_max/dlk_max
+            self.Pell_highk_extrapolation[ell] = lambda k: self.Pell_max[ell] \
+                * (k/self.k_table_max[ell])**self.neff_max[ell]
+        else:
+            a = (Pell[id_max] - Pell[id_max-2]) \
+                / (self.k_table[id_max] - self.k_table[id_max-2])
+            b = Pell[id_max-2] - a*self.k_table[id_max-2]
+            if not self.use_Mpc:
+                a *= self.params['h']
+            self.Pell_highk_extrapolation[ell] = lambda k: a*k + b
 
     def build_Pdw_spline(self, Pdw):
         r"""Build spline object for multipoles of linear de-wiggled power
@@ -1038,10 +1051,10 @@ class PTEmu:
             requested wavemodes :math:`k`.
         """
         spline = \
-            np.where(k < self.k_table_min[ell], self.Pell_min[ell] \
-                * (k/self.k_table_min[ell])**self.neff_min[ell],
-                np.where(k > self.k_table_max[ell], self.Pell_max[ell] \
-                    * (k/self.k_table_max[ell])**self.neff_max[ell],
+            np.where(k < self.k_table_min[ell],
+                self.Pell_lowk_extrapolation[ell](k),
+                np.where(k > self.k_table_max[ell],
+                    self.Pell_highk_extrapolation[ell](k),
                     self.Pell_spline[ell](k)))
         return spline
 
