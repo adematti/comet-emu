@@ -151,6 +151,7 @@ class PTEmu:
         self.emu_params_updated = False
 
         self.chi2_decomposition = None
+        self.Bisp_chi2_decomposition = None
 
         try:
             self.load_emulator_data(
@@ -231,6 +232,23 @@ class PTEmu:
             self.RSD_params_list += ['avir','avirB']
             self.params['avir'] = 0.0
             self.params['avirB'] = 0.0
+
+        if self.RSD_model == 'EFT':
+            self.Bisp_diagrams_all = ['B0L_b1b1b1', 'B0L_b1b1', 'B0L_b1',
+                                      'B0L_b1b1b1cnloB', 'B0L_b1b1cnloB',
+                                      'B0L_b1cnloB', 'B0L_b1b1b2', 'B0L_b1b2', 'B0L_b2', 'B0L_b1b1b2cnloB',
+                                      'B0L_b1b2cnloB', 'B0L_b2cnloB',
+                                      'B0L_b1b1g2', 'B0L_b1g2', 'B0L_g2',
+                                      'B0L_b1b1g2cnloB', 'B0L_b1g2cnloB',
+                                      'B0L_g2cnloB', 'B0L_id', 'B0L_cnloB',
+                                      'Bnoise_MB0b1b1', 'Bnoise_MB0b1',
+                                      'Bnoise_NB0']
+        else:
+            self.Bisp_diagrams_all = ['B0L_b1b1b1', 'B0L_b1b1', 'B0L_b1',
+                                      'B0L_b1b1b2', 'B0L_b1b2', 'B0L_b2',
+                                      'B0L_b1b1g2', 'B0L_b1g2', 'B0L_g2',
+                                      'B0L_id', 'Bnoise_MB0b1b1',
+                                      'Bnoise_MB0b1', 'Bnoise_NB0']
 
         self.training['SHAPE'].assign_samples(hdul['PARAMS_SHAPE'])
         self.training['SHAPE'].assign_table(hdul['MODEL_SHAPE'],
@@ -500,6 +518,14 @@ class PTEmu:
             self.X_splines_up_to_date = {X: False for X
                                          in self.diagrams_all}
             self.chi2_decomposition = None
+            self.Bisp_chi2_decomposition = None
+
+        RSD_params_updated = any([params[p] != self.params[p] for p
+                                  in list(set(params) \
+                                          & set(self.RSD_params_list))])
+        if RSD_params_updated:
+            self.chi2_decomposition = None
+            self.Bisp_chi2_decomposition = None
 
         for p in self.bias_params_list + self.RSD_params_list:
             if p in params.keys():
@@ -509,6 +535,7 @@ class PTEmu:
 
         if self.RSD_model == 'VDG_infty':
             self.params['cnlo'] = 0.0
+            self.params['cnloB'] = 0.0
 
         if self.bias_basis == 'AssBauGre':
             self.params['g2'] = self.params['bG2']
@@ -753,6 +780,46 @@ class PTEmu:
         return np.array([b1sq, b1, 1., c0, c2, c4, b1sq*cnlo, b1*cnlo, cnlo,
                          b1sq, b1*b2, b1*g2, b1*g21, b2**2, b2*g2, g2**2, b2,
                          g2, g21, N0/self.nbar, N20/self.nbar, N22/self.nbar])
+
+    def get_bias_coeff_for_Bisp_chi2_decomposition(self):
+        r"""Get bias coefficients for the bispectrum :math:`\chi^2` tables.
+
+        In order to speed up the evaluation of the likelihood, the total
+        :math:`\chi^2` is factorised into separate contributions scaling with
+        different combinations of the bias and shot-noise parameters (the
+        latter are expressed in units of the sample mean number density
+        :math:`\bar{n}`). This method returns such combinations in an array
+        format.
+
+        Returns
+        -------
+        params_comb: numpy.ndarray
+            Combinations of bias and noise parameters that multiply each term
+            of the factorisation of the total :math:`\chi^2` into individual
+            terms.
+        """
+        b1 = self.params['b1']
+        b2 = self.params['b2']
+        g2 = self.params['g2']
+        cnloB = self.params['cnloB']*self.params['f']**2
+        MB0 = self.params['MB0']
+        NB0 = self.params['NB0']
+        b1sq = b1**2
+
+        if self.RSD_model == 'EFT':
+            params_comb = np.array([b1sq*b1, b1sq, b1, b1sq*b1*cnloB,
+                                    b1sq*cnloB, b1*cnloB, b1sq*b2, b1*b2, b2,
+                                    b1sq*b2*cnloB, b1*b2*cnloB, b2*cnloB,
+                                    b1sq*g2, b1*g2, g2, b1sq*g2*cnloB,
+                                    b1*g2*cnloB, g2*cnloB, 1.0, cnloB,
+                                    MB0*b1sq/self.nbar, MB0*b1/self.nbar,
+                                    NB0/self.nbar**2])
+        else:
+            params_comb = np.array([b1sq*b1, b1sq, b1, b1sq*b2, b1*b2, b2,
+                                    b1sq*g2, b1*g2, g2, 1.0, MB0*b1sq/self.nbar,
+                                    MB0*b1/self.nbar, NB0/self.nbar**2])
+
+        return params_comb
 
     def eval_emulator(self, params, ell, de_model=None):
         r"""Evaluate the emulators for the different terms.
@@ -1737,7 +1804,7 @@ class PTEmu:
                     legendre = np.array([eval_legendre(l, mu) for l in ell])
                     return np.einsum("ab,cb->acb", P2d_tot, legendre)
             else:
-                def  shell_average():
+                def shell_average():
                     mu2 = self.grid.mu**2
                     APfac = np.sqrt(mu2/self.params['q_lo']**2 +
                                     (1.0 - mu2)/self.params['q_tr']**2)
@@ -1770,7 +1837,7 @@ class PTEmu:
                     legendre = np.array([eval_legendre(l, mu) for l in ell])
                     return np.einsum("ab,cb->acb", P2d_tot, legendre)
             else:
-                def  shell_average():
+                def shell_average():
                     mu2 = self.grid.mu**2
                     APfac = np.sqrt(mu2/self.params['q_lo']**2 +
                                     (1.0 - mu2)/self.params['q_tr']**2)
@@ -3002,7 +3069,10 @@ class PTEmu:
                 (self.data[oi].kmax != kmax[oi] and self.data[oi].kmax !=
                     [kmax[oi] for i in range(self.data[oi].n_ell)])):
                         self.data[oi].set_kmax(kmax[oi])
-                        self.chi2_decomposition = None
+                        if self.data[oi].stat == 'powerspectrum':
+                            self.chi2_decomposition = None
+                        elif self.data[oi].stat == 'bispectrum':
+                            self.Bisp_chi2_decomposition = None
                         kmax_updated = True
 
             ell[oi] = [2*m for m in range(self.data[oi].n_ell)]
@@ -3017,12 +3087,15 @@ class PTEmu:
                         self.Bisp.kfun != self.data[oi].kfun:
                     self.Bisp.set_tri(self.data[oi].bins_kmax, ell[oi],
                                       self.data[oi].kfun)
-                chi2_decomposition = False # currently only implemented for Pk
+                #chi2_decomposition = False # currently only implemented for Pk
 
         if W_damping is None:
             W_damping = {}
             for oi in obs_id:
-                W_damping[oi] = None
+                if self.data[oi].stat == 'powerspectrum':
+                    W_damping[oi] = self.W_kurt
+                elif self.data[oi].stat == 'bispectrum':
+                    W_damping[oi] = self.WB_kurt
 
         if not chi2_decomposition:
             chi2 = 0.0
@@ -3080,65 +3153,108 @@ class PTEmu:
                     chi2 += np.sum(Ldiff**2)
         else:
             chi2 = 0.0
+            # check if cosmological + RSD parameters have changed, if so,
+            # re-evaluate chi2 decomposition
+            if de_model is None and self.use_Mpc:
+                check_params = self.params_list + self.RSD_params_list
+            elif de_model is None and not self.use_Mpc:
+                check_params = self.params_list + ['h'] + \
+                               self.RSD_params_list
+            else:
+                check_params = self.params_shape_list \
+                               + self.de_model_params_list[de_model] \
+                               + self.RSD_params_list
+                if 'Ok' not in params:
+                    check_params.remove('Ok')
+
+            for p in self.RSD_params_list:
+                if p not in params:
+                    check_params.remove(p)
+
+            if binning != self.X_binning:
+                self.chi2_decomposition = None
+                self.X_binning = binning
+
+            params_changed = True if \
+                any(params[p] != self.params[p] for p in check_params) \
+                else False
+            compute_chi2_decomposition = True if params_changed \
+                or self.chi2_decomposition is None else False
+            compute_Bisp_chi2_decomposition = True if params_changed \
+                or self.Bisp_chi2_decomposition is None else False
+
             for oi in obs_id:
-                # check if cosmological + RSD parameters have changed, if so,
-                # re-evaluate chi2 decomposition
-                if de_model is None and self.use_Mpc:
-                    check_params = self.params_list + self.RSD_params_list
-                elif de_model is None and not self.use_Mpc:
-                    check_params = self.params_list + ['h'] + \
-                                   self.RSD_params_list
+                if self.data[oi].stat == 'powerspectrum':
+                    if compute_chi2_decomposition:
+                        convolve_oi = oi if convolve_window else None
+                        PX_ell_list = np.zeros([sum(self.data[oi].nbins),
+                                                len(self.diagrams_all)])
+                        for i, X in enumerate(self.diagrams_all):
+                            PX_ell = self.PX_ell(self.data[oi].bins_kmax,
+                                                 params, ell[oi], X,
+                                                 binning=binning,
+                                                 obs_id=convolve_oi,
+                                                 de_model=de_model,
+                                                 q_tr_lo=q_tr_lo,
+                                                 W_damping=W_damping[oi],
+                                                 ell_for_recon=ell_for_recon)
+                            PX_ell_list[:, i] = np.hstack([PX_ell[m] for m
+                                                           in PX_ell.keys()])
+
+                        self.chi2_decomposition = {}
+                        self.chi2_decomposition['DD'] = self.data[oi].SN_kmax
+                        self.chi2_decomposition['XD'] = PX_ell_list.T \
+                            @ self.data[oi].inverse_cov_kmax \
+                            @ self.data[oi].signal_kmax
+                        self.chi2_decomposition['XX'] = PX_ell_list.T \
+                            @ self.data[oi].inverse_cov_kmax @ PX_ell_list
+                elif self.data[oi].stat == 'bispectrum':
+                    if compute_Bisp_chi2_decomposition:
+                        Pdw = self.Pdw(self.Bisp.tri_unique,
+                                       params, de_model=de_model,
+                                       ell_for_recon=ell_for_recon)
+                        if self.real_space:
+                            neff = None
+                        else:
+                            neff = self.Bisp.tri_unique * \
+                                   self.Pdw_spline.derivative(n=1)(
+                                       self.Bisp.tri_unique) / Pdw
+                        BX_ell = self.Bisp.BX_ell(Pdw, neff, self.params,
+                                                  ell=ell[oi],
+                                                  W_damping=W_damping[oi])
+                        BX_ell_list = np.zeros([sum(self.data[oi].nbins),
+                                                len(self.Bisp_diagrams_all)])
+                        for i, X in enumerate(self.Bisp_diagrams_all):
+                            BX_ell_list[:, i] = np.hstack([BX_ell[m][X] for m
+                                                           in BX_ell.keys()])
+
+                        self.Bisp_chi2_decomposition = {}
+                        self.Bisp_chi2_decomposition['DD'] = \
+                            self.data[oi].SN_kmax
+                        self.Bisp_chi2_decomposition['XD'] = BX_ell_list.T \
+                            @ self.data[oi].inverse_cov_kmax \
+                            @ self.data[oi].signal_kmax
+                        self.Bisp_chi2_decomposition['XX'] = BX_ell_list.T \
+                            @ self.data[oi].inverse_cov_kmax @ BX_ell_list
+
+            for p in self.bias_params_list:
+                if p in params.keys():
+                    self.params[p] = params[p]
                 else:
-                    check_params = self.params_shape_list \
-                                   + self.de_model_params_list[de_model] \
-                                   + self.RSD_params_list
-                    if 'Ok' not in params:
-                        check_params.remove('Ok')
+                    self.params[p] = 0.
+            self.splines_up_to_date = False
+            self.dw_spline_up_to_date = False
 
-                for p in self.RSD_params_list:
-                    if p not in params:
-                        check_params.remove(p)
-
-                if binning != self.X_binning:
-                    self.chi2_decomposition = None
-                    self.X_binning = binning
-
-                if (any(params[p] != self.params[p] for p in check_params) or
-                        self.chi2_decomposition is None):
-                    convolve_oi = oi if convolve_window else None
-                    PX_ell_list = np.zeros([sum(self.data[oi].nbins),
-                                            len(self.diagrams_all)])
-                    for i, X in enumerate(self.diagrams_all):
-                        PX_ell = self.PX_ell(self.data[oi].bins_kmax,
-                                             params, ell[oi], X,
-                                             binning=binning,
-                                             obs_id=convolve_oi,
-                                             de_model=de_model,
-                                             q_tr_lo=q_tr_lo,
-                                             W_damping=W_damping,
-                                             ell_for_recon=ell_for_recon)
-                        PX_ell_list[:, i] = np.hstack([PX_ell[m] for m
-                                                       in PX_ell.keys()])
-
-                    self.chi2_decomposition = {}
-                    self.chi2_decomposition['DD'] = self.data[oi].SN_kmax
-                    self.chi2_decomposition['XD'] = PX_ell_list.T \
-                        @ self.data[oi].inverse_cov_kmax \
-                        @ self.data[oi].signal_kmax
-                    self.chi2_decomposition['XX'] = PX_ell_list.T \
-                        @ self.data[oi].inverse_cov_kmax @ PX_ell_list
-
-                for p in self.bias_params_list:
-                    if p in params.keys():
-                        self.params[p] = params[p]
-                    else:
-                        self.params[p] = 0.
-                self.splines_up_to_date = False
-                self.dw_spline_up_to_date = False
-
-                bX = self.get_bias_coeff_for_chi2_decomposition()
-                chi2 += (bX @ self.chi2_decomposition['XX'] @ bX -
-                         2*bX @ self.chi2_decomposition['XD'] +
-                         self.chi2_decomposition['DD'])
+            for oi in obs_id:
+                if self.data[oi].stat == 'powerspectrum':
+                    bX = self.get_bias_coeff_for_chi2_decomposition()
+                    chi2 += (bX @ self.chi2_decomposition['XX'] @ bX -
+                             2*bX @ self.chi2_decomposition['XD'] +
+                             self.chi2_decomposition['DD'])
+                elif self.data[oi].stat == 'bispectrum':
+                    bX = self.get_bias_coeff_for_Bisp_chi2_decomposition()
+                    chi2 += (bX @ self.Bisp_chi2_decomposition['XX'] @ bX -
+                             2*bX @ self.Bisp_chi2_decomposition['XD'] +
+                             self.Bisp_chi2_decomposition['DD'])
 
         return chi2
