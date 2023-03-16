@@ -527,7 +527,16 @@ class PTEmu:
             self.chi2_decomposition = None
             self.Bisp_chi2_decomposition = None
 
-        for p in self.bias_params_list + self.RSD_params_list:
+        self.update_bias_params(params, include_RSD_params=True)
+
+        return emu_params_updated
+
+    def update_bias_params(self, params, include_RSD_params=False):
+        params_list = self.bias_params_list
+        if include_RSD_params:
+            params_list += self.RSD_params_list
+
+        for p in params_list:
             if p in params.keys():
                 self.params[p] = params[p]
             else:
@@ -550,8 +559,6 @@ class PTEmu:
             self.params['g21'] = -2.0/147.0 * (11*self.params['b1t']
                                                - 18*self.params['b2t']
                                                + 9*self.params['b3t'])
-
-        return emu_params_updated
 
     def update_AP_params(self, params, de_model=None, q_tr_lo=None):
         r"""Update AP parameters.
@@ -3237,11 +3244,7 @@ class PTEmu:
                         self.Bisp_chi2_decomposition['XX'] = BX_ell_list.T \
                             @ self.data[oi].inverse_cov_kmax @ BX_ell_list
 
-            for p in self.bias_params_list:
-                if p in params.keys():
-                    self.params[p] = params[p]
-                else:
-                    self.params[p] = 0.
+            self.update_bias_params(params)
             self.splines_up_to_date = False
             self.dw_spline_up_to_date = False
 
