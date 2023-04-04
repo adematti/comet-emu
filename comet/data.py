@@ -52,7 +52,13 @@ class MeasuredData:
             self.signal = kwargs.get('signal')
             if self.signal.ndim == 1:
                 self.signal = self.signal[:,None]
-            self.n_ell = self.signal.shape[1]
+            if 'ell' in kwargs:
+                ell = kwargs.get('ell')
+                self.ell = [ell] if not isinstance(ell, list) else ell
+                self.n_ell = len(self.ell)
+            else:
+                self.n_ell = self.signal.shape[1]
+                self.ell = [2*n for n in range(self.n_ell)]
         if 'cov' in kwargs:
             self.cov = kwargs.get('cov')
             if self.cov.ndim == 1:
@@ -140,7 +146,13 @@ class MeasuredData:
             self.signal = kwargs.get('signal')
             if self.signal.ndim == 1:
                 self.signal = self.signal[:,None]
-            self.n_ell = self.signal.shape[1]
+            if 'ell' in kwargs:
+                ell = kwargs.get('ell')
+                self.ell = [ell] if not isinstance(ell, list) else ell
+                self.n_ell = len(self.ell)
+            else:
+                self.n_ell = self.signal.shape[1]
+                self.ell = [2*n for n in range(self.n_ell)]
         if 'cov' in kwargs:
             self.cov = kwargs.get('cov')
             if self.cov.ndim == 1:

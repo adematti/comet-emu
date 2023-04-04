@@ -3082,7 +3082,7 @@ class PTEmu:
                             self.Bisp_chi2_decomposition = None
                         kmax_updated = True
 
-            ell[oi] = [2*m for m in range(self.data[oi].n_ell)]
+            ell[oi] = self.data[oi].ell 
 
             if self.data[oi].stat == 'bispectrum':
                 if self.Bisp.tri is not None:
