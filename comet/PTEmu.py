@@ -558,7 +558,7 @@ class PTEmu:
                                             - self.params['b2t'])
             self.params['g21'] = -2.0/147.0 * (11*self.params['b1t']
                                                - 18*self.params['b2t']
-                                               + 9*self.params['b3t'])
+                                               + 7*self.params['b3t'])
 
     def update_AP_params(self, params, de_model=None, q_tr_lo=None):
         r"""Update AP parameters.
@@ -3082,7 +3082,7 @@ class PTEmu:
                             self.Bisp_chi2_decomposition = None
                         kmax_updated = True
 
-            ell[oi] = self.data[oi].ell 
+            ell[oi] = self.data[oi].ell
 
             if self.data[oi].stat == 'bispectrum':
                 if self.Bisp.tri is not None:
