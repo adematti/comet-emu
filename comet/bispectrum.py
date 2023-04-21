@@ -1299,7 +1299,8 @@ class Bispectrum:
         self.tri_eff_unique *= self.kfun
 
     def join_kernel_mu123_integral(self, K, n123_tuples, ell, neff, coeff,
-                                   q_tr, q_lo, cnloB=None, cnlo_type='default'):
+                                   q_tr, q_lo, cnloB=None,
+                                   cnlo_type='EggLeeSco'):
         K_neff1 = neff[self.tri_to_id]*self.kernels[K]
         K_neff2 = neff[self.tri_to_id[:,[1,2,0]]]*self.kernels[K]
         K_deriv_sum = 0.0
@@ -1337,7 +1338,7 @@ class Bispectrum:
 
             DeltaB_K += coeff[i] * (t1 + t2 + t3 + t4)
 
-            if self.RSD_model == 'EFT' and cnlo_type == 'default':
+            if self.RSD_model == 'EFT' and cnlo_type == 'EggLeeSco':
                 for j in range(3):
                     Kctr = 'k{}sq{}'.format(j+1,K)
                     n123_j = np.copy(n123)
@@ -1535,7 +1536,7 @@ class Bispectrum:
         return DeltaB_K
 
     def Bell(self, PL_dw, neff, params, ell=[0], W_damping=None,
-             cnlo_type='default'):
+             cnlo_type='EggLeeSco'):
         kernel = {}
         kernel_stoch = {}
         if self.real_space:
@@ -1568,7 +1569,7 @@ class Bispectrum:
                                                      2*f2, f4/b1f])
             params_kernels['k32'] = params_kernels['k31']
             params_stoch = params['MB0']/self.nbar * np.array([b1sq, b1f])
-            if self.RSD_model == 'EFT' and cnlo_type == 'default':
+            if self.RSD_model == 'EFT' and cnlo_type == 'EggLeeSco':
                 cnloB = params['cnloB']*f2
             elif self.RSD_model == 'EFT' and cnlo_type == 'IvaPhiNis':
                 cnloB = -params['cnloB']/params['b1']

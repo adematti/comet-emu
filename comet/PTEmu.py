@@ -85,12 +85,17 @@ class PTEmu:
         else:
             print('Warning. Bias basis not recognised, defaulting to '
                   '"EggScoSmi".')
+            self.bias_basis = 'EggScoSmi'
+            self.bias_params_list = ['b1', 'b2', 'g2', 'g21', 'c0', 'c2', 'c4',
+                                     'cnlo', 'cnloB', 'NP0', 'NP20', 'NP22',
+                                     'NB0', 'MB0']
 
         self.RSD_params_list = []
         self.de_model_params_list = {
             'lambda': ['h', 'As', 'Ok', 'z'],
             'w0': ['h', 'As', 'Ok', 'w0', 'z'],
             'w0wa': ['h', 'As', 'Ok', 'w0', 'wa', 'z']}
+        self.cnloB_type = 'EggLeeSco'
 
         self.n_diagrams = 19
         self.diagrams_emulated = ['P0L_b1b1', 'PNL_b1', 'PNL_id',
@@ -347,6 +352,10 @@ class PTEmu:
                 self.bias_params_list = ['b1t', 'b2t', 'b3t', 'b4t', 'c0', 'c2',
                                          'c4', 'cnlo', 'cnloB', 'NP0', 'NP20',
                                          'NP22', 'NB0', 'MB0']
+            else:
+                print('Warning. Bias basis not recognised, choose between '
+                      '"EggScoSmi" (default), "AssBauGre", or "AmiGleKok".')
+
             self.init_params_dict()
             self.splines_up_to_date = False
             self.dw_spline_up_to_date = False
@@ -354,6 +363,13 @@ class PTEmu:
     def change_gauss_legendre_degree(self, degree):
         self.gl_x, self.gl_weights = np.polynomial.legendre.leggauss(degree)
         self.gl_x = 0.5 * self.gl_x + 0.5
+
+    def change_cnloB_type(self, type):
+        if type in ['EggLeeSco','IvaPhiNis']:
+            self.cnloB_type = type
+        else:
+            print('Warning. Type not recognised, choose between '
+                  '"EggLeeSco" (default), or "IvaPhiNis".')
 
     def define_nbar(self, nbar):
         r"""Define the number density of the sample.
@@ -2538,8 +2554,7 @@ class PTEmu:
         return PX_ell_dict
 
     def Bell(self, tri, params, ell, de_model=None, kfun=None, binning=None,
-             q_tr_lo=None, W_damping=None, ell_for_recon=None, gl_deg=8,
-             cnlo_type='default'):
+             q_tr_lo=None, W_damping=None, ell_for_recon=None, gl_deg=8):
         ell = [ell] if not isinstance(ell, list) else ell
         if tri.ndim == 1:
             tri = tri[None,:]
@@ -2586,7 +2601,7 @@ class PTEmu:
                               q_tr_lo=q_tr_lo)
 
         Bell_dict = self.Bisp.Bell(Pdw, neff, self.params, ell, W_damping,
-                                   cnlo_type)
+                                   self.cnloB_type)
         return Bell_dict
 
     def Avg_covariance(self, l1, l2, k, Pl, sigma_d, avg_los=3):
@@ -3137,7 +3152,7 @@ class PTEmu:
                                self.Pdw_spline.derivative(n=1)(
                                    self.Bisp.tri_unique) / Pdw
                     Bell = self.Bisp.Bell(Pdw, neff, self.params, ell[oi],
-                                          W_damping[oi])
+                                          W_damping[oi], self.cnloB_type)
 
                     if self.data[oi].cov_is_block_diagonal:
                         diff = {}
