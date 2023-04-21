@@ -2538,7 +2538,8 @@ class PTEmu:
         return PX_ell_dict
 
     def Bell(self, tri, params, ell, de_model=None, kfun=None, binning=None,
-             q_tr_lo=None, W_damping=None, ell_for_recon=None, gl_deg=8):
+             q_tr_lo=None, W_damping=None, ell_for_recon=None, gl_deg=8,
+             cnlo_type='default'):
         ell = [ell] if not isinstance(ell, list) else ell
         if tri.ndim == 1:
             tri = tri[None,:]
@@ -2584,7 +2585,8 @@ class PTEmu:
         self.update_AP_params(params, de_model=de_model,
                               q_tr_lo=q_tr_lo)
 
-        Bell_dict = self.Bisp.Bell(Pdw, neff, self.params, ell, W_damping)
+        Bell_dict = self.Bisp.Bell(Pdw, neff, self.params, ell, W_damping,
+                                   cnlo_type)
         return Bell_dict
 
     def Avg_covariance(self, l1, l2, k, Pl, sigma_d, avg_los=3):
@@ -3082,7 +3084,7 @@ class PTEmu:
                             self.Bisp_chi2_decomposition = None
                         kmax_updated = True
 
-            ell[oi] = self.data[oi].ell 
+            ell[oi] = self.data[oi].ell
 
             if self.data[oi].stat == 'bispectrum':
                 if self.Bisp.tri is not None:

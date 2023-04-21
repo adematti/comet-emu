@@ -1299,7 +1299,7 @@ class Bispectrum:
         self.tri_eff_unique *= self.kfun
 
     def join_kernel_mu123_integral(self, K, n123_tuples, ell, neff, coeff,
-                                   q_tr, q_lo, cnloB=None):
+                                   q_tr, q_lo, cnloB=None, cnlo_type='default'):
         K_neff1 = neff[self.tri_to_id]*self.kernels[K]
         K_neff2 = neff[self.tri_to_id[:,[1,2,0]]]*self.kernels[K]
         K_deriv_sum = 0.0
@@ -1337,7 +1337,7 @@ class Bispectrum:
 
             DeltaB_K += coeff[i] * (t1 + t2 + t3 + t4)
 
-            if self.RSD_model == 'EFT':
+            if self.RSD_model == 'EFT' and cnlo_type == 'default':
                 for j in range(3):
                     Kctr = 'k{}sq{}'.format(j+1,K)
                     n123_j = np.copy(n123)
@@ -1361,6 +1361,34 @@ class Bispectrum:
 
                     DeltaB_K += coeff[i] * cnloB * (tctr1 + tctr2 + tctr3 \
                                                     + tctr4)
+            elif self.RSD_model == 'EFT' and cnlo_type == 'IvaPhiNis':
+                for j in range(2):
+                    if (K not in ['k31','k32'] and n123[j] < 2) \
+                            or (K in ['k31','k32'] and n123[j] < 3):
+                        Kctr = 'k{}sq{}'.format(j+1,K)
+                        n123_j = np.copy(n123)
+                        n123_j[j] += 2
+                        split_factor = 0.5 if n123[j] >= 2 else 1.0
+                        tctr1 = self.I[K][tuple(n123_j)][ell] \
+                            * ((1.0 + (q_tr-q_lo)*sum(n123_j)) \
+                            * self.kernels[Kctr] \
+                            + (1.0-q_tr) * Kctr_deriv_sum[j] \
+                            + (1.0-q_tr) * (Kctr_neff1[j] + Kctr_neff2[j]))
+                        tctr2 = self.I[K][n123_j[0]+2,n123_j[1],n123_j[2]][ell] \
+                            * (q_tr - q_lo) \
+                            * (self.kernels['d{}_dlnk1'.format(Kctr)] \
+                               + Kctr_neff1[j] - n123_j[0]*self.kernels[Kctr])
+                        tctr3 = self.I[K][n123_j[0],n123_j[1]+2,n123_j[2]][ell] \
+                            * (q_tr - q_lo) \
+                            * (self.kernels['d{}_dlnk2'.format(Kctr)] \
+                               + Kctr_neff2[j] - n123_j[1]*self.kernels[Kctr])
+                        tctr4 = self.I[K][n123_j[0],n123_j[1],n123_j[2]+2][ell] \
+                            * (q_tr - q_lo) \
+                            * (self.kernels['d{}_dlnk3'.format(Kctr)] \
+                               - n123_j[2]*self.kernels[Kctr])
+
+                        DeltaB_K += coeff[i] * cnloB * split_factor \
+                                    * (tctr1 + tctr2 + tctr3 + tctr4)
 
         return DeltaB_K
 
@@ -1506,7 +1534,8 @@ class Bispectrum:
 
         return DeltaB_K
 
-    def Bell(self, PL_dw, neff, params, ell=[0], W_damping=None):
+    def Bell(self, PL_dw, neff, params, ell=[0], W_damping=None,
+             cnlo_type='default'):
         kernel = {}
         kernel_stoch = {}
         if self.real_space:
@@ -1539,7 +1568,13 @@ class Bispectrum:
                                                      2*f2, f4/b1f])
             params_kernels['k32'] = params_kernels['k31']
             params_stoch = params['MB0']/self.nbar * np.array([b1sq, b1f])
-            cnloB = params['cnloB']*f2 if self.RSD_model == 'EFT' else None
+            if self.RSD_model == 'EFT' and cnlo_type == 'default':
+                cnloB = params['cnloB']*f2
+            elif self.RSD_model == 'EFT' and cnlo_type == 'IvaPhiNis':
+                cnloB = -params['cnloB']/params['b1']
+            else:
+                cnloB = None
+            # cnloB = params['cnloB']*f2 if self.RSD_model == 'EFT' else None
 
             if self.RSD_model == 'VDG_infty':
                 if not self.discrete_average:
@@ -1583,7 +1618,7 @@ class Bispectrum:
                         kernel[l] += self.join_kernel_mu123_integral(
                             KK, self.kernel_mu_tuples[KK], l, neff,
                             params_kernels[KK], params['q_tr'], params['q_lo'],
-                            cnloB
+                            cnloB, cnlo_type
                         )
                     kernel_stoch[l] = self.join_stoch_kernel_mu123_integral(
                         [(0,0,0),(2,0,0)], l, neff, params_stoch,
