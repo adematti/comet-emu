@@ -73,22 +73,22 @@ class PTEmu:
         if self.bias_basis == 'EggScoSmi':
             self.bias_params_list = ['b1', 'b2', 'g2', 'g21', 'c0', 'c2', 'c4',
                                      'cnlo', 'cnloB', 'NP0', 'NP20', 'NP22',
-                                     'NB0', 'MB0']
+                                     'NB0', 'MB0', 'cB1', 'cB2']
         elif self.bias_basis == 'AssBauGre':
             self.bias_params_list = ['b1', 'b2', 'bG2', 'bGam3', 'c0', 'c2',
                                      'c4', 'cnlo', 'cnloB', 'NP0', 'NP20',
-                                     'NP22', 'NB0', 'MB0']
+                                     'NP22', 'NB0', 'MB0', 'cB1', 'cB2']
         elif self.bias_basis == 'AmiGleKok':
             self.bias_params_list = ['b1t', 'b2t', 'b3t', 'b4t', 'c0', 'c2',
                                      'c4', 'cnlo', 'cnloB', 'NP0', 'NP20',
-                                     'NP22', 'NB0', 'MB0']
+                                     'NP22', 'NB0', 'MB0', 'cB1', 'cB2']
         else:
             print('Warning. Bias basis not recognised, defaulting to '
                   '"EggScoSmi".')
             self.bias_basis = 'EggScoSmi'
             self.bias_params_list = ['b1', 'b2', 'g2', 'g21', 'c0', 'c2', 'c4',
                                      'cnlo', 'cnloB', 'NP0', 'NP20', 'NP22',
-                                     'NB0', 'MB0']
+                                     'NB0', 'MB0', 'cB1', 'cB2']
 
         self.RSD_params_list = []
         self.de_model_params_list = {
@@ -343,15 +343,15 @@ class PTEmu:
             if self.bias_basis == 'EggScoSmi':
                 self.bias_params_list = ['b1', 'b2', 'g2', 'g21', 'c0', 'c2',
                                          'c4', 'cnlo', 'cnloB', 'NP0', 'NP20',
-                                         'NP22', 'NB0', 'MB0']
+                                         'NP22', 'NB0', 'MB0', 'cB1', 'cB2']
             elif self.bias_basis == 'AssBauGre':
                 self.bias_params_list = ['b1', 'b2', 'bG2', 'bGam3', 'c0', 'c2',
                                          'c4', 'cnlo', 'cnloB', 'NP0', 'NP20',
-                                         'NP22', 'NB0', 'MB0']
+                                         'NP22', 'NB0', 'MB0', 'cB1', 'cB2']
             elif self.bias_basis == 'AmiGleKok':
                 self.bias_params_list = ['b1t', 'b2t', 'b3t', 'b4t', 'c0', 'c2',
                                          'c4', 'cnlo', 'cnloB', 'NP0', 'NP20',
-                                         'NP22', 'NB0', 'MB0']
+                                         'NP22', 'NB0', 'MB0', 'cB1', 'cB2']
             else:
                 print('Warning. Bias basis not recognised, choose between '
                       '"EggScoSmi" (default), "AssBauGre", or "AmiGleKok".')
@@ -561,6 +561,8 @@ class PTEmu:
         if self.RSD_model == 'VDG_infty':
             self.params['cnlo'] = 0.0
             self.params['cnloB'] = 0.0
+            self.params['cB1'] = 0.0
+            self.params['cB2'] = 0.0
 
         if self.bias_basis == 'AssBauGre':
             self.params['g2'] = self.params['bG2']
