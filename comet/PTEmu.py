@@ -241,7 +241,8 @@ class PTEmu:
         if self.RSD_model == 'EFT':
             self.Bisp_diagrams_all = ['B0L_b1b1b1', 'B0L_b1b1', 'B0L_b1',
                                       'B0L_b1b1b1cnloB', 'B0L_b1b1cnloB',
-                                      'B0L_b1cnloB', 'B0L_b1b1b2', 'B0L_b1b2', 'B0L_b2', 'B0L_b1b1b2cnloB',
+                                      'B0L_b1cnloB', 'B0L_b1b1b2', 'B0L_b1b2',
+                                      'B0L_b2', 'B0L_b1b1b2cnloB',
                                       'B0L_b1b2cnloB', 'B0L_b2cnloB',
                                       'B0L_b1b1g2', 'B0L_b1g2', 'B0L_g2',
                                       'B0L_b1b1g2cnloB', 'B0L_b1g2cnloB',

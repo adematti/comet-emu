@@ -1,6 +1,7 @@
 """Bispectrum module."""
 
 import numpy as np
+import numba as nb
 from comet.grid import Grid
 
 class Bispectrum:
@@ -1332,22 +1333,40 @@ class Bispectrum:
 
         self.tri_to_id = np.zeros_like(self.tri, dtype=int)
         self.tri_to_id_sq = np.zeros_like(self.tri, dtype=int)
-        for n in range(self.tri.shape[0]):
-            self.tri_to_id[n,0] = np.where(
-                self.tri_unique == self.tri_rounded[n,0])[0]
-            self.tri_to_id[n,1] = np.where(
-                self.tri_unique == self.tri_rounded[n,1])[0]
-            self.tri_to_id[n,2] = np.where(
-                self.tri_unique == self.tri_rounded[n,2])[0]
-            self.tri_to_id_sq[n,0] = np.where(
-                (self.ki == self.tri_rounded[n,0]) & \
-                (self.kj == self.tri_rounded[n,1]))[0]
-            self.tri_to_id_sq[n,1] = np.where(
-                (self.ki == self.tri_rounded[n,1]) & \
-                (self.kj == self.tri_rounded[n,2]))[0]
-            self.tri_to_id_sq[n,2] = np.where(
-                (self.ki == self.tri_rounded[n,0]) & \
-                (self.kj == self.tri_rounded[n,2]))[0]
+
+        #define jitted function for better performance
+        @nb.njit(parallel=True)
+        def get_tri_to_id(tri_to_id, tri_to_id_sq, tri_unique,
+                          tri_rounded, ki, kj):
+            for n in nb.prange(tri_rounded.shape[0]):
+                idi = [0,1,0]
+                idj = [1,2,2]
+                for d in nb.prange(3):
+                    tri_to_id[n,d] = np.where(
+                        tri_unique == tri_rounded[n,d])[0][0]
+                    tri_to_id_sq[n,d] = np.where(
+                        (ki == tri_rounded[n,idi[d]]) & \
+                        (kj == tri_rounded[n,idj[d]]))[0][0]
+
+        get_tri_to_id(self.tri_to_id, self.tri_to_id_sq, self.tri_unique,
+                      self.tri_rounded, self.ki, self.kj)
+
+        # for n in range(self.tri.shape[0]):
+        #     self.tri_to_id[n,0] = np.where(
+        #         self.tri_unique == self.tri_rounded[n,0])[0]
+        #     self.tri_to_id[n,1] = np.where(
+        #         self.tri_unique == self.tri_rounded[n,1])[0]
+        #     self.tri_to_id[n,2] = np.where(
+        #         self.tri_unique == self.tri_rounded[n,2])[0]
+        #     self.tri_to_id_sq[n,0] = np.where(
+        #         (self.ki == self.tri_rounded[n,0]) & \
+        #         (self.kj == self.tri_rounded[n,1]))[0]
+        #     self.tri_to_id_sq[n,1] = np.where(
+        #         (self.ki == self.tri_rounded[n,1]) & \
+        #         (self.kj == self.tri_rounded[n,2]))[0]
+        #     self.tri_to_id_sq[n,2] = np.where(
+        #         (self.ki == self.tri_rounded[n,0]) & \
+        #         (self.kj == self.tri_rounded[n,2]))[0]
 
         self.ki = np.searchsorted(self.tri_unique, self.ki)
         self.kj = np.searchsorted(self.tri_unique, self.kj)
