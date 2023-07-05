@@ -1,6 +1,11 @@
 """Grid module."""
 
 import numpy as np
+import ctypes
+import numba as nb
+import os
+
+nb.config.THREADING_LAYER = 'workqueue'
 
 class Grid:
 
@@ -262,3 +267,126 @@ class Grid:
                 self.k123eff = self.k123eff_all
         else:
             self.k123eff = self.k123eff_all
+
+
+
+class CtypedGrid:
+
+    lib = ctypes.cdll.LoadLibrary('{}/discreteness/libgrid.so'.format(
+        os.path.join(os.path.dirname(__file__))))
+    lib.new_double_vector.restype = ctypes.c_void_p
+    lib.new_double_vector.argtypes = []
+    lib.delete_double_vector.restype = None
+    lib.delete_double_vector.argtypes = [ctypes.c_void_p]
+    lib.get_double_vector_size.restype = ctypes.c_int
+    lib.get_double_vector_size.argtypes = [ctypes.c_void_p]
+    lib.push_back_double_vector.restype = None
+    lib.push_back_double_vector.argtypes = [ctypes.c_void_p, ctypes.c_double]
+
+    lib.new_Grid.restype = ctypes.c_void_p
+    lib.new_Grid.argtypes = [ctypes.c_int, ctypes.c_double, ctypes.c_double,
+                             ctypes.c_double]
+    lib.find_unique_triangles.restype = None
+    lib.find_unique_triangles.argtypes = [ctypes.c_void_p, ctypes.c_void_p,
+                                          ctypes.c_double]
+    lib.get_num_triangle_bins.restype = ctypes.c_int
+    lib.get_num_triangle_bins.argtypes = [ctypes.c_void_p]
+    lib.get_num_fundamental_triangles.restype = ctypes.c_int
+    lib.get_num_fundamental_triangles.argtypes = [ctypes.c_void_p]
+    lib.get_unique_triangles.restype = None
+    lib.get_unique_triangles.argtypes = [ctypes.c_void_p,
+        np.ctypeslib.ndpointer(ctypes.c_double, flags="C_CONTIGUOUS"),
+        np.ctypeslib.ndpointer(ctypes.c_int, flags="C_CONTIGUOUS"),
+        np.ctypeslib.ndpointer(ctypes.c_int, flags="C_CONTIGUOUS")]
+
+    def __init__(self, **kwargs):
+        self.kfun = kwargs.get('kfun')
+        self.dk = kwargs.get('dk')
+        self.kbin = None
+        self.num_grid = 0
+        self.do_rounding = kwargs.get('do_rounding', True)
+        self.decimals = kwargs.get('decimals', [3,3])
+        self.c_grid = None
+        self.kmu123 = None
+        if self.do_rounding:
+            self.roundk = 10**(-self.decimals[0])*self.dk
+            self.roundmu = 10**(-self.decimals[1])
+        else:
+            self.roundk = 0.00001*self.dk
+            self.roundmu = 0.00001
+
+    def update(self, **kwargs):
+        if self.kfun != kwargs.get('kfun') or self.dk != kwargs.get('dk') \
+                or self.do_rounding != kwargs.get('do_rounding', True) \
+                or self.decimals != kwargs.get('decimals', [3,3]):
+            self.kfun = kwargs.get('kfun')
+            self.dk = kwargs.get('dk')
+            self.do_rounding = kwargs.get('do_rounding', True)
+            self.decimals = kwargs.get('decimals', [3,3])
+            self.c_grid = None
+            self.kmu123 = None
+            if self.do_rounding:
+                self.roundk = 10**(-self.decimals[0])*self.dk
+                self.roundmu = 10**(-self.decimals[1])
+            else:
+                self.roundk = 0.00001*self.dk
+                self.roundmu = 0.00001
+
+    def find_discrete_triangles(self, tri_unique):
+        self.tri_unique = tri_unique
+
+        num_grid = int(np.ceil(2*(np.amax(self.tri_unique)+self.dk/2)
+                               / self.kfun))
+        if num_grid > self.num_grid or self.c_grid is None:
+            self.num_grid = num_grid
+            self.c_grid = CtypedGrid.lib.new_Grid(self.num_grid, self.kfun,
+                                                  self.roundk, self.roundmu)
+
+        self.vec_kbin = CtypedGrid.lib.new_double_vector()
+        for i in range(len(self.tri_unique)):
+            CtypedGrid.lib.push_back_double_vector(self.vec_kbin,
+                                                   self.tri_unique[i])
+
+        CtypedGrid.lib.find_unique_triangles(self.c_grid, self.vec_kbin,
+                                             self.dk)
+
+        self.ntri = CtypedGrid.lib.get_num_triangle_bins(self.c_grid)
+        self.size = CtypedGrid.lib.get_num_fundamental_triangles(self.c_grid)
+
+        temp = np.empty(self.size*6, dtype=np.float64)
+        self.weights = np.empty(self.size, dtype=np.int32)
+        self.num_tri_f = np.empty(self.ntri, dtype=np.int32)
+        CtypedGrid.lib.get_unique_triangles(self.c_grid, temp,
+                                            self.weights, self.num_tri_f)
+
+        self.cum_num_tri_f = np.concatenate(([0],np.cumsum(self.num_tri_f)))
+        self.kmu123 = np.empty((self.size,6), dtype=np.float64)
+        for i in range(self.ntri):
+            self.kmu123[self.cum_num_tri_f[i]:self.cum_num_tri_f[i+1]] = \
+                np.array(temp[self.cum_num_tri_f[i]*6:
+                              self.cum_num_tri_f[i+1]*6]).reshape(
+                                  (self.num_tri_f[i],6))
+        # self.kmu123 = [
+        #     np.array(self.kmu123[cum_num_tri_f[i]*6:cum_num_tri_f[i+1]*6]).
+        #     reshape((self.num_tri_f[i],6)) for i in range(self.ntri)]
+        # self.weights = [self.weights[cum_num_tri_f[i]:cum_num_tri_f[i+1]]
+        #                 for i in range(self.ntri)]
+
+    @staticmethod
+    @nb.njit(parallel=True)
+    def _average_k123(kmu123, weights, cum_num_tri_f):
+        nconf = cum_num_tri_f.size - 1
+        keff = np.zeros((nconf,3))
+        for i in nb.prange(nconf):
+            n1 = cum_num_tri_f[i]
+            n2 = cum_num_tri_f[i+1]
+            wsum = np.sum(weights[n1:n2])
+            for d in nb.prange(3):
+                keff[i,d] = np.sum(kmu123[n1:n2,d]*weights[n1:n2])/wsum
+        return keff
+
+    def compute_effective_triangles(self, tri_unique):
+        if np.any(tri_unique != self.tri_unique) or self.kmu123 is None:
+            self.find_discrete_triangles(tri_unique)
+        self.k123eff = self._average_k123(self.kmu123, self.weights,
+                                          self.cum_num_tri_f)

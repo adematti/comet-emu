@@ -153,6 +153,8 @@ class PTEmu:
         self.X_obs_id = None
         self.X_binning = None
         self.Bisp_binning = None
+        self._Bisp_binning_last = {}
+        self._Bisp_tri_has_changed = False
         self.emu_params_updated = False
 
         self.chi2_decomposition = None
@@ -1574,7 +1576,7 @@ class PTEmu:
                     P2d_tot = P2d(kp, mup) + P2d_stoch(kp, mup)
                     return np.outer(P2d_tot, eval_legendre(ell, mu))
             else:
-                def  shell_average():
+                def shell_average():
                     mu2 = self.grid.mu**2
                     APfac = np.sqrt(mu2/self.params['q_lo']**2 +
                                     (1.0 - mu2)/self.params['q_tr']**2)
@@ -2577,7 +2579,8 @@ class PTEmu:
                 list(self.Bisp.ntri_ell.keys()) != ell or \
                 not all([list(self.Bisp.ntri_ell.values())[0] == x for x in
                     list(self.Bisp.ntri_ell.values())]) or \
-                kfun != self.Bisp.kfun or binning != self.Bisp_binning:
+                kfun != self.Bisp.kfun: # or binning != self.Bisp_binning:
+            # print('Call set tri (triangle change!)')
             if kfun is None:
                 if binning is not None and binning.get('kfun') is not None:
                     kfun = binning['kfun']
@@ -2586,9 +2589,66 @@ class PTEmu:
                     print('kfun not specified. Using kfun = {}'.format(kfun))
             self.Bisp_binning = binning
             self.Bisp.set_tri(tri, ell, kfun, gl_deg, binning)
+            self._Bisp_tri_has_changed = True
+        if binning != self.Bisp_binning:
+            # the following checks if we need to recompute the kernels
+            # not very nicely done, though... -> revisit!!
+            if self.Bisp_binning is not None:
+                self._Bisp_binning_last = self.Bisp_binning.copy()
+            self.Bisp_binning = binning
+            if kfun is None:
+                if binning is not None and \
+                        binning.get('kfun') is not None:
+                    kfun = binning['kfun']
+                else:
+                    kfun = tri[0,0]
+                    print('kfun not specified. '
+                          'Using kfun = {}'.format(kfun))
+            if self.Bisp_binning is not None:
+                comp = {key:self.Bisp_binning.get(key) == \
+                        self._Bisp_binning_last.get(key) for key in \
+                        set(list(self.Bisp_binning.keys()) + \
+                                 list(self._Bisp_binning_last.keys()))}
+                equal_conf = np.all([comp[x] for x in comp if x != 'effective'])
+                if not equal_conf or self.Bisp.grid is None or \
+                        self._Bisp_tri_has_changed:
+                    # print('Call set tri (binning change!)')
+                    self.Bisp.set_tri(tri, ell, kfun, gl_deg, binning)
+            elif self.Bisp.kernels is None or self._Bisp_tri_has_changed:
+                # print('Call set tri (binning change!)')
+                self.Bisp.set_tri(tri, ell, kfun, gl_deg, binning)
+            if self.Bisp_binning is None:
+                self.Bisp.discrete_average = False
+                self.Bisp.use_effective_triangles = False
+            else:
+                if self.Bisp_binning.get('effective'):
+                    self.Bisp.discrete_average = False
+                    self.Bisp.use_effective_triangles = True
+                else:
+                    self.Bisp.discrete_average = True
+                    self.Bisp.use_effective_triangles = False
+            self._Bisp_tri_has_changed = False
 
         if binning:
             tri_unique = self.Bisp.tri_eff_unique
+            # if not effective and Bisp.Pdw doesnt exist or doesn't match the correct shape, compute Pdw values for all fundamental k1,k2,k3
+            fiducial_cosmology = self.Bisp_binning.get('fiducial_cosmology')
+            if not fiducial_cosmology:
+                fiducial_cosmology = {'h':0.6736, 'wc':0.12, 'wb':0.02237,
+                                      'ns':0.9649, 'As':2.0989031673,
+                                      'w0':-1.0, 'wa':0.0, 'z':params['z']}
+            if not self.Bisp.use_effective_triangles and \
+                    (self.Bisp.fiducial_cosmology != fiducial_cosmology \
+                     or self.Bisp.fiducial_Pdw is None \
+                     or self.Bisp.fiducial_Pdw.shape[0] != \
+                         self.Bisp.grid.kmu123.shape[0]):
+                self.Bisp.init_Pdw(np.array([
+                    self.Pdw(self.Bisp.grid.kmu123[:,j],
+                             fiducial_cosmology, de_model, ell_for_recon)
+                    for j in range(3)]).T, ell)
+                self.Bisp.fiducial_Pdw_eff = self.Pdw(
+                    tri_unique, fiducial_cosmology, de_model, ell_for_recon)
+                self.Bisp.fiducial_cosmology = fiducial_cosmology
         else:
             tri_unique = self.Bisp.tri_unique
 
