@@ -61,6 +61,9 @@ class Bispectrum:
             self.kernel_mu_tuples = {}
             for kk in self.kernel_names:
                 self.kernel_mu_tuples[kk] = [(0,0,0)]
+            self._get_mu_tuples_for_discrete_average()
+            self.n123_tuples_stoch_all = np.array([[0,0,0],[2,0,0],[0,2,0],
+                                                   [0,0,2]])
         else:
             self.kernel_names = ['F2', 'G2', 'b2', 'K', 'k31', 'k32']
             kernel_names_deriv = []
@@ -387,6 +390,7 @@ class Bispectrum:
         kernels = {}
         mu = (k3**2 - k1**2 - k2**2)/(2*k1*k2)
         kernels['F2'] = 5.0/7.0 + mu/2 * (k1/k2 + k2/k1) + 2.0/7.0 * mu**2
+        kernels['b2'] = 1.0
         kernels['K'] = mu**2 - 1.0
         return kernels
 
@@ -1887,16 +1891,24 @@ class Bispectrum:
         kernel_stoch = {}
         if self.real_space:
             b1sq = params['b1']**2
+            params_kernels = {}
+            params_kernels['F2'] = 2*params['b1']*b1sq
+            params_kernels['b2'] = params['b2']*b1sq
+            params_kernels['K'] = 2*params['g2']*b1sq
+            params_stoch = params['MB0']*b1sq/self.nbar
             if self.discrete_average:
-                kernel[0] = 2*b1sq * \
-                    (params['b1']*self.kernels_shell_average['F2'][0,0,0][0] \
-                     + 0.5*params['b2'] \
-                     + params['g2']*self.kernels_shell_average['K'][0,0,0][0])
+                kernel[0] = np.zeros_like(
+                    self.kernels_shell_average['F2'][0,0,0][0])
+                for KK in self.kernel_names:
+                    kernel[0] += params_kernels[KK] \
+                                 * self.kernels_shell_average[KK][0,0,0][0]
+                kernel_stoch[0] = params_stoch \
+                                  * self.stoch_kernels_shell_average[0,0,0][0]
             else:
-                kernel[0] = 2*b1sq * (params['b1']*self.kernels['F2'] \
-                                      + 0.5*params['b2'] + \
-                                      params['g2']*self.kernels['K'])
-            kernel_stoch[0] = params['MB0']*b1sq/self.nbar
+                kernel[0] = np.zeros_like(self.kernels['F2'])
+                for KK in self.kernel_names:
+                    kernel[0] += params_kernels[KK]*self.kernels[KK]
+                kernel_stoch[0] = params_stoch
         else:
             b1sq = params['b1']**2
             b1f = params['b1']*params['f']
