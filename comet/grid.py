@@ -285,7 +285,7 @@ class CtypedGrid:
 
     lib.new_Grid.restype = ctypes.c_void_p
     lib.new_Grid.argtypes = [ctypes.c_int, ctypes.c_double, ctypes.c_double,
-                             ctypes.c_double]
+                             ctypes.c_double, ctypes.c_double, ctypes.c_double]
     lib.find_unique_triangles.restype = None
     lib.find_unique_triangles.argtypes = [ctypes.c_void_p, ctypes.c_void_p,
                                           ctypes.c_double]
@@ -306,31 +306,34 @@ class CtypedGrid:
         self.num_grid = 0
         self.do_rounding = kwargs.get('do_rounding', True)
         self.decimals = kwargs.get('decimals', [3,3])
+        self.shape_limits = kwargs.get('shape_limits', [1.02,1.15])
         self.c_grid = None
         self.kmu123 = None
         if self.do_rounding:
             self.roundk = 10**(-self.decimals[0])*self.dk
             self.roundmu = 10**(-self.decimals[1])
         else:
-            self.roundk = 0.00001*self.dk
-            self.roundmu = 0.00001
+            self.roundk = 1e-7*self.dk
+            self.roundmu = 1e-7
 
     def update(self, **kwargs):
         if self.kfun != kwargs.get('kfun') or self.dk != kwargs.get('dk') \
                 or self.do_rounding != kwargs.get('do_rounding', True) \
-                or self.decimals != kwargs.get('decimals', [3,3]):
+                or self.decimals != kwargs.get('decimals', [3,3]) \
+                or self.shape_limits != kwargs.get('shape_limits', [1.02,1.15]):
             self.kfun = kwargs.get('kfun')
             self.dk = kwargs.get('dk')
             self.do_rounding = kwargs.get('do_rounding', True)
             self.decimals = kwargs.get('decimals', [3,3])
+            self.shape_limits = kwargs.get('shape_limits', [1.02,1.15])
             self.c_grid = None
             self.kmu123 = None
             if self.do_rounding:
                 self.roundk = 10**(-self.decimals[0])*self.dk
                 self.roundmu = 10**(-self.decimals[1])
             else:
-                self.roundk = 0.00001*self.dk
-                self.roundmu = 0.00001
+                self.roundk = 1e-7*self.dk
+                self.roundmu = 1e-7
 
     def find_discrete_triangles(self, tri_unique):
         self.tri_unique = tri_unique
@@ -340,7 +343,9 @@ class CtypedGrid:
         if num_grid > self.num_grid or self.c_grid is None:
             self.num_grid = num_grid
             self.c_grid = CtypedGrid.lib.new_Grid(self.num_grid, self.kfun,
-                                                  self.roundk, self.roundmu)
+                                                  self.roundk, self.roundmu,
+                                                  self.shape_limits[0],
+                                                  self.shape_limits[1])
 
         self.vec_kbin = CtypedGrid.lib.new_double_vector()
         for i in range(len(self.tri_unique)):

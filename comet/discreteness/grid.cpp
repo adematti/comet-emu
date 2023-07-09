@@ -10,7 +10,8 @@ using namespace std;
 
 Grid::Grid () {}
 
-Grid::Grid (int num_grid, double kf, double roundk, double roundmu)
+Grid::Grid (int num_grid, double kf, double roundk, double roundmu,
+            double s_min, double s_max)
 {
   n_ = num_grid;
   n2_ = n_*n_;
@@ -18,6 +19,8 @@ Grid::Grid (int num_grid, double kf, double roundk, double roundmu)
   kf_ = kf;
   roundk_ = roundk;
   roundmu_ = roundmu;
+  s_min_ = s_min;
+  s_max_ = s_max;
 
   idk_ = new vector<int> [3];
   double k2;
@@ -120,7 +123,7 @@ int Grid::nbin (double check_k, vector<double> k_list, double half_dk)
   return bin;
 }
 
-void Grid::generate_triangle_ids (int nbin)
+void Grid::generate_triangle_ids (int nbin, double first_bin_centre)
 {
   nbin_ = nbin;
   id_shell_ = NULL;
@@ -133,18 +136,22 @@ void Grid::generate_triangle_ids (int nbin)
     {
       for (int k=0; k<j+1; k++)
       {
-        if (1+j+k >= i)
+        if (first_bin_centre+j+k >= i)
         {
-          if (tri_.size() == ctr)
+          if ((2*first_bin_centre+j+k)/(first_bin_centre+i) < s_max_ &&
+              (2*first_bin_centre+j+k)/(first_bin_centre+i) > s_min_)
           {
-            vector<int> conf;
-            conf.push_back(id_ctr);
-            conf.push_back(i);
-            conf.push_back(j);
-            tri_.push_back(conf);
+            if (tri_.size() == ctr)
+            {
+              vector<int> conf;
+              conf.push_back(id_ctr);
+              conf.push_back(i);
+              conf.push_back(j);
+              tri_.push_back(conf);
+            }
+            tri_[ctr].push_back(k);
+            id_ctr++;
           }
-          tri_[ctr].push_back(k);
-          id_ctr++;
         }
       }
       if (tri_.size() == ctr+1)
@@ -218,7 +225,7 @@ void Grid::find_unique_triangles (vector<double> kbin, double dk,
 {
   if (!id_shell_) find_modes_in_shell(kbin, dk);
   if (!id_posmu_shell_) find_modes_in_posmu_shell(kbin, dk);
-  if (nbin_ != kbin.size()) generate_triangle_ids(kbin.size());
+  if (nbin_ != kbin.size()) generate_triangle_ids(kbin.size(), kbin[0]/dk);
 
   // chrono::steady_clock::time_point begin = chrono::steady_clock::now();
 
@@ -365,12 +372,12 @@ extern "C"
   { v->push_back(val); }
 
   Grid* new_Grid (int num_grid, double kf, double roundk=0.001,
-                  double roundmu=0.001)
-  { return new Grid(num_grid, kf, roundk, roundmu); }
+                  double roundmu=0.001, double s_min=1.0, double s_max=2.0)
+  { return new Grid(num_grid, kf, roundk, roundmu, s_min, s_max); }
 
   void find_unique_triangles (Grid* grid, vector<double>* kbin, double dk)
   {
-    grid->generate_triangle_ids((*kbin).size());
+    grid->generate_triangle_ids((*kbin).size(), (*kbin)[0]/dk);
     grid->find_modes_in_shell(*kbin, dk);
     grid->find_modes_in_posmu_shell(*kbin, dk);
     int ntri = grid->get_num_triangle_bins();

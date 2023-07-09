@@ -124,14 +124,6 @@ class Bispectrum:
                 self.discrete_kernel_mu_tuples[kk_deriv] = list(set(
                     self.discrete_kernel_mu_tuples[kk_deriv]
                 ))
-            for i in range(len(self.kernel_mu_tuples[kk])):
-                for j in range(3):
-                    n123 = np.copy(self.discrete_kernel_mu_tuples[kk][i])
-                    n123[j] += 2
-                    self.discrete_kernel_mu_tuples[kk].append(tuple(n123))
-            self.discrete_kernel_mu_tuples[kk] = list(set(
-                self.discrete_kernel_mu_tuples[kk]
-            ))
         if self.RSD_model == 'EFT': # TODO: check for cnloB type!
             for kk in self.kernel_mu_tuples:
                 for i in range(3):
@@ -162,6 +154,31 @@ class Bispectrum:
                         self.discrete_kernel_mu_tuples[kk_ctr_deriv] = list(set(
                             self.discrete_kernel_mu_tuples[kk_ctr_deriv]
                         ))
+
+            # do after adding derivs and counterterms, only for kk and kk_ctr
+        for kk in self.kernel_mu_tuples:
+            for i in range(len(self.kernel_mu_tuples[kk])):
+                for j in range(3):
+                    n123 = np.copy(self.discrete_kernel_mu_tuples[kk][i])
+                    n123[j] += 2
+                    self.discrete_kernel_mu_tuples[kk].append(tuple(n123))
+            self.discrete_kernel_mu_tuples[kk] = list(set(
+                self.discrete_kernel_mu_tuples[kk]
+            ))
+        if self.RSD_model == 'EFT':
+            for kk in self.kernel_mu_tuples:
+                for i in range(3):
+                    kk_ctr = 'k{}sq{}'.format(i+1, kk)
+                    for j in range(len(self.discrete_kernel_mu_tuples[kk_ctr])):
+                        for k in range(3):
+                            n123 = np.array(
+                                self.discrete_kernel_mu_tuples[kk_ctr][j])
+                            n123[k] += 2
+                            self.discrete_kernel_mu_tuples[kk_ctr].append(
+                                tuple(n123))
+                    self.discrete_kernel_mu_tuples[kk_ctr] = list(set(
+                        self.discrete_kernel_mu_tuples[kk_ctr]
+                    ))
 
     def define_units(self, use_Mpc):
         r"""Define units for the bispectrum.
@@ -262,19 +279,31 @@ class Bispectrum:
                 self.grid = CtypedGrid(**binning)
             else:
                 self.grid.update(**binning)
+            a = np.mean(self.grid.shape_limits)
+            b = (self.grid.shape_limits[1]-self.grid.shape_limits[0])/2
+            check = np.abs((self.tri[:,2]+self.tri[:,1])/self.tri[:,0] - a) < b
+            self.tri_ids_discrete_binning = np.where(check)[0]
+            self.tri_ids_eff = np.where(np.logical_not(check))[0]
+            self.tri_unique = np.arange(
+                int(np.floor(np.amax(self.tri)/binning.get('dk')))) \
+                * binning.get('dk') + binning.get('first_bin_centre')
             self.grid.find_discrete_triangles(self.tri_unique)
-            self.grid.compute_effective_triangles(self.tri_unique)
-            self.tri_eff = np.copy(self.grid.k123eff)
-            # self.tri_eff = np.flip(np.sort(self.tri_eff, axis=1), axis=1)
-            self.generate_eff_index_arrays()
             if binning.get('effective') is not None \
                     and binning['effective'] == True:
                 self.discrete_average = False
                 self.use_effective_triangles = True
+                self.grid.compute_effective_triangles(self.tri_unique)
+                self.tri_eff = np.copy(self.grid.k123eff)
+                self.generate_eff_index_arrays()
+                # self.tri_eff = np.flip(np.sort(self.tri_eff, axis=1), axis=1)
                 self.compute_kernels(self.tri_eff)
                 if not self.real_space:
                     self.compute_mu123_integrals(self.tri_eff)
             else:
+                self.tri_eff = np.copy(self.tri)
+                self.generate_eff_index_arrays()
+                self.compute_kernels(self.tri[self.tri_ids_eff])
+                self.compute_mu123_integrals(self.tri[self.tri_ids_eff])
                 self.discrete_average = True
                 self.use_effective_triangles = False
                 # self.compute_kernels_shell_average(max(ell))
@@ -1339,7 +1368,7 @@ class Bispectrum:
             return out
 
         # loop over triangle configurations
-        for n in range(self.tri.shape[0]):
+        for n,tri_id in enumerate(self.tri_ids_discrete_binning):
             id1 = self.grid.cum_num_tri_f[n]
             id2 = self.grid.cum_num_tri_f[n+1]
             wsum = np.sum(self.grid.weights[id1:id2])
@@ -1399,15 +1428,33 @@ class Bispectrum:
                 for kk in self.kernels_shell_average:
                     for n123 in self.kernels_shell_average[kk]:
                         for ell in ell_req:
-                            self.kernels_shell_average[kk][n123][ell][n,i_perm]\
-                                = avg[count]
+                            self.kernels_shell_average[kk][n123][ell] \
+                                [tri_id,i_perm] = avg[count]
                             count += 1
                 count = 0
                 for n123 in self.stoch_kernels_shell_average:
                     for ell in ell_req:
-                        self.stoch_kernels_shell_average[n123][ell][n,i_perm] \
-                            = avg_stoch[count]
+                        self.stoch_kernels_shell_average[n123][ell] \
+                            [tri_id,i_perm] = avg_stoch[count]
                         count += 1
+
+        for n,tri_id in enumerate(self.tri_ids_eff):
+            P2 = np.zeros(3)
+            for i in range(3):
+                i1 = self.tri_eff_to_id[tri_id][i%3]
+                i2 = self.tri_eff_to_id[tri_id][(i+1)%3]
+                P2[i] = self.fiducial_Pdw_eff[i1]*self.fiducial_Pdw_eff[i2]
+            for kk in self.kernels_shell_average:
+                kk_bare = [x for x in self.I.keys() if x in kk][0]
+                for n123 in self.kernels_shell_average[kk]:
+                    for ell in ell_req:
+                        self.kernels_shell_average[kk][n123][ell][tri_id] = \
+                            self.kernels[kk][n]*self.I[kk_bare][n123][ell][n]*P2
+            for n123 in self.stoch_kernels_shell_average:
+                for ell in ell_req:
+                    self.stoch_kernels_shell_average[n123][ell][tri_id] = \
+                        self.I_stoch[n123][ell][n] \
+                        * self.fiducial_Pdw_eff[self.tri_eff_to_id[tri_id]]
 
     def compute_covariance_mixing_kernel(self, l1, l2, l3, l4, l5):
         def legendre_coeff(ell, n):

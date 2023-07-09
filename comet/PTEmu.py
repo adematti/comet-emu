@@ -2642,12 +2642,12 @@ class PTEmu:
                      or self.Bisp.fiducial_Pdw is None \
                      or self.Bisp.fiducial_Pdw.shape[0] != \
                          self.Bisp.grid.kmu123.shape[0]):
+                self.Bisp.fiducial_Pdw_eff = self.Pdw(
+                    tri_unique, fiducial_cosmology, de_model, ell_for_recon)
                 self.Bisp.init_Pdw(np.array([
                     self.Pdw(self.Bisp.grid.kmu123[:,j],
                              fiducial_cosmology, de_model, ell_for_recon)
                     for j in range(3)]).T, ell)
-                self.Bisp.fiducial_Pdw_eff = self.Pdw(
-                    tri_unique, fiducial_cosmology, de_model, ell_for_recon)
                 self.Bisp.fiducial_cosmology = fiducial_cosmology
         else:
             tri_unique = self.Bisp.tri_unique

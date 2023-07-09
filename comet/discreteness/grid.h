@@ -10,6 +10,7 @@ class Grid{
     int n_, n2_, ndim_;
     int nbin_ = 0;
     double kf_, roundk_, roundmu_;
+    double s_min_, s_max_;
 
     std::vector<int>* idk_;
     std::vector<int>* id_shell_;
@@ -29,7 +30,7 @@ class Grid{
   public:
 
     Grid ();
-    Grid (int, double, double=0.001, double=0.001);
+    Grid (int, double, double=0.001, double=0.001, double=1.0, double=2.0);
     ~Grid ();
 
     double* kmu123;
@@ -48,7 +49,7 @@ class Grid{
     int id_to_m (int);
     int m_to_id (int);
 
-    void generate_triangle_ids (int);
+    void generate_triangle_ids (int, double);
 
     std::vector<int>* get_ptr_idk () { return idk_; }
     int get_idk (int dimension, int index) { return idk_[dimension][index]; }
