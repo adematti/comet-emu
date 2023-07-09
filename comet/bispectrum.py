@@ -279,14 +279,24 @@ class Bispectrum:
                 self.grid = CtypedGrid(**binning)
             else:
                 self.grid.update(**binning)
+            self.tri_unique = np.arange(
+                int(np.around(np.amax(self.tri)/binning.get('dk')))) \
+                * binning.get('dk') + binning.get('first_bin_centre')
+            tri_bin_centres = []
+            offset = binning.get('first_bin_centre')/binning.get('dk')*1.0001
+            for i,k1 in enumerate(self.tri_unique):
+                for j,k2 in enumerate(self.tri_unique[:i+1]):
+                    for n,k3 in enumerate(self.tri_unique[:j+1]):
+                        if offset+j+n > i:
+                            tri_bin_centres.append([k1,k2,k3])
+            tri_bin_centres = np.array(tri_bin_centres)
             a = np.mean(self.grid.shape_limits)
             b = (self.grid.shape_limits[1]-self.grid.shape_limits[0])/2
-            check = np.abs((self.tri[:,2]+self.tri[:,1])/self.tri[:,0] - a) < b
+            check = np.abs((tri_bin_centres[:,2]+tri_bin_centres[:,1]) \
+                           / tri_bin_centres[:,0] - a) < b
             self.tri_ids_discrete_binning = np.where(check)[0]
             self.tri_ids_eff = np.where(np.logical_not(check))[0]
-            self.tri_unique = np.arange(
-                int(np.floor(np.amax(self.tri)/binning.get('dk')))) \
-                * binning.get('dk') + binning.get('first_bin_centre')
+
             self.grid.find_discrete_triangles(self.tri_unique)
             if binning.get('effective') is not None \
                     and binning['effective'] == True:
