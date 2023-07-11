@@ -61,9 +61,8 @@ class Bispectrum:
             self.kernel_mu_tuples = {}
             for kk in self.kernel_names:
                 self.kernel_mu_tuples[kk] = [(0,0,0)]
-            self._get_mu_tuples_for_discrete_average()
-            self.n123_tuples_stoch_all = np.array([[0,0,0],[2,0,0],[0,2,0],
-                                                   [0,0,2]])
+            self.discrete_kernel_mu_tuples = self.kernel_mu_tuples.copy()
+            self.n123_tuples_stoch_all = np.array([[0,0,0]])
         else:
             self.kernel_names = ['F2', 'G2', 'b2', 'K', 'k31', 'k32']
             kernel_names_deriv = []
@@ -296,7 +295,6 @@ class Bispectrum:
                            / tri_bin_centres[:,0] - a) < b
             self.tri_ids_discrete_binning = np.where(check)[0]
             self.tri_ids_eff = np.where(np.logical_not(check))[0]
-
             self.grid.find_discrete_triangles(self.tri_unique)
             if binning.get('effective') is not None \
                     and binning['effective'] == True:
@@ -1222,7 +1220,7 @@ class Bispectrum:
         by calling the class method **mu123_integrals**, and stores them into
         a class attribute.
         """
-        kernel_names = ['F2','G2','k31','k32']
+        kernel_names = ['F2'] if self.real_space else ['F2','G2','k31','k32']
         for kk in kernel_names:
             self.I[kk] = {}
             n123_tuples = self.kernel_mu_tuples[kk]
