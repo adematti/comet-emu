@@ -1,6 +1,7 @@
 """Bispectrum module."""
 
 import numpy as np
+import numba as nb
 from comet.grid import Grid
 
 class Bispectrum:
@@ -651,6 +652,15 @@ class Bispectrum:
                 * (k2**2 + k3**2) + (k2**2 - k3**2)**4*(-10 + n1) + k1**8 \
                 * (8 + n1) - 2*k1**4*(k2**2 - k3**2)**2*(11 + n1))) \
                 / (128.*k1**6*k2**3*k3**3*(1 + n1)*(3 + n1)*(5 + n1)*(7 + n1))
+        elif n2 == 7 and n3 == 0:
+            I = ((k1**2 + k2**2 - k3**2)*(105*(k1**4 + (k2**2 - k3**2)**2 \
+                - 2*k1**2*(k2**2 + k3**2))**3 - 105*(k1**2 + k2**2 \
+                - k3**2)**2*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 \
+                + k3**2))**2*(2 + n1) + 21*(k1 - k2 - k3)*(k1 + k2 - k3)*(k1 \
+                - k2 + k3)*(k1 + k2 + k3)*(k1**2 + k2**2 - k3**2)**4*(2 + n1) \
+                * (4 + n1) - (k1**2 + k2**2 - k3**2)**6*(2 + n1)*(4 + n1) \
+                * (6 + n1)))/(128.*k1**7*k2**7*(2 + n1)*(4 + n1)*(6 + n1) \
+                * (8 + n1))
         elif n2 == 6 and n3 == 1:
             I = (-15*(5*k1**2 + 7*k2**2 - 7*k3**2)*(k1**4 + (k2**2 - k3**2)**2 \
                 - 2*k1**2*(k2**2 + k3**2))**3 + 15*(k1**2 + 7*k2**2 - 7*k3**2) \
@@ -743,6 +753,33 @@ class Bispectrum:
                 + ((k1**4 - (k2**2 - k3**2)**2)**4*(3 + n1)*(5 + n1) \
                 * (7 + n1))/4.))/(512.*k1**8*k2**4*k3**4*(1 + n1)*(3 + n1) \
                 * (5 + n1)*(7 + n1)*(9 + n1))
+        elif n2 == 8 and n3 == 1:
+            I = (105*(7*k1**2 + 9*k2**2 - 9*k3**2)*(k1**4 + (k2**2 - k3**2)**2 \
+                - 2*k1**2*(k2**2 + k3**2))**4*n1 - (k1**2 + k2**2 - k3**2)**2 \
+                * n1*(2 + n1)*(420*(k1**2 + 3*k2**2 - 3*k3**2)*(k1**4 \
+                + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**3 + 42*(k1**2 \
+                + k2**2 - k3**2)**2*(k1**2 - 9*k2**2 + 9*k3**2)*(k1**4 \
+                + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**2*(4 + n1) \
+                - 4*(k1 - k2 - k3)*(k1 + k2 - k3)*(k1 - k2 + k3)*(k1 + k2 \
+                + k3)*(k1**2 + k2**2 - k3**2)**4*(5*k1**2 - 9*k2**2 \
+                + 9*k3**2)*(4 + n1)*(6 + n1) + (k1**2 + k2**2 - k3**2)**6 \
+                * (k1**2 - k2**2 + k3**2)*(4 + n1)*(6 + n1)*(8 + n1))) \
+                / (512.*k1**9*k2**8*k3*n1*(2 + n1)*(4 + n1)*(6 + n1)*(8 + n1) \
+                * (10 + n1))
+        elif n2 == 7 and n3 == 2:
+            I = (-105*(5*k1**2 + 9*k2**2 - 9*k3**2)*(k1**4 \
+                + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**4*n1 \
+                + (k1**2 + k2**2 - k3**2)*n1*(2 + n1)*(420*(2*k1**2 + 3*k2**2 \
+                - 3*k3**2)*(k2**2 - k3**2)*(k1**4 + (k2**2 - k3**2)**2 \
+                - 2*k1**2*(k2**2 + k3**2))**3 + 42*(k1**2 + k2**2 - k3**2)**2 \
+                * (k1**4 + 2*k1**2*(k2**2 - k3**2) - 9*(k2**2 - k3**2)**2) \
+                * (k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**2 \
+                * (4 + n1) - (k1**2 + k2**2 - k3**2)**4*(4 + n1)*(6 + n1) \
+                * (8*k1**6*(7*k2**2 - 3*k3**2) + 16*k1**2*(k2**2 - k3**2)**2 \
+                * (7*k2**2 + 2*k3**2) + (k2**2 - k3**2)**4*(-28 + n1) \
+                + k1**8*n1 - 2*k1**4*(k2 - k3)*(k2 + k3)*(-(k3**2*(-10 + n1)) \
+                + k2**2*(70 + n1)))))/(512.*k1**9*k2**7*k3**2*n1*(2 + n1) \
+                * (4 + n1)*(6 + n1)*(8 + n1)*(10 + n1))
         elif n2 == 6 and n3 == 3:
             I = (315*(k1**2 + 3*k2**2 - 3*k3**2)*(k1**4 + (k2**2 - k3**2)**2 \
                 - 2*k1**2*(k2**2 + k3**2))**4*n1 + n1*(2 + n1)*(60*(2*k1**6 \
@@ -789,6 +826,24 @@ class Bispectrum:
                 * (k2 - k3)*(k2 + k3)*(-(k3**2*(-16 + n1)) + k2**2 \
                 * (92 + n1)))))/(2048.*k1**10*k2**8*k3**2*(1 + n1)*(3 + n1) \
                 * (5 + n1)*(7 + n1)*(9 + n1)*(11 + n1))
+        elif n2 == 7 and n3 == 3:
+            I = -0.0009765625*(-945*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2 \
+                * (k2**2 + k3**2))**5 + 315*(k1**4 + 12*k1**2*(k2**2 - k3**2) \
+                + 15*(k2**2 - k3**2)**2)*(k1**4 + (k2**2 - k3**2)**2 \
+                - 2*k1**2*(k2**2 + k3**2))**4*(1 + n1) + (k1**2 + k2**2 \
+                - k3**2)*(1 + n1)*(3 + n1)*(210*(k1**6 + 3*k1**4*(k2**2 \
+                - k3**2) - 9*k1**2*(k2**2 - k3**2)**2 - 15*(k2**2 - k3**2)**3) \
+                * (k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**3 \
+                + 42*(k1**2 + k2**2 - k3**2)**2*(k1**6 - 3*k1**4*(k2**2 \
+                - k3**2) - 9*k1**2*(k2**2 - k3**2)**2 + 15*(k2**2 - k3**2)**3) \
+                * (k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**2 \
+                * (5 + n1) - (k1**2 + k2**2 - k3**2)**4*(k1**2 - k2**2 \
+                + k3**2)*(5 + n1)*(7 + n1)*(6*k1**6*(7*k2**2 - 5*k3**2) \
+                + 18*k1**2*(k2**2 - k3**2)**2*(7*k2**2 + 3*k3**2) \
+                + (k2**2 - k3**2)**4*(-36 + n1) + k1**8*(6 + n1) - 2*k1**4 \
+                * (k2 - k3)*(k2 + k3)*(-(k3**2*(-3 + n1)) + k2**2*(69 \
+                + n1)))))/(k1**10*k2**7*k3**3*(1 + n1)*(3 + n1)*(5 + n1)*(7 \
+                + n1)*(9 + n1)*(11 + n1))
         elif n2 == 6 and n3 == 4:
             I = -0.0009765625*(945*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2 \
                 * (k2**2 + k3**2))**5 + 315*(k1**4 - 6*k1**2*(k2**2 - k3**2) \
@@ -822,6 +877,46 @@ class Bispectrum:
                 - (k2**2 - k3**2)**2)**2*(7 + n1) + (k1**4 - (k2**2 \
                 - k3**2)**2)**4*(7 + n1)*(9 + n1)))/(1024.*k1**10*k2**5*k3**5 \
                 * (1 + n1)*(3 + n1)*(5 + n1)*(7 + n1)*(9 + n1)*(11 + n1))
+        elif n2 == 7 and n3 == 4:
+            I = (945*(3*k1**2 + 11*(k2**2 - k3**2))*(k1**4 + (k2**2 \
+                - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**5 + 105*(11*k1**6 \
+                + 9*k1**4*(k2**2 - k3**2) - 135*k1**2*(k2**2 - k3**2)**2 \
+                - 165*(k2**2 - k3**2)**3)*(k1**4 + (k2**2 - k3**2)**2 \
+                - 2*k1**2*(k2**2 + k3**2))**4*(2 + n1) + (k1**2 + k2**2 \
+                - k3**2)*(2 + n1)*(4 + n1)*(210*(k1**8 - 4*k1**6*(k2**2 \
+                - k3**2) - 18*k1**4*(k2**2 - k3**2)**2 + 12*k1**2*(k2**2 \
+                - k3**2)**3 + 33*(k2**2 - k3**2)**4)*(k1**4 + (k2**2 \
+                - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**3 + (k1**2 + k2**2 \
+                - k3**2)**2*(6 + n1)*(6*(3*k1**8 - 44*k1**6*(k2**2 - k3**2) \
+                + 18*k1**4*(k2**2 - k3**2)**2 + 180*k1**2*(k2**2 - k3**2)**3 \
+                - 165*(k2**2 - k3**2)**4)*(k1**4 + (k2**2 - k3**2)**2 \
+                - 2*k1**2*(k2**2 + k3**2))**2 - (k1**4 - (k2**2 \
+                - k3**2)**2)**2*(8 + n1)*(4*k1**6*(7*k2**2 - 8*k3**2) \
+                + 20*k1**2*(k2**2 - k3**2)**2*(7*k2**2 + 4*k3**2) \
+                + (k2**2 - k3**2)**4*(-45 + n1) + k1**8*(11 + n1) - 2*k1**4 \
+                * (k2 - k3)*(k2 + k3)*(-(k3**2*(7 + n1)) + k2**2*(67 \
+                + n1))))))/(2048.*k1**11*k2**7*k3**4*(2 + n1)*(4 + n1) \
+                * (6 + n1)*(8 + n1)*(10 + n1)*(12 + n1))
+        elif n2 == 6 and n3 == 5:
+            I = -0.00048828125*(945*(k1**2 + 11*(k2**2 - k3**2))*(k1**4 \
+                + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**5 \
+                + (2 + n1)*(525*(k1**6 + 9*k1**4*(k2**2 - k3**2) - 9*k1**2 \
+                * (k2**2 - k3**2)**2 - 33*(k2**2 - k3**2)**3)*(k1**4 + (k2**2 \
+                - k3**2)**2 - 2*k1**2*(k2**2 + k3**2))**4 + 30*(5*k1**10 \
+                + 35*k1**8*(k2**2 - k3**2) - 70*k1**6*(k2**2 - k3**2)**2 \
+                - 210*k1**4*(k2**2 - k3**2)**3 + 105*k1**2*(k2**2 - k3**2)**4 \
+                + 231*(k2**2 - k3**2)**5)*(k1**4 + (k2**2 - k3**2)**2 \
+                - 2*k1**2*(k2**2 + k3**2))**3*(4 + n1) + (k1**2 + k2**2 \
+                - k3**2)**2*(k1**2 - k2**2 + k3**2)*(4 + n1)*(6 + n1) \
+                * (30*(k1**8 + 4*k1**6*(k2**2 - k3**2) - 18*k1**4*(k2**2 \
+                - k3**2)**2 - 12*k1**2*(k2**2 - k3**2)**3 + 33*(k2**2 \
+                - k3**2)**4)*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 \
+                + k3**2))**2 + 5*(k1 - k2 - k3)*(k1 + k2 - k3)*(k1 - k2 + k3) \
+                * (k1 + k2 + k3)*(k1**4 + 2*k1**2*(k2 - k3)*(k2 + k3) \
+                - 11*(k2**2 - k3**2)**2)*(k1**4 - (k2**2 - k3**2)**2)**2 \
+                * (8 + n1) + (k1**4 - (k2**2 - k3**2)**2)**4*(8 + n1)*(10 \
+                + n1))))/(k1**11*k2**6*k3**5*(2 + n1)*(4 + n1)*(6 + n1)*(8 \
+                + n1)*(10 + n1)*(12 + n1))
         elif n2 == 8 and n3 == 4:
             I = (20790*(k1**4 + (k2**2 - k3**2)**2 - 2*k1**2*(k2**2 \
                 + k3**2))**6 - 2*(1 + n1)*(1890*(k1**4 + 22*k1**2*(k2**2 \
@@ -843,6 +938,8 @@ class Bispectrum:
                 * (-k2**2 + k3**2))*(9 + n1) - (k1**4 - (k2**2 - k3**2)**2)**4 \
                 * (9 + n1)*(11 + n1))))/(8192.*k1**12*k2**8*k3**4*(1 + n1) \
                 * (3 + n1)*(5 + n1)*(7 + n1)*(9 + n1)*(11 + n1)*(13 + n1))
+        else:
+            print(n2,n3)
         return I
 
     def compute_kernels(self, tri):
@@ -987,6 +1084,10 @@ class Bispectrum:
                 for n123 in n123_tuples:
                     for i in range(3):
                         n123_new = np.copy(n123)
+                        n123_new[i] += 2
+                        n123_tuples = np.vstack((n123_tuples, n123_new))
+                        # the following is only needed for the counterterms in
+                        # IvaPhilNis...
                         n123_new[i] += 2
                         n123_tuples = np.vstack((n123_tuples, n123_new))
                 n123_tuples = np.unique(n123_tuples, axis=0)
@@ -1232,22 +1333,40 @@ class Bispectrum:
 
         self.tri_to_id = np.zeros_like(self.tri, dtype=int)
         self.tri_to_id_sq = np.zeros_like(self.tri, dtype=int)
-        for n in range(self.tri.shape[0]):
-            self.tri_to_id[n,0] = np.where(
-                self.tri_unique == self.tri_rounded[n,0])[0]
-            self.tri_to_id[n,1] = np.where(
-                self.tri_unique == self.tri_rounded[n,1])[0]
-            self.tri_to_id[n,2] = np.where(
-                self.tri_unique == self.tri_rounded[n,2])[0]
-            self.tri_to_id_sq[n,0] = np.where(
-                (self.ki == self.tri_rounded[n,0]) & \
-                (self.kj == self.tri_rounded[n,1]))[0]
-            self.tri_to_id_sq[n,1] = np.where(
-                (self.ki == self.tri_rounded[n,1]) & \
-                (self.kj == self.tri_rounded[n,2]))[0]
-            self.tri_to_id_sq[n,2] = np.where(
-                (self.ki == self.tri_rounded[n,0]) & \
-                (self.kj == self.tri_rounded[n,2]))[0]
+
+        #define jitted function for better performance
+        @nb.njit(parallel=True)
+        def get_tri_to_id(tri_to_id, tri_to_id_sq, tri_unique,
+                          tri_rounded, ki, kj):
+            for n in nb.prange(tri_rounded.shape[0]):
+                idi = [0,1,0]
+                idj = [1,2,2]
+                for d in nb.prange(3):
+                    tri_to_id[n,d] = np.where(
+                        tri_unique == tri_rounded[n,d])[0][0]
+                    tri_to_id_sq[n,d] = np.where(
+                        (ki == tri_rounded[n,idi[d]]) & \
+                        (kj == tri_rounded[n,idj[d]]))[0][0]
+
+        get_tri_to_id(self.tri_to_id, self.tri_to_id_sq, self.tri_unique,
+                      self.tri_rounded, self.ki, self.kj)
+
+        # for n in range(self.tri.shape[0]):
+        #     self.tri_to_id[n,0] = np.where(
+        #         self.tri_unique == self.tri_rounded[n,0])[0]
+        #     self.tri_to_id[n,1] = np.where(
+        #         self.tri_unique == self.tri_rounded[n,1])[0]
+        #     self.tri_to_id[n,2] = np.where(
+        #         self.tri_unique == self.tri_rounded[n,2])[0]
+        #     self.tri_to_id_sq[n,0] = np.where(
+        #         (self.ki == self.tri_rounded[n,0]) & \
+        #         (self.kj == self.tri_rounded[n,1]))[0]
+        #     self.tri_to_id_sq[n,1] = np.where(
+        #         (self.ki == self.tri_rounded[n,1]) & \
+        #         (self.kj == self.tri_rounded[n,2]))[0]
+        #     self.tri_to_id_sq[n,2] = np.where(
+        #         (self.ki == self.tri_rounded[n,0]) & \
+        #         (self.kj == self.tri_rounded[n,2]))[0]
 
         self.ki = np.searchsorted(self.tri_unique, self.ki)
         self.kj = np.searchsorted(self.tri_unique, self.kj)
@@ -1299,7 +1418,8 @@ class Bispectrum:
         self.tri_eff_unique *= self.kfun
 
     def join_kernel_mu123_integral(self, K, n123_tuples, ell, neff, coeff,
-                                   q_tr, q_lo, cnloB=None):
+                                   q_tr, q_lo, cnloB=None,
+                                   cnlo_type='EggLeeSco'):
         K_neff1 = neff[self.tri_to_id]*self.kernels[K]
         K_neff2 = neff[self.tri_to_id[:,[1,2,0]]]*self.kernels[K]
         K_deriv_sum = 0.0
@@ -1337,7 +1457,7 @@ class Bispectrum:
 
             DeltaB_K += coeff[i] * (t1 + t2 + t3 + t4)
 
-            if self.RSD_model == 'EFT':
+            if self.RSD_model == 'EFT' and cnlo_type == 'EggLeeSco':
                 for j in range(3):
                     Kctr = 'k{}sq{}'.format(j+1,K)
                     n123_j = np.copy(n123)
@@ -1361,6 +1481,40 @@ class Bispectrum:
 
                     DeltaB_K += coeff[i] * cnloB * (tctr1 + tctr2 + tctr3 \
                                                     + tctr4)
+            elif self.RSD_model == 'EFT' and cnlo_type == 'IvaPhiNis':
+                for j in range(2):
+                    if (K not in ['k31','k32'] and n123[j] < 2) \
+                            or (K in ['k31','k32'] and n123[j] < 3):
+                        Kctr = 'k{}sq{}'.format(j+1,K)
+                        n123_j = np.copy(n123)
+                        for n in range(2):
+                            n123_j[j] += 2
+                            split_factor = 0.5 if n123[j] >= 2 else 1.0
+                            tctr1 = self.I[K][tuple(n123_j)][ell] \
+                                * ((1.0 + (q_tr-q_lo)*sum(n123_j)) \
+                                * self.kernels[Kctr] \
+                                + (1.0-q_tr) * Kctr_deriv_sum[j] \
+                                + (1.0-q_tr) * (Kctr_neff1[j] + Kctr_neff2[j]))
+                            tctr2 = self.I[K][n123_j[0]+2,n123_j[1],
+                                              n123_j[2]][ell] \
+                                * (q_tr - q_lo) \
+                                * (self.kernels['d{}_dlnk1'.format(Kctr)] \
+                                   + Kctr_neff1[j] \
+                                   - n123_j[0]*self.kernels[Kctr])
+                            tctr3 = self.I[K][n123_j[0],n123_j[1]+2,
+                                              n123_j[2]][ell] \
+                                * (q_tr - q_lo) \
+                                * (self.kernels['d{}_dlnk2'.format(Kctr)] \
+                                   + Kctr_neff2[j] \
+                                   - n123_j[1]*self.kernels[Kctr])
+                            tctr4 = self.I[K][n123_j[0],n123_j[1],
+                                              n123_j[2]+2][ell] \
+                                * (q_tr - q_lo) \
+                                * (self.kernels['d{}_dlnk3'.format(Kctr)] \
+                                   - n123_j[2]*self.kernels[Kctr])
+
+                            DeltaB_K += coeff[i] * cnloB[n] * split_factor \
+                                        * (tctr1 + tctr2 + tctr3 + tctr4)
 
         return DeltaB_K
 
@@ -1506,7 +1660,8 @@ class Bispectrum:
 
         return DeltaB_K
 
-    def Bell(self, PL_dw, neff, params, ell=[0], W_damping=None):
+    def Bell(self, PL_dw, neff, params, ell=[0], W_damping=None,
+             cnlo_type='EggLeeSco'):
         kernel = {}
         kernel_stoch = {}
         if self.real_space:
@@ -1539,7 +1694,13 @@ class Bispectrum:
                                                      2*f2, f4/b1f])
             params_kernels['k32'] = params_kernels['k31']
             params_stoch = params['MB0']/self.nbar * np.array([b1sq, b1f])
-            cnloB = params['cnloB']*f2 if self.RSD_model == 'EFT' else None
+            if self.RSD_model == 'EFT' and cnlo_type == 'EggLeeSco':
+                cnloB = params['cnloB']*f2
+            elif self.RSD_model == 'EFT' and cnlo_type == 'IvaPhiNis':
+                cnloB = -np.array([params['cB1'], params['cB2']])/params['b1']
+            else:
+                cnloB = None
+            # cnloB = params['cnloB']*f2 if self.RSD_model == 'EFT' else None
 
             if self.RSD_model == 'VDG_infty':
                 if not self.discrete_average:
@@ -1583,7 +1744,7 @@ class Bispectrum:
                         kernel[l] += self.join_kernel_mu123_integral(
                             KK, self.kernel_mu_tuples[KK], l, neff,
                             params_kernels[KK], params['q_tr'], params['q_lo'],
-                            cnloB
+                            cnloB, cnlo_type
                         )
                     kernel_stoch[l] = self.join_stoch_kernel_mu123_integral(
                         [(0,0,0),(2,0,0)], l, neff, params_stoch,
