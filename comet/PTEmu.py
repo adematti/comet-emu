@@ -2639,15 +2639,38 @@ class PTEmu:
                                       'w0':-1.0, 'wa':0.0, 'z':params['z']}
             if not self.Bisp.use_effective_triangles and \
                     (self.Bisp.fiducial_cosmology != fiducial_cosmology \
-                     or self.Bisp.fiducial_Pdw is None \
-                     or self.Bisp.fiducial_Pdw.shape[0] != \
-                         self.Bisp.grid.kmu123.shape[0]):
+                     or self.Bisp.fiducial_Pdw_eff is None): # \
+                     # or self.Bisp.fiducial_Pdw.shape[0] != \
+                     #     self.Bisp.grid.kmu123.shape[0]):
                 self.Bisp.fiducial_Pdw_eff = self.Pdw(
                     tri_unique, fiducial_cosmology, de_model, ell_for_recon)
-                self.Bisp.init_Pdw(np.array([
-                    self.Pdw(self.Bisp.grid.kmu123[:,j],
-                             fiducial_cosmology, de_model, ell_for_recon)
-                    for j in range(3)]).T, ell)
+                if self.Bisp.generate_discrete_kernels:
+                    self.Bisp.init_Pdw(np.array([
+                        self.Pdw(self.Bisp.grid.kmu123[:,j],
+                                 fiducial_cosmology, de_model, ell_for_recon)
+                        for j in range(3)]).T, ell)
+                    if self.Bisp_binning.get('filename_root_kernels') \
+                            is not None:
+                        with open('{}.pickle'.format(
+                            self.Bisp_binning.get('filename_root_kernels')),
+                            "wb") as f:
+                            pickle.dump(self.Bisp.kernels_shell_average, f)
+                        with open('{}_stoch.pickle'.format(
+                            self.Bisp_binning.get('filename_root_kernels')),
+                            "wb") as f:
+                            pickle.dump(self.Bisp.stoch_kernels_shell_average,
+                                        f)
+                else:
+                    self.Bisp.kernels_shell_average = pickle.load(
+                        open('{}.pickle'.format(
+                            self.Bisp_binning.get('filename_root_kernels')),
+                            "rb")
+                    )
+                    self.Bisp.stoch_kernels_shell_average = pickle.load(
+                        open('{}_stoch.pickle'.format(
+                            self.Bisp_binning.get('filename_root_kernels')),
+                            "rb")
+                    )
                 self.Bisp.fiducial_cosmology = fiducial_cosmology
         else:
             tri_unique = self.Bisp.tri_unique

@@ -35,6 +35,7 @@ class Bispectrum:
         self.fiducial_Pdw_sq = None
         self.fiducial_Pdw_eff = None
         self.fiducial_cosmology = {}
+        self.generate_discrete_kernels = True
 
         self.kernel_diagrams = {
             'F2':['B0L_b1b1b1', 'B0L_b1b1', 'B0L_b1b1', 'B0L_b1'],
@@ -295,11 +296,11 @@ class Bispectrum:
                            / tri_bin_centres[:,0] - a) < b
             self.tri_ids_discrete_binning = np.where(check)[0]
             self.tri_ids_eff = np.where(np.logical_not(check))[0]
-            self.grid.find_discrete_triangles(self.tri_unique)
             if binning.get('effective') is not None \
                     and binning['effective'] == True:
                 self.discrete_average = False
                 self.use_effective_triangles = True
+                self.grid.find_discrete_triangles(self.tri_unique)
                 self.grid.compute_effective_triangles(self.tri_unique)
                 self.tri_eff = np.copy(self.grid.k123eff)
                 self.generate_eff_index_arrays()
@@ -308,13 +309,37 @@ class Bispectrum:
                 if not self.real_space:
                     self.compute_mu123_integrals(self.tri_eff)
             else:
-                self.tri_eff = np.copy(self.tri)
-                self.generate_eff_index_arrays()
-                self.compute_kernels(self.tri[self.tri_ids_eff])
-                self.compute_mu123_integrals(self.tri[self.tri_ids_eff])
                 self.discrete_average = True
                 self.use_effective_triangles = False
-                # self.compute_kernels_shell_average(max(ell))
+                if binning.get('filename_root_kernels') is not None:
+                    try:
+                        binning_from_file = np.load('{}_dict.npy'.format(
+                            binning.get('filename_root_kernels')),
+                            allow_pickle=True)
+                        tri_from_file = np.loadtxt('{}_tri.dat'.format(
+                            binning.get('filename_root_kernels')))
+                        if binning_from_file.item() == binning \
+                                and np.all(tri_from_file == self.tri):
+                            self.generate_discrete_kernels = False
+                        else:
+                            np.save('{}_dict.npy'.format(
+                                binning.get('filename_root_kernels')), binning)
+                            np.savetxt('{}_tri.dat'.format(
+                                binning.get('filename_root_kernels')), self.tri)
+                            self.generate_discrete_kernels = True
+                    except Exception:
+                        np.save('{}_dict.npy'.format(
+                            binning.get('filename_root_kernels')), binning)
+                        np.savetxt('{}_tri.dat'.format(
+                            binning.get('filename_root_kernels')), self.tri)
+                        self.generate_discrete_kernels = True
+                self.tri_eff = np.copy(self.tri)
+                self.generate_eff_index_arrays()
+                if self.generate_discrete_kernels:
+                    self.grid.find_discrete_triangles(self.tri_unique)
+                    self.compute_kernels(self.tri[self.tri_ids_eff])
+                    self.compute_mu123_integrals(self.tri[self.tri_ids_eff])
+                    # self.compute_kernels_shell_average(max(ell))
         self.cov_mixing_kernel = {}
 
     def init_Pdw(self, Pdw, ell):
