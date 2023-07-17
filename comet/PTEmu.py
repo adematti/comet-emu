@@ -2575,103 +2575,30 @@ class PTEmu:
         else:
             W_damping = None
 
-        if not np.all(self.Bisp.tri == tri) or \
-                list(self.Bisp.ntri_ell.keys()) != ell or \
-                not all([list(self.Bisp.ntri_ell.values())[0] == x for x in
-                    list(self.Bisp.ntri_ell.values())]) or \
-                kfun != self.Bisp.kfun: # or binning != self.Bisp_binning:
-            # print('Call set tri (triangle change!)')
-            if kfun is None:
-                if binning is not None and binning.get('kfun') is not None:
-                    kfun = binning['kfun']
-                else:
-                    kfun = tri[0,0]
-                    print('kfun not specified. Using kfun = {}'.format(kfun))
-            self.Bisp_binning = binning
+        tri_has_changed, binning_has_changed = \
             self.Bisp.set_tri(tri, ell, kfun, gl_deg, binning)
-            self._Bisp_tri_has_changed = True
-        if binning != self.Bisp_binning:
-            # the following checks if we need to recompute the kernels
-            # not very nicely done, though... -> revisit!!
-            if self.Bisp_binning is not None:
-                self._Bisp_binning_last = self.Bisp_binning.copy()
-            self.Bisp_binning = binning
-            if kfun is None:
-                if binning is not None and \
-                        binning.get('kfun') is not None:
-                    kfun = binning['kfun']
-                else:
-                    kfun = tri[0,0]
-                    print('kfun not specified. '
-                          'Using kfun = {}'.format(kfun))
-            if self.Bisp_binning is not None:
-                comp = {key:self.Bisp_binning.get(key) == \
-                        self._Bisp_binning_last.get(key) for key in \
-                        set(list(self.Bisp_binning.keys()) + \
-                                 list(self._Bisp_binning_last.keys()))}
-                equal_conf = np.all([comp[x] for x in comp if x != 'effective'])
-                if not equal_conf or self.Bisp.grid is None or \
-                        self._Bisp_tri_has_changed:
-                    # print('Call set tri (binning change!)')
-                    self.Bisp.set_tri(tri, ell, kfun, gl_deg, binning)
-            elif self.Bisp.kernels is None or self._Bisp_tri_has_changed:
-                # print('Call set tri (binning change!)')
-                self.Bisp.set_tri(tri, ell, kfun, gl_deg, binning)
-            if self.Bisp_binning is None:
-                self.Bisp.discrete_average = False
-                self.Bisp.use_effective_triangles = False
-            else:
-                if self.Bisp_binning.get('effective'):
-                    self.Bisp.discrete_average = False
-                    self.Bisp.use_effective_triangles = True
-                else:
-                    self.Bisp.discrete_average = True
-                    self.Bisp.use_effective_triangles = False
-            self._Bisp_tri_has_changed = False
 
         if binning:
             tri_unique = self.Bisp.tri_eff_unique
-            # if not effective and Bisp.Pdw doesnt exist or doesn't match the correct shape, compute Pdw values for all fundamental k1,k2,k3
-            fiducial_cosmology = self.Bisp_binning.get('fiducial_cosmology')
-            if not fiducial_cosmology:
-                fiducial_cosmology = {'h':0.6736, 'wc':0.12, 'wb':0.02237,
-                                      'ns':0.9649, 'As':2.0989031673,
-                                      'w0':-1.0, 'wa':0.0, 'z':params['z']}
-            if not self.Bisp.use_effective_triangles and \
-                    (self.Bisp.fiducial_cosmology != fiducial_cosmology \
-                     or self.Bisp.fiducial_Pdw_eff is None): # \
-                     # or self.Bisp.fiducial_Pdw.shape[0] != \
-                     #     self.Bisp.grid.kmu123.shape[0]):
-                self.Bisp.fiducial_Pdw_eff = self.Pdw(
-                    tri_unique, fiducial_cosmology, de_model, ell_for_recon)
+            if not binning.get('effective', False) \
+                    and (tri_has_changed or binning_has_changed):
+                self.Bisp.set_fiducial_cosmology(params)
+                Pdw_eff = self.Pdw(tri_unique, self.Bisp.fiducial_cosmology,
+                                   de_model, ell_for_recon)
+                self.Bisp.init_Pdw_eff(Pdw_eff)
                 if self.Bisp.generate_discrete_kernels:
-                    self.Bisp.init_Pdw(np.array([
+                    # print('Recompute (binned) kernels!')
+                    Pdw = np.array([
                         self.Pdw(self.Bisp.grid.kmu123[:,j],
-                                 fiducial_cosmology, de_model, ell_for_recon)
-                        for j in range(3)]).T, ell)
-                    if self.Bisp_binning.get('filename_root_kernels') \
-                            is not None:
-                        with open('{}.pickle'.format(
-                            self.Bisp_binning.get('filename_root_kernels')),
-                            "wb") as f:
-                            pickle.dump(self.Bisp.kernels_shell_average, f)
-                        with open('{}_stoch.pickle'.format(
-                            self.Bisp_binning.get('filename_root_kernels')),
-                            "wb") as f:
-                            pickle.dump(self.Bisp.stoch_kernels_shell_average,
-                                        f)
+                                 self.Bisp.fiducial_cosmology,
+                                 de_model, ell_for_recon)
+                        for j in range(3)
+                    ]).T
+                    self.Bisp.init_Pdw(Pdw, ell)
+                    self.Bisp.compute_kernels_shell_average(max(ell))
                 else:
-                    self.Bisp.kernels_shell_average = pickle.load(
-                        open('{}.pickle'.format(
-                            self.Bisp_binning.get('filename_root_kernels')),
-                            "rb")
-                    )
-                    self.Bisp.stoch_kernels_shell_average = pickle.load(
-                        open('{}_stoch.pickle'.format(
-                            self.Bisp_binning.get('filename_root_kernels')),
-                            "rb")
-                    )
-                self.Bisp.fiducial_cosmology = fiducial_cosmology
+                    # print('Load (binned) kernels!')
+                    self.Bisp.load_kernels_shell_average()
         else:
             tri_unique = self.Bisp.tri_unique
 
@@ -3172,9 +3099,18 @@ class PTEmu:
                 kmax_dict[oi] = kmax
             kmax = kmax_dict
 
+        if binning is None:
+            binning = {oi:None for oi in obs_id}
+        if not np.any([oi in binning.keys() for oi in obs_id]):
+            binning = {oi:binning for oi in obs_id}
+        else:
+            for oi in obs_id:
+                if oi not in binning.keys():
+                    binning[oi] = None
+
         ell = {}
         for oi in obs_id:
-            kmax_updated = False
+            # kmax_updated = False
             if (not self.data[oi].kmax_is_set or
                 (self.data[oi].kmax != kmax[oi] and self.data[oi].kmax !=
                     [kmax[oi] for i in range(self.data[oi].n_ell)])):
@@ -3183,21 +3119,25 @@ class PTEmu:
                             self.chi2_decomposition = None
                         elif self.data[oi].stat == 'bispectrum':
                             self.Bisp_chi2_decomposition = None
-                        kmax_updated = True
+                        # kmax_updated = True
 
             ell[oi] = self.data[oi].ell
 
             if self.data[oi].stat == 'bispectrum':
-                if self.Bisp.tri is not None:
-                    ntri = list(self.Bisp.ntri_ell.values())
-                else:
-                    ntri = None
-                if kmax_updated or self.Bisp.tri is None or \
-                        ntri != self.data[oi].nbins or \
-                        self.Bisp.kfun != self.data[oi].kfun:
+                # if self.Bisp.tri is not None:
+                #     ntri = list(self.Bisp.ntri_ell.values())
+                # else:
+                #     ntri = None
+                # if kmax_updated or self.Bisp.tri is None or \
+                #         ntri != self.data[oi].nbins or \
+                #         self.Bisp.kfun != self.data[oi].kfun:
+                #     self.Bisp_binning = binning
+                #     self.Bisp.set_tri(self.data[oi].bins_kmax, ell[oi],
+                #                       self.data[oi].kfun, binning=binning[oi])
+                #     self._Bisp_tri_has_changed = True
+                tri_has_changed, binning_has_changed = \
                     self.Bisp.set_tri(self.data[oi].bins_kmax, ell[oi],
-                                      self.data[oi].kfun)
-                #chi2_decomposition = False # currently only implemented for Pk
+                                      self.data[oi].kfun, binning=binning[oi])
 
         if W_damping is None:
             W_damping = {}
@@ -3216,7 +3156,7 @@ class PTEmu:
                             W_damping[oi] = self.W_kurt
                     convolve_oi = oi if convolve_window else None
                     Pell = self.Pell(self.data[oi].bins_kmax, params, ell[oi],
-                                     de_model=de_model, binning=binning,
+                                     de_model=de_model, binning=binning[oi],
                                      obs_id=convolve_oi, q_tr_lo=q_tr_lo,
                                      W_damping=W_damping[oi],
                                      ell_for_recon=ell_for_recon)
@@ -3228,15 +3168,38 @@ class PTEmu:
                     if self.RSD_model == 'VDG_infty':
                         if W_damping[oi] is None:
                             W_damping[oi] = self.WB_kurt
-                    Pdw = self.Pdw(self.Bisp.tri_unique,
-                                   params, de_model=de_model,
+
+                    if binning[oi]:
+                        tri_unique = self.Bisp.tri_eff_unique
+                        if not binning[oi].get('effective', False) \
+                                and (tri_has_changed or binning_has_changed):
+                            self.Bisp.set_fiducial_cosmology(params)
+                            Pdw_eff = self.Pdw(tri_unique, self.Bisp.fiducial_cosmology,
+                                               de_model, ell_for_recon)
+                            self.Bisp.init_Pdw_eff(Pdw_eff)
+                            if self.Bisp.generate_discrete_kernels:
+                                # print('Recompute (binned) kernels!')
+                                Pdw = np.array([
+                                    self.Pdw(self.Bisp.grid.kmu123[:,j],
+                                             self.Bisp.fiducial_cosmology,
+                                             de_model, ell_for_recon)
+                                    for j in range(3)
+                                ]).T
+                                self.Bisp.init_Pdw(Pdw, ell)
+                                self.Bisp.compute_kernels_shell_average(max(ell))
+                            else:
+                                # print('Load (binned) kernels!')
+                                self.Bisp.load_kernels_shell_average()
+                    else:
+                        tri_unique = self.Bisp.tri_unique
+
+                    Pdw = self.Pdw(tri_unique, params, de_model=de_model,
                                    ell_for_recon=ell_for_recon)
                     if self.real_space:
                         neff = None
                     else:
-                        neff = self.Bisp.tri_unique * \
-                               self.Pdw_spline.derivative(n=1)(
-                                   self.Bisp.tri_unique) / Pdw
+                        neff = tri_unique * \
+                               self.Pdw_spline.derivative(n=1)(tri_unique) / Pdw
                     Bell = self.Bisp.Bell(Pdw, neff, self.params, ell[oi],
                                           W_damping[oi], self.cnloB_type)
 

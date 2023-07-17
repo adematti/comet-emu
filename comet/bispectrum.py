@@ -2,6 +2,7 @@
 
 import numpy as np
 import numba as nb
+import pickle
 from comet.grid import Grid, CtypedGrid
 #from comet.ctypedgrid import CtypedGrid
 
@@ -31,11 +32,14 @@ class Bispectrum:
         self.use_effective_triangles = False
         self.nbar = 1.0 # in units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
         self.tri = None
+        self.binning = None
+        self.binning_turned_on = False
+        self.binning_turned_off = False
+        self.last_eval_binned = None
         self.fiducial_Pdw = None
         self.fiducial_Pdw_sq = None
         self.fiducial_Pdw_eff = None
         self.fiducial_cosmology = {}
-        self.generate_discrete_kernels = True
 
         self.kernel_diagrams = {
             'F2':['B0L_b1b1b1', 'B0L_b1b1', 'B0L_b1b1', 'B0L_b1'],
@@ -230,124 +234,172 @@ class Bispectrum:
             Fundamental frequency.
 
         """
-        if isinstance(tri, list):
-            self.tri = max(tri, key=len)
-            self.ntri_ell = {}
-            if self.real_space:
-                self.ntri_ell[0] = self.tri.shape[0]
-            else:
-                for i,l in enumerate(ell):
-                    self.ntri_ell[l] = tri[i].shape[0]
-        else:
-            self.tri = tri
-            self.ntri_ell = {}
-            if self.real_space:
-                self.ntri_ell[0] = self.tri.shape[0]
-            else:
-                for i,l in enumerate(ell):
-                    self.ntri_ell[l] = tri.shape[0]
-
-        if not self.tri.flags['CONTIGUOUS']:
-            self.tri = np.ascontiguousarray(self.tri)
-
-        tri_dtype = {'names':['f{}'.format(i) for i in range(3)],
-                     'formats':3 * [self.tri.dtype]}
-        self.tri_id_ell = {}
-        if isinstance(tri, list):
-            for i,l in enumerate(ell):
-                self.tri_id_ell[l] = np.sort(np.intersect1d(
-                    self.tri.view(tri_dtype),
-                    np.ascontiguousarray(tri[i]).view(tri_dtype),
-                    return_indices=True)[1])
-        else:
-            for l in ell:
-                self.tri_id_ell[l] = np.arange(self.tri.shape[0])
-
-        self.kfun = kfun
-        self.generate_index_arrays()
-        if binning is None:
-            self.discrete_average = False
-            self.use_effective_triangles = False
-            self.compute_kernels(self.tri)
-            if not self.real_space:
-                if self.RSD_model == 'VDG_infty':
-                    self.Gauss_Legendre_mu123_integrals(self.tri, gl_deg)
+        tri_test = max(tri, key=len) if isinstance(tri, list) else tri
+        tri_has_changed = np.any(self.tri != tri_test) \
+            or any([l not in list(self.ntri_ell.keys()) for l in ell]) \
+            or (isinstance(tri, list) \
+                and any([self.ntri_ell[l] != len(tri[i]) \
+                         for i,l in enumerate(ell)])) \
+            or self.kfun != kfun
+        self.binning_turned_on = binning is not None \
+                                 and not self.last_eval_binned
+        self.binning_turned_off = binning is None and self.last_eval_binned
+        if tri_has_changed or self.binning_turned_off:
+            if isinstance(tri, list):
+                self.tri = max(tri, key=len)
+                self.ntri_ell = {}
+                if self.real_space:
+                    self.ntri_ell[0] = self.tri.shape[0]
                 else:
-                    self.compute_mu123_integrals(self.tri)
-        else:
-            if self.grid is None:
-                self.grid = CtypedGrid(**binning)
+                    for i,l in enumerate(ell):
+                        self.ntri_ell[l] = tri[i].shape[0]
             else:
-                self.grid.update(**binning)
-            self.tri_unique = np.arange(
-                int(np.around(np.amax(self.tri)/binning.get('dk')))) \
-                * binning.get('dk') + binning.get('first_bin_centre')
-            tri_bin_centres = []
-            offset = binning.get('first_bin_centre')/binning.get('dk')*1.0001
-            for i,k1 in enumerate(self.tri_unique):
-                for j,k2 in enumerate(self.tri_unique[:i+1]):
-                    for n,k3 in enumerate(self.tri_unique[:j+1]):
-                        if offset+j+n > i:
-                            tri_bin_centres.append([k1,k2,k3])
-            tri_bin_centres = np.array(tri_bin_centres)
-            a = np.mean(self.grid.shape_limits)
-            b = (self.grid.shape_limits[1]-self.grid.shape_limits[0])/2
-            check = np.abs((tri_bin_centres[:,2]+tri_bin_centres[:,1]) \
-                           / tri_bin_centres[:,0] - a) < b
-            self.tri_ids_discrete_binning = np.where(check)[0]
-            self.tri_ids_eff = np.where(np.logical_not(check))[0]
-            if binning.get('effective') is not None \
-                    and binning['effective'] == True:
+                self.tri = tri
+                self.ntri_ell = {}
+                if self.real_space:
+                    self.ntri_ell[0] = self.tri.shape[0]
+                else:
+                    for i,l in enumerate(ell):
+                        self.ntri_ell[l] = tri.shape[0]
+
+            if not self.tri.flags['CONTIGUOUS']:
+                self.tri = np.ascontiguousarray(self.tri)
+
+            tri_dtype = {'names':['f{}'.format(i) for i in range(3)],
+                         'formats':3 * [self.tri.dtype]}
+            self.tri_id_ell = {}
+            if isinstance(tri, list):
+                for i,l in enumerate(ell):
+                    self.tri_id_ell[l] = np.sort(np.intersect1d(
+                        self.tri.view(tri_dtype),
+                        np.ascontiguousarray(tri[i]).view(tri_dtype),
+                        return_indices=True)[1])
+            else:
+                for l in ell:
+                    self.tri_id_ell[l] = np.arange(self.tri.shape[0])
+
+            self.kfun = kfun
+            self.generate_index_arrays()
+            self.cov_mixing_kernel = {}
+
+            if binning is None:
+                # print('Recompute (non-binned) kernels!')
                 self.discrete_average = False
-                self.use_effective_triangles = True
-                self.grid.find_discrete_triangles(self.tri_unique)
-                self.grid.compute_effective_triangles(self.tri_unique)
-                self.tri_eff = np.copy(self.grid.k123eff)
-                self.generate_eff_index_arrays()
-                # self.tri_eff = np.flip(np.sort(self.tri_eff, axis=1), axis=1)
-                self.compute_kernels(self.tri_eff)
-                if not self.real_space:
-                    self.compute_mu123_integrals(self.tri_eff)
-            else:
-                self.discrete_average = True
                 self.use_effective_triangles = False
-                if binning.get('filename_root_kernels') is not None:
-                    try:
-                        binning_from_file = np.load('{}_dict.npy'.format(
-                            binning.get('filename_root_kernels')),
-                            allow_pickle=True)
-                        tri_from_file = np.loadtxt('{}_tri.dat'.format(
-                            binning.get('filename_root_kernels')))
-                        if binning_from_file.item() == binning \
-                                and np.all(tri_from_file == self.tri):
-                            self.generate_discrete_kernels = False
-                        else:
-                            np.save('{}_dict.npy'.format(
-                                binning.get('filename_root_kernels')), binning)
-                            np.savetxt('{}_tri.dat'.format(
-                                binning.get('filename_root_kernels')), self.tri)
-                            self.generate_discrete_kernels = True
-                    except Exception:
-                        np.save('{}_dict.npy'.format(
-                            binning.get('filename_root_kernels')), binning)
-                        np.savetxt('{}_tri.dat'.format(
-                            binning.get('filename_root_kernels')), self.tri)
-                        self.generate_discrete_kernels = True
-                self.tri_eff = np.copy(self.tri)
-                self.generate_eff_index_arrays()
-                if self.generate_discrete_kernels:
+                self.compute_kernels(self.tri)
+                if not self.real_space:
+                    if self.RSD_model == 'VDG_infty':
+                        self.Gauss_Legendre_mu123_integrals(self.tri, gl_deg)
+                    else:
+                        self.compute_mu123_integrals(self.tri)
+
+        if binning:
+            binning_has_changed = self.binning != binning
+            if tri_has_changed or binning_has_changed or self.binning_turned_on:
+                self.binning = binning
+                if self.grid is None:
+                    self.grid = CtypedGrid(**self.binning)
+                else:
+                    self.grid.update(**self.binning)
+                self.tri_unique = np.arange(
+                    int(np.around(np.amax(self.tri)/self.binning.get('dk')))
+                )
+                self.tri_unique = self.tri_unique * self.binning.get('dk') \
+                                  + self.binning.get('first_bin_centre')
+                if self.binning.get('effective', False):
+                    self.discrete_average = False
+                    self.use_effective_triangles = True
                     self.grid.find_discrete_triangles(self.tri_unique)
-                    self.compute_kernels(self.tri[self.tri_ids_eff])
-                    self.compute_mu123_integrals(self.tri[self.tri_ids_eff])
-                    # self.compute_kernels_shell_average(max(ell))
-        self.cov_mixing_kernel = {}
+                    self.grid.compute_effective_triangles(self.tri_unique)
+                    self.tri_eff = np.copy(self.grid.k123eff)
+                    self.tri_eff = np.flip(np.sort(self.tri_eff, axis=1),
+                                           axis=1)
+                    self.generate_eff_index_arrays()
+                    self.compute_kernels(self.tri_eff)
+                    if not self.real_space:
+                        self.compute_mu123_integrals(self.tri_eff)
+                else:
+                    self.discrete_average = True
+                    self.use_effective_triangles = False
+                    self.tri_eff = np.copy(self.tri)
+                    self.generate_eff_index_arrays()
+
+                    if self.binning.get('filename_root_kernels'):
+                        try:
+                            binning_from_file = np.load(
+                                '{}_dict.npy'.format(
+                                    self.binning.get('filename_root_kernels')),
+                                allow_pickle=True
+                            )
+                            tri_from_file = np.loadtxt('{}_tri.dat'.format(
+                                self.binning.get('filename_root_kernels')))
+                            if self.binning == binning_from_file.item() \
+                                    and np.allclose(self.tri, tri_from_file):
+                                self.generate_discrete_kernels = False
+                            else:
+                                self.generate_discrete_kernels = True
+                        except Exception:
+                            self.generate_discrete_kernels = True
+                        if self.generate_discrete_kernels:
+                            np.save('{}_dict.npy'.format(
+                                self.binning.get('filename_root_kernels')),
+                                self.binning
+                            )
+                            np.savetxt('{}_tri.dat'.format(
+                                self.binning.get('filename_root_kernels')),
+                                self.tri
+                            )
+                    else:
+                        self.generate_discrete_kernels = True
+
+                    if self.generate_discrete_kernels:
+                        tri_bin_centres = []
+                        offset = self.binning.get('first_bin_centre') \
+                                 / self.binning.get('dk') * 1.00001
+                        for i,k1 in enumerate(self.tri_unique):
+                            for j,k2 in enumerate(self.tri_unique[:i+1]):
+                                for n,k3 in enumerate(self.tri_unique[:j+1]):
+                                    if offset+j+n > i:
+                                        tri_bin_centres.append([k1,k2,k3])
+                        tri_bin_centres = np.array(tri_bin_centres)
+                        a = np.mean(self.grid.shape_limits)
+                        b = 0.5 * (self.grid.shape_limits[1] \
+                                   - self.grid.shape_limits[0])
+                        check = np.abs(
+                            (tri_bin_centres[:,2]+tri_bin_centres[:,1]) \
+                            / tri_bin_centres[:,0] - a) < b
+                        self.tri_ids_discrete_binning = np.where(check)[0]
+                        self.tri_ids_eff = np.where(
+                            np.logical_not(check))[0]
+                        self.grid.find_discrete_triangles(self.tri_unique)
+                        self.compute_kernels(self.tri[self.tri_ids_eff])
+                        self.compute_mu123_integrals(self.tri[self.tri_ids_eff])
+                        # self.compute_kernels_shell_average(max(ell))
+            self.last_eval_binned = True
+        else:
+            binning_has_changed = False
+            self.last_eval_binned = False
+
+        return tri_has_changed, binning_has_changed
+
+    def set_fiducial_cosmology(self, params):
+        if self.binning.get('fiducial_cosmology') is None:
+            self.fiducial_cosmology = {
+                'h':0.6736, 'wc':0.12, 'wb':0.02237, 'ns':0.9649,
+                'As':2.0989031673, 'w0':-1.0, 'wa':0.0, 'z':params['z']
+            }
+        else:
+            self.fiducial_cosmology = self.binning.get('fiducial_cosmology')
 
     def init_Pdw(self, Pdw, ell):
         self.fiducial_Pdw = Pdw
         self.fiducial_Pdw_sq = np.zeros_like(Pdw)
         for i in range(3):
             self.fiducial_Pdw_sq[:,i] = Pdw[:,i%3]*Pdw[:,(i+1)%3]
-        self.compute_kernels_shell_average(max(ell))
+        # self.compute_kernels_shell_average(max(ell))
+
+    def init_Pdw_eff(self, Pdw_eff):
+        self.fiducial_Pdw_eff = Pdw_eff
 
     def F2(self, k1, k2, k3):
         r"""Compute the second-order density kernel.
@@ -1316,7 +1368,7 @@ class Bispectrum:
                 n += 1
 
     def compute_kernels_shell_average(self, max_ell):
-        print('Compute shell averages.')
+        # print('Compute shell averages.')
         ell_req = np.array([x for x in range(0,max_ell+1,2)])
 
         # first, find all n1,n2,n3 tuples
@@ -1488,6 +1540,29 @@ class Bispectrum:
                     self.stoch_kernels_shell_average[n123][ell][tri_id] = \
                         self.I_stoch[n123][ell][n] \
                         * self.fiducial_Pdw_eff[self.tri_eff_to_id[tri_id]]
+
+        # dump kernels
+        if self.binning.get('filename_root_kernels'):
+            fname = '{}.pickle'.format(
+                self.binning.get('filename_root_kernels'))
+            fname_stoch = '{}_stoch.pickle'.format(
+                self.binning.get('filename_root_kernels'))
+            with open(fname, "wb") as f:
+                pickle.dump(self.kernels_shell_average, f)
+            with open(fname_stoch, "wb") as f:
+                pickle.dump(self.stoch_kernels_shell_average, f)
+
+    def load_kernels_shell_average(self):
+        # print('Load (binned) kernels!')
+        self.kernels_shell_average = pickle.load(
+            open('{}.pickle'.format(self.binning.get('filename_root_kernels')),
+            "rb")
+        )
+        self.stoch_kernels_shell_average = pickle.load(
+            open('{}_stoch.pickle'.format(
+                self.binning.get('filename_root_kernels')),
+            "rb")
+        )
 
     def compute_covariance_mixing_kernel(self, l1, l2, l3, l4, l5):
         def legendre_coeff(ell, n):
