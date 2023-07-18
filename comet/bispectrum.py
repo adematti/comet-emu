@@ -257,18 +257,11 @@ class Bispectrum:
                              for i,l in enumerate(ell)]))
                 tri_has_changed = False
 
-        # tri_has_changed = np.any(self.tri != tri_test) \
-        #     or any([l not in list(self.ntri_ell.keys()) for l in ell]) \
-        #     or (isinstance(tri, list) \
-        #         and any([self.ntri_ell[l] != len(tri[i]) \
-        #                  for i,l in enumerate(ell)])) \
-        #     or self.kfun != kfun
-
         self.binning_turned_on = binning is not None \
                                  and not self.last_eval_binned
         self.binning_turned_off = binning is None and self.last_eval_binned
 
-        if tri_has_changed or self.binning_turned_off or self.binning_turned_on:
+        def change_tri(tri):
             if isinstance(tri, list):
                 self.tri = max(tri, key=len)
                 self.ntri_ell = {}
@@ -285,10 +278,8 @@ class Bispectrum:
                 else:
                     for i,l in enumerate(ell):
                         self.ntri_ell[l] = tri.shape[0]
-
             if not self.tri.flags['CONTIGUOUS']:
                 self.tri = np.ascontiguousarray(self.tri)
-
             tri_dtype = {'names':['f{}'.format(i) for i in range(3)],
                          'formats':3 * [self.tri.dtype]}
             self.tri_id_ell = {}
@@ -302,21 +293,7 @@ class Bispectrum:
                 for l in ell:
                     self.tri_id_ell[l] = np.arange(self.tri.shape[0])
 
-            self.kfun = kfun
-            self.generate_index_arrays()
-            self.cov_mixing_kernel = {}
-
-            if binning is None:
-                print('Recompute (non-binned) kernels!')
-                self.discrete_average = False
-                self.use_effective_triangles = False
-                self.compute_kernels(self.tri)
-                if not self.real_space:
-                    if self.RSD_model == 'VDG_infty':
-                        self.Gauss_Legendre_mu123_integrals(self.tri, gl_deg)
-                    else:
-                        self.compute_mu123_integrals(self.tri)
-        elif tri_is_subset:
+        def update_tri_id(tri):
             tri_dtype = {'names':['f{}'.format(i) for i in range(3)],
                          'formats':3 * [self.tri.dtype]}
             if isinstance(tri, list):
@@ -343,9 +320,29 @@ class Bispectrum:
                 for l in ell:
                     self.tri_id_ell[l] = self._tri_id_ell[0]
 
+        if tri_has_changed or self.binning_turned_off:
+            change_tri(tri)
+            self.kfun = kfun
+            self.generate_index_arrays()
+            self.cov_mixing_kernel = {}
+
+            if binning is None:
+                print('Recompute (non-binned) kernels!')
+                self.discrete_average = False
+                self.use_effective_triangles = False
+                self.compute_kernels(self.tri)
+                if not self.real_space:
+                    if self.RSD_model == 'VDG_infty':
+                        self.Gauss_Legendre_mu123_integrals(self.tri, gl_deg)
+                    else:
+                        self.compute_mu123_integrals(self.tri)
+        elif tri_is_subset:
+            update_tri_id(tri)
+
         if binning:
             binning_has_changed = self.binning != binning
             if tri_has_changed or binning_has_changed or self.binning_turned_on:
+                change_tri(tri)
                 self.binning = binning
                 if self.grid is None:
                     self.grid = CtypedGrid(**self.binning)
@@ -371,8 +368,6 @@ class Bispectrum:
                 else:
                     self.discrete_average = True
                     self.use_effective_triangles = False
-                    self.tri_eff = np.copy(self.tri)
-                    self.generate_eff_index_arrays()
 
                     if self.binning.get('filename_root_kernels'):
                         try:
@@ -383,9 +378,16 @@ class Bispectrum:
                             )
                             tri_from_file = np.loadtxt('{}_tri.dat'.format(
                                 self.binning.get('filename_root_kernels')))
+                            close_tri = [
+                                np.isclose(x,tri_from_file).all(axis=1).any() for x in self.tri
+                            ]
+                            tri_from_file_is_superset = \
+                                len(close_tri) == len(self.tri)
                             if self.binning == binning_from_file.item() \
-                                    and np.allclose(self.tri, tri_from_file):
+                                    and tri_from_file_is_superset:
                                 self.generate_discrete_kernels = False
+                                change_tri(tri_from_file)
+                                update_tri_id(tri)
                             else:
                                 self.generate_discrete_kernels = True
                         except Exception:
@@ -401,6 +403,9 @@ class Bispectrum:
                             )
                     else:
                         self.generate_discrete_kernels = True
+
+                    self.tri_eff = np.copy(self.tri)
+                    self.generate_eff_index_arrays()
 
                     if self.generate_discrete_kernels:
                         tri_bin_centres = []
@@ -426,31 +431,7 @@ class Bispectrum:
                         self.compute_mu123_integrals(self.tri[self.tri_ids_eff])
                         # self.compute_kernels_shell_average(max(ell))
             elif tri_is_subset:
-                tri_dtype = {'names':['f{}'.format(i) for i in range(3)],
-                             'formats':3 * [self.tri.dtype]}
-                if isinstance(tri, list):
-                    if self.real_space:
-                        self.ntri_ell[0] = self.tri.shape[0]
-                    else:
-                        for i,l in enumerate(ell):
-                            self.ntri_ell[l] = tri[i].shape[0]
-                    for i,l in enumerate(ell):
-                        self.tri_id_ell[l] = np.sort(np.intersect1d(
-                            self.tri.view(tri_dtype),
-                            np.ascontiguousarray(tri[i]).view(tri_dtype),
-                            return_indices=True)[1])
-                else:
-                    if self.real_space:
-                        self.ntri_ell[0] = self.tri.shape[0]
-                    else:
-                        for i,l in enumerate(ell):
-                            self.ntri_ell[l] = tri.shape[0]
-                    self.tri_id_ell[0] = np.sort(np.intersect1d(
-                        self.tri.view(tri_dtype),
-                        np.ascontiguousarray(tri).view(tri_dtype),
-                        return_indices=True)[1])
-                    for l in ell:
-                        self.tri_id_ell[l] = self._tri_id_ell[0]
+                update_tri_id(tri)
             self.last_eval_binned = True
         else:
             binning_has_changed = False
@@ -2105,9 +2086,9 @@ class Bispectrum:
             n123p002 = tuple(np.array(n123)+np.array((0,0,2)))
             t1 = self.stoch_kernels_shell_average[n123][ell] \
                  * (1.0 + (q_tr-q_lo)*sum(n123) + (1.0-q_tr) \
-                    *neff[self.tri_to_id])
+                    *neff[self.tri_eff_to_id])
             t2 = self.stoch_kernels_shell_average[n123p200][ell] \
-                 * (q_tr - q_lo) * (neff[self.tri_to_id] - n123[0])
+                 * (q_tr - q_lo) * (neff[self.tri_eff_to_id] - n123[0])
             t3 = - self.stoch_kernels_shell_average[n123p020][ell] \
                  * (q_tr - q_lo) * n123[1]
             t4 = - self.stoch_kernels_shell_average[n123p002][ell] \
