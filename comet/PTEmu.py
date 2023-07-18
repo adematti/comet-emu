@@ -3185,8 +3185,9 @@ class PTEmu:
                                              de_model, ell_for_recon)
                                     for j in range(3)
                                 ]).T
-                                self.Bisp.init_Pdw(Pdw, ell)
-                                self.Bisp.compute_kernels_shell_average(max(ell))
+                                self.Bisp.init_Pdw(Pdw, ell[oi])
+                                self.Bisp.compute_kernels_shell_average(
+                                    max(ell[oi]))
                             else:
                                 # print('Load (binned) kernels!')
                                 self.Bisp.load_kernels_shell_average()

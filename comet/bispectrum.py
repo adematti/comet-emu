@@ -235,16 +235,40 @@ class Bispectrum:
 
         """
         tri_test = max(tri, key=len) if isinstance(tri, list) else tri
-        tri_has_changed = np.any(self.tri != tri_test) \
-            or any([l not in list(self.ntri_ell.keys()) for l in ell]) \
-            or (isinstance(tri, list) \
-                and any([self.ntri_ell[l] != len(tri[i]) \
-                         for i,l in enumerate(ell)])) \
-            or self.kfun != kfun
+        if self.tri is None \
+                or any([l not in list(self.ntri_ell.keys()) for l in ell]) \
+                or self.kfun != kfun:
+            tri_is_subset = False
+            tri_has_changed = True
+        else:
+            tri_mismatch = np.any(self.tri != tri_test)
+            if tri_mismatch:
+                tri_dtype = {'names':['f{}'.format(i) for i in range(3)],
+                             'formats':3 * [self.tri.dtype]}
+                intersection = np.intersect1d(
+                    self.tri.view(tri_dtype),
+                    np.ascontiguousarray(tri_test).view(tri_dtype)
+                )
+                tri_is_subset = len(intersection) == len(tri_test)
+                tri_has_changed = np.logical_not(tri_is_subset)
+            else:
+                tri_is_subset = (isinstance(tri, list) \
+                    and any([self.ntri_ell[l] != len(tri[i]) \
+                             for i,l in enumerate(ell)]))
+                tri_has_changed = False
+
+        # tri_has_changed = np.any(self.tri != tri_test) \
+        #     or any([l not in list(self.ntri_ell.keys()) for l in ell]) \
+        #     or (isinstance(tri, list) \
+        #         and any([self.ntri_ell[l] != len(tri[i]) \
+        #                  for i,l in enumerate(ell)])) \
+        #     or self.kfun != kfun
+
         self.binning_turned_on = binning is not None \
                                  and not self.last_eval_binned
         self.binning_turned_off = binning is None and self.last_eval_binned
-        if tri_has_changed or self.binning_turned_off:
+
+        if tri_has_changed or self.binning_turned_off or self.binning_turned_on:
             if isinstance(tri, list):
                 self.tri = max(tri, key=len)
                 self.ntri_ell = {}
@@ -283,7 +307,7 @@ class Bispectrum:
             self.cov_mixing_kernel = {}
 
             if binning is None:
-                # print('Recompute (non-binned) kernels!')
+                print('Recompute (non-binned) kernels!')
                 self.discrete_average = False
                 self.use_effective_triangles = False
                 self.compute_kernels(self.tri)
@@ -292,6 +316,32 @@ class Bispectrum:
                         self.Gauss_Legendre_mu123_integrals(self.tri, gl_deg)
                     else:
                         self.compute_mu123_integrals(self.tri)
+        elif tri_is_subset:
+            tri_dtype = {'names':['f{}'.format(i) for i in range(3)],
+                         'formats':3 * [self.tri.dtype]}
+            if isinstance(tri, list):
+                if self.real_space:
+                    self.ntri_ell[0] = self.tri.shape[0]
+                else:
+                    for i,l in enumerate(ell):
+                        self.ntri_ell[l] = tri[i].shape[0]
+                for i,l in enumerate(ell):
+                    self.tri_id_ell[l] = np.sort(np.intersect1d(
+                        self.tri.view(tri_dtype),
+                        np.ascontiguousarray(tri[i]).view(tri_dtype),
+                        return_indices=True)[1])
+            else:
+                if self.real_space:
+                    self.ntri_ell[0] = self.tri.shape[0]
+                else:
+                    for i,l in enumerate(ell):
+                        self.ntri_ell[l] = tri.shape[0]
+                self.tri_id_ell[0] = np.sort(np.intersect1d(
+                    self.tri.view(tri_dtype),
+                    np.ascontiguousarray(tri).view(tri_dtype),
+                    return_indices=True)[1])
+                for l in ell:
+                    self.tri_id_ell[l] = self._tri_id_ell[0]
 
         if binning:
             binning_has_changed = self.binning != binning
@@ -375,6 +425,32 @@ class Bispectrum:
                         self.compute_kernels(self.tri[self.tri_ids_eff])
                         self.compute_mu123_integrals(self.tri[self.tri_ids_eff])
                         # self.compute_kernels_shell_average(max(ell))
+            elif tri_is_subset:
+                tri_dtype = {'names':['f{}'.format(i) for i in range(3)],
+                             'formats':3 * [self.tri.dtype]}
+                if isinstance(tri, list):
+                    if self.real_space:
+                        self.ntri_ell[0] = self.tri.shape[0]
+                    else:
+                        for i,l in enumerate(ell):
+                            self.ntri_ell[l] = tri[i].shape[0]
+                    for i,l in enumerate(ell):
+                        self.tri_id_ell[l] = np.sort(np.intersect1d(
+                            self.tri.view(tri_dtype),
+                            np.ascontiguousarray(tri[i]).view(tri_dtype),
+                            return_indices=True)[1])
+                else:
+                    if self.real_space:
+                        self.ntri_ell[0] = self.tri.shape[0]
+                    else:
+                        for i,l in enumerate(ell):
+                            self.ntri_ell[l] = tri.shape[0]
+                    self.tri_id_ell[0] = np.sort(np.intersect1d(
+                        self.tri.view(tri_dtype),
+                        np.ascontiguousarray(tri).view(tri_dtype),
+                        return_indices=True)[1])
+                    for l in ell:
+                        self.tri_id_ell[l] = self._tri_id_ell[0]
             self.last_eval_binned = True
         else:
             binning_has_changed = False
@@ -1553,7 +1629,7 @@ class Bispectrum:
                 pickle.dump(self.stoch_kernels_shell_average, f)
 
     def load_kernels_shell_average(self):
-        # print('Load (binned) kernels!')
+        print('Load (binned) kernels!')
         self.kernels_shell_average = pickle.load(
             open('{}.pickle'.format(self.binning.get('filename_root_kernels')),
             "rb")
