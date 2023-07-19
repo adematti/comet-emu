@@ -1443,20 +1443,11 @@ class Bispectrum:
                         self.n123_tuples_all = np.vstack(
                             (self.n123_tuples_all, n123_perm_even))
         self.n123_tuples_all = np.unique(self.n123_tuples_all, axis=0)
-        self.n123_tuples_stoch_all_discrete = np.array([0,0,0])
         for n123 in self.n123_tuples_stoch_all:
             self.stoch_kernels_shell_average[tuple(n123)] = {}
             for ell in ell_req:
                 self.stoch_kernels_shell_average[tuple(n123)][ell] = \
                     np.zeros((self.tri.shape[0],3))
-                for i in range(3):
-                    n123_perm_even = np.roll(n123, i)
-                    n123_perm_even[0] += ell
-                    self.n123_tuples_stoch_all_discrete = np.vstack(
-                        (self.n123_tuples_stoch_all_discrete, n123_perm_even)
-                    )
-        self.n123_tuples_stoch_all_discrete = np.unique(
-            self.n123_tuples_stoch_all_discrete, axis=0)
 
         self.I_tuples_dict = {}
         for kk in self.kernels_shell_average:
@@ -1482,8 +1473,8 @@ class Bispectrum:
                     n123_perm_even = np.roll(np.array(n123), i)
                     n123_perm_even[0] += ell
                     id = np.where(
-                        (self.n123_tuples_stoch_all_discrete \
-                         == n123_perm_even).all(axis=1))[0][0]
+                        (self.n123_tuples_all == n123_perm_even).all(
+                            axis=1))[0][0]
                     self.I_tuples_stoch_dict[n123][ell].append(id)
 
         kernel_num_mu_tuples = []
