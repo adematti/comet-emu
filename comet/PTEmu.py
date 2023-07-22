@@ -370,6 +370,9 @@ class PTEmu:
     def change_cnloB_type(self, type):
         if type in ['EggLeeSco','IvaPhiNis']:
             self.cnloB_type = type
+            self.Bisp.cnlo_type = type
+            self.Bisp.tri = None
+            self.Bisp._get_mu_tuples_for_discrete_average()
         else:
             print('Warning. Type not recognised, choose between '
                   '"EggLeeSco" (default), or "IvaPhiNis".')
@@ -2613,8 +2616,7 @@ class PTEmu:
         self.update_AP_params(params, de_model=de_model,
                               q_tr_lo=q_tr_lo)
 
-        Bell_dict = self.Bisp.Bell(Pdw, neff, self.params, ell, W_damping,
-                                   self.cnloB_type)
+        Bell_dict = self.Bisp.Bell(Pdw, neff, self.params, ell, W_damping)
         return Bell_dict
 
     def Avg_covariance(self, l1, l2, k, Pl, sigma_d, avg_los=3):
@@ -3200,9 +3202,9 @@ class PTEmu:
                         neff = None
                     else:
                         neff = tri_unique * \
-                               self.Pdw_spline.derivative(n=1)(tri_unique) / Pdw
+                               self.Pdw_spline.derivative(n=1)(tri_unique)/Pdw
                     Bell = self.Bisp.Bell(Pdw, neff, self.params, ell[oi],
-                                          W_damping[oi], self.cnloB_type)
+                                          W_damping[oi])
 
                     if self.data[oi].cov_is_block_diagonal:
                         diff = {}
