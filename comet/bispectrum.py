@@ -327,7 +327,7 @@ class Bispectrum:
                     np.ascontiguousarray(tri).view(tri_dtype),
                     return_indices=True)[1])
                 for l in ell:
-                    self.tri_id_ell[l] = self._tri_id_ell[0]
+                    self.tri_id_ell[l] = self.tri_id_ell[0]
 
         if tri_has_changed or self.binning_turned_off:
             change_tri(tri)
@@ -431,7 +431,7 @@ class Bispectrum:
                                    - self.grid.shape_limits[0])
                         check = np.abs(
                             (tri_bin_centres[:,2]+tri_bin_centres[:,1]) \
-                            / tri_bin_centres[:,0] - a) < b
+                            / tri_bin_centres[:,0] - a) < b*(1.0 - 0.00001)
                         self.tri_ids_discrete_binning = np.where(check)[0]
                         self.tri_ids_eff = np.where(
                             np.logical_not(check))[0]
