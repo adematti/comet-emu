@@ -2563,7 +2563,7 @@ class PTEmu:
 
     def Bell(self, tri, params, ell, de_model=None, kfun=None, binning=None,
              q_tr_lo=None, W_damping=None, ell_for_recon=None, gl_deg=8,
-             cnloB_spline=lambda x: [0.5]):
+             cnloB_mapping=lambda x: [0.5]):
         ell = [ell] if not isinstance(ell, list) else ell
         if tri.ndim == 1:
             tri = tri[None,:]
@@ -2615,7 +2615,7 @@ class PTEmu:
             neff = tri_unique*self.Pdw_spline.derivative(n=1)(tri_unique)/Pdw
 
         if binning and self.RSD_model == 'VDG_infty':
-            coeff = cnloB_spline([self.params['avirB'],self.params['sv']])
+            coeff = cnloB_mapping([self.params['avirB'],self.params['sv']])
             self.params['cnloB'] = -(coeff[0]*self.params['avirB']**1.75 \
                                      + 0.5*self.params['sv']**1.75)
 
@@ -3041,7 +3041,7 @@ class PTEmu:
     def chi2(self, obs_id, params, kmax, de_model=None, binning=None,
              convolve_window=False, q_tr_lo=None, W_damping=None,
              chi2_decomposition=False, ell_for_recon=None,
-             cnloB_spline=lambda x: [0.5]):
+             cnloB_mapping=lambda x: [0.5]):
         r"""Compute the :math:`\chi^2 for the given configurations`.
 
         Generates the selected power spectrum multipoles for the specified set
@@ -3211,7 +3211,7 @@ class PTEmu:
                         neff = tri_unique * \
                                self.Pdw_spline.derivative(n=1)(tri_unique)/Pdw
                     if binning and self.RSD_model == 'VDG_infty':
-                        coeff = cnloB_spline([self.params['avirB'],
+                        coeff = cnloB_mapping([self.params['avirB'],
                                               self.params['sv']])
                         self.params['cnloB'] = \
                             - (coeff[0]*self.params['avirB']**1.75 \
