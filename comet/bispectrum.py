@@ -33,6 +33,7 @@ class Bispectrum:
         self.nbar = 1.0 # in units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
         self.tri = None
         self.cnlo_type = 'EggLeeSco'
+        self.pow_ctr = 2.0
         self.binning = None
         self.binning_turned_on = False
         self.binning_turned_off = False
@@ -193,6 +194,29 @@ class Bispectrum:
                         self.discrete_kernel_mu_tuples[kk_ctr]
                     ))
 
+    def change_RSD_model(self, model):
+        self.RSD_model = model
+        if not self.real_space:
+            self.kernel_names = ['F2', 'G2', 'b2', 'K', 'k31', 'k32']
+            kernel_names_deriv = []
+            for kk in self.kernel_names:
+                for i in range(3):
+                    kk_deriv = 'd{}_dlnk{}'.format(kk, i+1)
+                    kernel_names_deriv.append(kk_deriv)
+            self.kernel_names += kernel_names_deriv
+            if self.RSD_model == 'EFT':
+                kernel_names_ctr = []
+                for kk in ['F2', 'G2', 'b2', 'K', 'k31', 'k32']:
+                    for i in range(3):
+                        kk_ctr = 'k{}sq{}'.format(i+1,kk)
+                        kernel_names_ctr.append(kk_ctr)
+                        for j in range(3):
+                            kk_ctr = 'dk{}sq{}_dlnk{}'.format(i+1,kk,j+1)
+                            kernel_names_ctr.append(kk_ctr)
+                # kernel_names_ctr += ['k1sqb2', 'k2sqb2', 'k3sqb2']
+                self.kernel_names += kernel_names_ctr
+            self._get_mu_tuples_for_discrete_average()
+
     def define_units(self, use_Mpc):
         r"""Define units for the bispectrum.
 
@@ -350,6 +374,9 @@ class Bispectrum:
 
         if binning:
             binning_has_changed = self.binning != binning
+            if not self.RSD_model == 'EFT':
+                self.change_RSD_model('EFT')
+                self.pow_ctr = 1.75
             if tri_has_changed or binning_has_changed or self.binning_turned_on:
                 change_tri(tri)
                 self.binning = binning
@@ -645,7 +672,7 @@ class Bispectrum:
         kernels['dk32_dlnk3'] = kernels['k32']
 
         if self.RSD_model == 'EFT':
-            k123sq = np.vstack((k1sq,k2sq,k3sq))
+            k123sq = np.vstack((k1sq,k2sq,k3sq))**(self.pow_ctr/2)
             kernel_names = ['F2','G2','b2','K','k31','k32']
             for n in range(len(kernel_names)):
                 kk = kernel_names[n]
@@ -656,7 +683,7 @@ class Bispectrum:
                             k123sq[i]*kernels['d{}_dlnk{}'.format(kk,j+1)]
                         if i == j:
                             kernels['dk{}sq{}_dlnk{}'.format(i+1,kk,j+1)] += \
-                                2*k123sq[i]*kernels[kk]
+                                self.pow_ctr*k123sq[i]*kernels[kk]
             # for i in range(3):
             #     kernels['k{}sqb2'.format(i+1)] = k123[i]**2
             #     for j in range(3):
@@ -788,20 +815,20 @@ class Bispectrum:
         kernels[:,22] = -kernels[:,20]
         kernels[:,23] = kernels[:,20]
 
-        if self.RSD_model == 'EFT':
-            k123sq = np.vstack((k1sq,k2sq,k3sq))
-            kernel_names = ['F2','G2','b2','K','k31','k32']
-            count = 24
-            for n in range(len(kernel_names)):
-                kk = kernel_names[n]
-                for i in range(3):
-                    kernels[:,count] = k123sq[i]*kernels[:,n*4]
+        k123sq = np.vstack((k1sq,k2sq,k3sq))**(self.pow_ctr/2)
+        kernel_names = ['F2','G2','b2','K','k31','k32']
+        count = 24
+        for n in range(len(kernel_names)):
+            kk = kernel_names[n]
+            for i in range(3):
+                kernels[:,count] = k123sq[i]*kernels[:,n*4]
+                count += 1
+                for j in range(3):
+                    kernels[:,count] = k123sq[i]*kernels[:,n*4+j+1]
+                    if i == j:
+                        kernels[:,count] += \
+                            self.pow_ctr*k123sq[i]*kernels[:,n*4]
                     count += 1
-                    for j in range(3):
-                        kernels[:,count] = k123sq[i]*kernels[:,n*4+j+1]
-                        if i == j:
-                            kernels[:,count] += 2*k123sq[i]*kernels[:,n*4]
-                        count += 1
         return kernels
 
     def mu123_integrals(self, n1, n2, n3, k1, k2, k3):
