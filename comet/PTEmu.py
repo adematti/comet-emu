@@ -370,9 +370,7 @@ class PTEmu:
     def change_cnloB_type(self, type):
         if type in ['EggLeeSco','IvaPhiNis']:
             self.cnloB_type = type
-            self.Bisp.cnlo_type = type
-            self.Bisp.tri = None
-            self.Bisp._get_mu_tuples_for_discrete_average()
+            self.Bisp.change_cnloB_type(type)
         else:
             print('Warning. Type not recognised, choose between '
                   '"EggLeeSco" (default), or "IvaPhiNis".')
@@ -2616,8 +2614,9 @@ class PTEmu:
 
         if binning and self.RSD_model == 'VDG_infty':
             coeff = cnloB_mapping([self.params['avirB'],self.params['sv']])
-            self.params['cnloB'] = -(coeff[0]*self.params['avirB']**1.75 \
-                                     + 0.5*self.params['sv']**1.75)
+            self.params['cnloB'] = \
+                - (coeff[0]*self.params['avirB']**self.Bisp.pow_ctr \
+                   + 0.5*self.params['sv']**self.Bisp.pow_ctr)
 
         self.update_AP_params(params, de_model=de_model,
                               q_tr_lo=q_tr_lo)
