@@ -370,7 +370,7 @@ class PTEmu:
     def change_cnloB_type(self, type):
         if type in ['EggLeeSco','IvaPhiNis']:
             self.cnloB_type = type
-            self.Bisp.change_cnloB_type(type)
+            self.Bisp.change_cnlo_type(type)
         else:
             print('Warning. Type not recognised, choose between '
                   '"EggLeeSco" (default), or "IvaPhiNis".')

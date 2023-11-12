@@ -338,7 +338,7 @@ class CtypedGrid:
     def find_discrete_triangles(self, tri_unique):
         self.tri_unique = tri_unique
 
-        num_grid = int(np.ceil(2*(np.amax(self.tri_unique)+self.dk/2)
+        num_grid = 2*int(np.ceil(2*(np.amax(self.tri_unique)+self.dk/2)
                                / self.kfun))
         if num_grid > self.num_grid or self.c_grid is None:
             self.num_grid = num_grid
