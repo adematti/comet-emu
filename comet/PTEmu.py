@@ -10,6 +10,7 @@ import pickle
 from comet.cosmology import Cosmology
 from comet.data import MeasuredData
 from comet.tables import Tables
+from comet.splines import Splines
 from comet.grid import Grid
 from comet.bispectrum import Bispectrum
 import os
@@ -123,23 +124,23 @@ class PTEmu:
         self.Pk_lin = None
         self.Pk_ratios = {0: None, 2: None, 4: None}
 
-        self.Pell_spline = {}
-        self.Pell_lowk_extrapolation = {}
-        self.Pell_highk_extrapolation = {}
-        self.Pell_min = {}
-        self.Pell_max = {}
-        self.neff_min = {}
-        self.neff_max = {}
-
-        self.PX_ell_spline = {X: {} for X in self.diagrams_all}
-        self.PX_ell_min = {X: {} for X in self.diagrams_all}
-        self.PX_ell_max = {X: {} for X in self.diagrams_all}
-        self.X_neff_min = {X: {} for X in self.diagrams_all}
-        self.X_neff_max = {X: {} for X in self.diagrams_all}
-        self.PX_ell_list = {}
-
-        self.k_table_min = {}
-        self.k_table_max = {}
+        # self.Pell_spline = {}
+        # self.Pell_lowk_extrapolation = {}
+        # self.Pell_highk_extrapolation = {}
+        # self.Pell_min = {}
+        # self.Pell_max = {}
+        # self.neff_min = {}
+        # self.neff_max = {}
+        #
+        # self.PX_ell_spline = {X: {} for X in self.diagrams_all}
+        # self.PX_ell_min = {X: {} for X in self.diagrams_all}
+        # self.PX_ell_max = {X: {} for X in self.diagrams_all}
+        # self.X_neff_min = {X: {} for X in self.diagrams_all}
+        # self.X_neff_max = {X: {} for X in self.diagrams_all}
+        # self.PX_ell_list = {}
+        #
+        # self.k_table_min = {}
+        # self.k_table_max = {}
 
         self.gl_x, self.gl_weights = np.polynomial.legendre.leggauss(10)
         self.gl_x = 0.5 * self.gl_x + 0.5
@@ -173,6 +174,15 @@ class PTEmu:
             print('Emulator files for this model not found. Initialise with '
                   '`load_emulator`, or train the emulator first, '
                   'if necessary.')
+
+        self.Pell_spline = Splines(ncol=4, id_min_ell6=self.nk-self.nkloop,
+                                   crossover_check=True)
+        self.Pdw_spline = Splines(ncol=0)
+        self.PX_ell_spline = {}
+        for X in self.diagrams_all:
+            self.PX_ell_spline[X] = Splines(ncol=4,
+                                            id_min_ell6=self.nk-self.nkloop,
+                                            crossover_check=True)
 
     def init_params_dict(self):
         r"""Initialize params dictionary.
@@ -488,27 +498,27 @@ class PTEmu:
         """
         def check_ranges(params_list):
             for p in params_list:
-                if not self.params_ranges[p][0] <= self.params[p] \
-                    <= self.params_ranges[p][1]:
-                        print('Warning! Leaving emulator range' + \
-                              'for parameter {}'.format(p))
+                if np.any((self.params[p] < self.params_ranges[p][0]) |
+                          (self.params[p] > self.params_ranges[p][1])):
+                    print('Warning! Leaving emulator range ' + \
+                          'for parameter {}!'.format(p))
 
         try:
             if de_model is None and self.use_Mpc:
                 emu_params_updated = any([params[p] != self.params[p] for p
                                           in self.params_list])
                 for p in self.params_list:
-                    self.params[p] = params[p]
-                self.params['As'] = 0.0
-                self.params['z'] = 0.0
+                    self.params[p] = np.atleast_1d(params[p])
+                self.params['As'] = np.zeros_like(self.params['wc'])
+                self.params['z'] = np.zeros_like(self.params['wc'])
                 check_ranges(self.params_list)
             elif de_model is None and not self.use_Mpc:
                 emu_params_updated = any([params[p] != self.params[p] for p
                                           in self.params_list+['h']])
                 for p in self.params_list+['h']:
-                    self.params[p] = params[p]
-                self.params['As'] = 0.0
-                self.params['z'] = 0.0
+                    self.params[p] = np.atleast_1d(params[p])
+                self.params['As'] = np.zeros_like(self.params['wc'])
+                self.params['z'] = np.zeros_like(self.params['wc'])
                 check_ranges(self.params_list)
             else:
                 expected_params = self.params_shape_list \
@@ -518,14 +528,15 @@ class PTEmu:
                 emu_params_updated = any([params[p] != self.params[p] for p
                                           in expected_params])
                 for p in expected_params:
-                    self.params[p] = params[p]
+                    self.params[p] = np.atleast_1d(params[p])
                 if de_model == 'lambda' and \
-                    (self.params['w0'] != -1.0 or self.params['wa'] != 0.0):
-                        self.params['w0'] = -1.0
-                        self.params['wa'] = 0.0
-                        emu_params_updated = True
-                elif de_model == 'w0' and self.params['wa'] != 0.0:
-                    self.params['wa'] = 0.0
+                        np.any(self.params['w0'] != -1.0 or \
+                               self.params['wa'] != 0.0):
+                    self.params['w0'] = -np.ones_like(self.params['w0'])
+                    self.params['wa'] = np.zeros_like(self.params['wa'])
+                    emu_params_updated = True
+                elif de_model == 'w0' and np.any(self.params['wa'] != 0.0):
+                    self.params['wa'] = np.zeros_like(self.params['wa'])
                     emu_params_updated = True
                 check_ranges(self.params_shape_list)
         except KeyError:
@@ -558,15 +569,15 @@ class PTEmu:
 
         for p in params_list:
             if p in params.keys():
-                self.params[p] = params[p]
+                self.params[p] = np.atleast_1d(params[p])
             else:
-                self.params[p] = 0.0
+                self.params[p] = np.zeros_like(self.params['wc'])
 
         if self.RSD_model == 'VDG_infty':
-            self.params['cnlo'] = 0.0
-            self.params['cnloB'] = 0.0
-            self.params['cB1'] = 0.0
-            self.params['cB2'] = 0.0
+            self.params['cnlo'] = np.zeros_like(self.params['wc'])
+            self.params['cnloB'] = np.zeros_like(self.params['wc'])
+            self.params['cB1'] = np.zeros_like(self.params['wc'])
+            self.params['cB2'] = np.zeros_like(self.params['wc'])
 
         if self.bias_basis == 'AssBauGre':
             self.params['g2'] = self.params['bG2']
@@ -1019,171 +1030,171 @@ class PTEmu:
         t = 1.0 + lsq*self.params['avirB']**2
         return 1.0/np.sqrt(t**3) * np.exp(-lsq*self.params['sv']**2/t)
 
-    def build_Pell_spline(self, Pell, ell):
-        r"""Build spline object for power spectrum multipoles.
-
-        Generates a cubic spline object for the specified power spectrum
-        multipole, including the computation of effective indexes for the low-
-        and high-:math:`k` tails of the multipole, and stores it as class
-        attribute.
-
-        Parameters
-        ----------
-        Pell: list or numpy.ndarray
-            Array containing the power spectrum multipole of order
-            :math:`\ell`, evaluated at the wavemodes defined by the class
-            attribute **k_table**.
-        ell: int
-            Specific multipole order :math:`\ell`.
-            Can be chosen from the list [0,2,4,6], whose entries correspond to
-            monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`),
-            hexadecapole (:math:`\ell=4`) and octopole (:math:`\ell=6`).
-        """
-        id_min = 0 if not ell == 6 else self.nk-self.nkloop
-        id_max = -1
-
-        if self.use_Mpc:
-            self.Pell_spline[ell] = UnivariateSpline(self.k_table, Pell,
-                                                     k=3, s=0)
-            self.k_table_min[ell] = self.k_table[id_min]
-            self.k_table_max[ell] = self.k_table[id_max]
-        else:
-            Pell *= self.params['h']**3
-            self.Pell_spline[ell] = UnivariateSpline(
-                self.k_table/self.params['h'], Pell, k=3, s=0)
-            self.k_table_min[ell] = self.k_table[id_min]/self.params['h']
-            self.k_table_max[ell] = self.k_table[id_max]/self.params['h']
-
-        # low-k extrapolation
-        self.Pell_min[ell] = Pell[id_min]
-        dlP_min = np.log10(np.abs(Pell[id_min+2]/Pell[id_min]))
-        dlk_min = np.log10(self.k_table[id_min+2]/self.k_table[id_min])
-        self.neff_min[ell] = dlP_min/dlk_min
-        self.Pell_lowk_extrapolation[ell] = lambda k: self.Pell_min[ell] \
-            * (k/self.k_table_min[ell])**self.neff_min[ell]
-
-        # high-k extrapolation
-        if np.abs(Pell[id_max]/Pell[id_max-2]) < 2 \
-                and np.abs(Pell[id_max-2]/Pell[id_max]) < 2:
-            self.Pell_max[ell] = Pell[id_max]
-            dlP_max = np.log10(np.abs(Pell[id_max]/Pell[id_max-2]))
-            dlk_max = np.log10(self.k_table[id_max]/self.k_table[id_max-2])
-            self.neff_max[ell] = dlP_max/dlk_max
-            self.Pell_highk_extrapolation[ell] = lambda k: self.Pell_max[ell] \
-                * (k/self.k_table_max[ell])**self.neff_max[ell]
-        else:
-            a = (Pell[id_max] - Pell[id_max-2]) \
-                / (self.k_table[id_max] - self.k_table[id_max-2])
-            b = Pell[id_max-2] - a*self.k_table[id_max-2]
-            if not self.use_Mpc:
-                a *= self.params['h']
-            self.Pell_highk_extrapolation[ell] = lambda k: a*k + b
-
-    def build_Pdw_spline(self, Pdw):
-        r"""Build spline object for multipoles of linear de-wiggled power
-        spectrum.
-
-        Generates a cubic spline object for the linear de-wiggled power
-        spectrum, including the computation of effective indexes for the low-
-        and high-:math:`k` tails, and stores it as class attribute.
-
-        Parameters
-        ----------
-        Pdw: list or numpy.ndarray
-            Array containing the de-wiggled linear power spectrum evaluated at
-            the wavemodes defined by the class attribute **k_table**.
-        """
-        id_min = 0
-        if self.use_Mpc:
-            self.Pdw_spline = UnivariateSpline(self.k_table, Pdw, k=3, s=0)
-            self.Pdw_min = Pdw[id_min]
-            self.Pdw_max = Pdw[-1]
-            self.k_table_min[0] = self.k_table[id_min]
-            self.k_table_max[0] = self.k_table[-1]
-            dlP_min = np.log10(np.abs(Pdw[id_min+2]/Pdw[id_min]))
-            dlP_max = np.log10(np.abs(Pdw[-1]/Pdw[-3]))
-            dlk_min = np.log10(self.k_table[id_min+2]/self.k_table[id_min])
-            dlk_max = np.log10(self.k_table[-1]/self.k_table[-3])
-            self.neff_dw_min = dlP_min/dlk_min
-            self.neff_dw_max = dlP_max/dlk_max
-        else:
-            Pdw *= self.params['h']**3
-            self.Pdw_spline = UnivariateSpline(self.k_table/self.params['h'],
-                                               Pdw, k=3, s=0)
-            self.Pdw_min = Pdw[id_min]
-            self.Pdw_max = Pdw[-1]
-            self.k_table_min[0] = self.k_table[id_min]/self.params['h']
-            self.k_table_max[0] = self.k_table[-1]/self.params['h']
-            dlP_min = np.log10(np.abs(Pdw[id_min+2]/Pdw[id_min]))
-            dlP_max = np.log10(np.abs(Pdw[-1]/Pdw[-3]))
-            dlk_min = np.log10(self.k_table[id_min+2]/self.k_table[id_min])
-            dlk_max = np.log10(self.k_table[-1]/self.k_table[-3])
-            self.neff_dw_min = dlP_min/dlk_min
-            self.neff_dw_max = dlP_max/dlk_max
-
-    def eval_Pell_spline(self, k, ell):
-        r"""Evaluate the spline of the specified power spectrum multipole.
-
-        Calls the spline object stored as class attribute for the power
-        spectrum multipole of given order :math:`\ell` on the input wavemodes
-        :math:`k`. The called interpolator results in a cubic spline or in a
-        power-law extrapolation, depending if the value of :math:`k` is within
-        or outside the original boundary spcified by the training table.
-
-        Parameters
-        ----------
-        k: numpy.ndarray
-            Values of the requested wavemodes :math:`k`.
-        ell: int
-            Specific multipole order :math:`\ell`.
-            Can be chosen from the list [0,2,4,6], whose entries correspond to
-            monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`),
-            hexadecapole (:math:`\ell=4`) and octopole (:math:`\ell=6`).
-
-        Returns
-        -------
-        spline: numpy.ndarray
-            Interpolated power spectrum multipole of order :math:`\ell` at the
-            requested wavemodes :math:`k`.
-        """
-        spline = \
-            np.where(k < self.k_table_min[ell],
-                self.Pell_lowk_extrapolation[ell](k),
-                np.where(k > self.k_table_max[ell],
-                    self.Pell_highk_extrapolation[ell](k),
-                    self.Pell_spline[ell](k)))
-        return spline
-
-    def eval_Pdw_spline(self, k):
-        r"""Evaluate the spline of the linear de-wiggled power spectrum.
-
-        Calls the spline object stored as class attribute for the linear
-        de-wiggled power spectrum on the input wavemodes :math:`k`. The called
-        interpolator results in a cubic spline or in a power-law extrapolation,
-        depending if the value of :math:`k` is within or outside the original
-        boundary spcified by the training table.
-
-        Parameters
-        ----------
-        k: numpy.ndarray
-            Values of the requested wavemodes :math:`k`.
-
-        Returns
-        -------
-        spline: numpy.ndarray
-            Interpolated linear de-wiggled power spectrum at the requested
-            wavemodes :math:`k`.
-        """
-        mask_low = k < self.k_table_min[0]
-        mask_high = k > self.k_table_max[0]
-        spline = np.hstack(
-            [self.Pdw_min *
-             (k[mask_low]/self.k_table_min[0])**self.neff_dw_min,
-             self.Pdw_spline(k[np.invert(mask_low) & np.invert(mask_high)]),
-             self.Pdw_max *
-             (k[mask_high]/self.k_table_max[0])**self.neff_dw_max]
-            )
-        return spline
+    # def build_Pell_spline(self, Pell, ell):
+    #     r"""Build spline object for power spectrum multipoles.
+    #
+    #     Generates a cubic spline object for the specified power spectrum
+    #     multipole, including the computation of effective indexes for the low-
+    #     and high-:math:`k` tails of the multipole, and stores it as class
+    #     attribute.
+    #
+    #     Parameters
+    #     ----------
+    #     Pell: list or numpy.ndarray
+    #         Array containing the power spectrum multipole of order
+    #         :math:`\ell`, evaluated at the wavemodes defined by the class
+    #         attribute **k_table**.
+    #     ell: int
+    #         Specific multipole order :math:`\ell`.
+    #         Can be chosen from the list [0,2,4,6], whose entries correspond to
+    #         monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`),
+    #         hexadecapole (:math:`\ell=4`) and octopole (:math:`\ell=6`).
+    #     """
+    #     id_min = 0 if not ell == 6 else self.nk-self.nkloop
+    #     id_max = -1
+    #
+    #     if self.use_Mpc:
+    #         self.Pell_spline[ell] = UnivariateSpline(self.k_table, Pell,
+    #                                                  k=3, s=0)
+    #         self.k_table_min[ell] = self.k_table[id_min]
+    #         self.k_table_max[ell] = self.k_table[id_max]
+    #     else:
+    #         Pell *= self.params['h']**3
+    #         self.Pell_spline[ell] = UnivariateSpline(
+    #             self.k_table/self.params['h'], Pell, k=3, s=0)
+    #         self.k_table_min[ell] = self.k_table[id_min]/self.params['h']
+    #         self.k_table_max[ell] = self.k_table[id_max]/self.params['h']
+    #
+    #     # low-k extrapolation
+    #     self.Pell_min[ell] = Pell[id_min]
+    #     dlP_min = np.log10(np.abs(Pell[id_min+2]/Pell[id_min]))
+    #     dlk_min = np.log10(self.k_table[id_min+2]/self.k_table[id_min])
+    #     self.neff_min[ell] = dlP_min/dlk_min
+    #     self.Pell_lowk_extrapolation[ell] = lambda k: self.Pell_min[ell] \
+    #         * (k/self.k_table_min[ell])**self.neff_min[ell]
+    #
+    #     # high-k extrapolation
+    #     if np.abs(Pell[id_max]/Pell[id_max-2]) < 2 \
+    #             and np.abs(Pell[id_max-2]/Pell[id_max]) < 2:
+    #         self.Pell_max[ell] = Pell[id_max]
+    #         dlP_max = np.log10(np.abs(Pell[id_max]/Pell[id_max-2]))
+    #         dlk_max = np.log10(self.k_table[id_max]/self.k_table[id_max-2])
+    #         self.neff_max[ell] = dlP_max/dlk_max
+    #         self.Pell_highk_extrapolation[ell] = lambda k: self.Pell_max[ell] \
+    #             * (k/self.k_table_max[ell])**self.neff_max[ell]
+    #     else:
+    #         a = (Pell[id_max] - Pell[id_max-2]) \
+    #             / (self.k_table[id_max] - self.k_table[id_max-2])
+    #         b = Pell[id_max-2] - a*self.k_table[id_max-2]
+    #         if not self.use_Mpc:
+    #             a *= self.params['h']
+    #         self.Pell_highk_extrapolation[ell] = lambda k: a*k + b
+    #
+    # def build_Pdw_spline(self, Pdw):
+    #     r"""Build spline object for multipoles of linear de-wiggled power
+    #     spectrum.
+    #
+    #     Generates a cubic spline object for the linear de-wiggled power
+    #     spectrum, including the computation of effective indexes for the low-
+    #     and high-:math:`k` tails, and stores it as class attribute.
+    #
+    #     Parameters
+    #     ----------
+    #     Pdw: list or numpy.ndarray
+    #         Array containing the de-wiggled linear power spectrum evaluated at
+    #         the wavemodes defined by the class attribute **k_table**.
+    #     """
+    #     id_min = 0
+    #     if self.use_Mpc:
+    #         self.Pdw_spline = UnivariateSpline(self.k_table, Pdw, k=3, s=0)
+    #         self.Pdw_min = Pdw[id_min]
+    #         self.Pdw_max = Pdw[-1]
+    #         self.k_table_min[0] = self.k_table[id_min]
+    #         self.k_table_max[0] = self.k_table[-1]
+    #         dlP_min = np.log10(np.abs(Pdw[id_min+2]/Pdw[id_min]))
+    #         dlP_max = np.log10(np.abs(Pdw[-1]/Pdw[-3]))
+    #         dlk_min = np.log10(self.k_table[id_min+2]/self.k_table[id_min])
+    #         dlk_max = np.log10(self.k_table[-1]/self.k_table[-3])
+    #         self.neff_dw_min = dlP_min/dlk_min
+    #         self.neff_dw_max = dlP_max/dlk_max
+    #     else:
+    #         Pdw *= self.params['h']**3
+    #         self.Pdw_spline = UnivariateSpline(self.k_table/self.params['h'],
+    #                                            Pdw, k=3, s=0)
+    #         self.Pdw_min = Pdw[id_min]
+    #         self.Pdw_max = Pdw[-1]
+    #         self.k_table_min[0] = self.k_table[id_min]/self.params['h']
+    #         self.k_table_max[0] = self.k_table[-1]/self.params['h']
+    #         dlP_min = np.log10(np.abs(Pdw[id_min+2]/Pdw[id_min]))
+    #         dlP_max = np.log10(np.abs(Pdw[-1]/Pdw[-3]))
+    #         dlk_min = np.log10(self.k_table[id_min+2]/self.k_table[id_min])
+    #         dlk_max = np.log10(self.k_table[-1]/self.k_table[-3])
+    #         self.neff_dw_min = dlP_min/dlk_min
+    #         self.neff_dw_max = dlP_max/dlk_max
+    #
+    # def eval_Pell_spline(self, k, ell):
+    #     r"""Evaluate the spline of the specified power spectrum multipole.
+    #
+    #     Calls the spline object stored as class attribute for the power
+    #     spectrum multipole of given order :math:`\ell` on the input wavemodes
+    #     :math:`k`. The called interpolator results in a cubic spline or in a
+    #     power-law extrapolation, depending if the value of :math:`k` is within
+    #     or outside the original boundary spcified by the training table.
+    #
+    #     Parameters
+    #     ----------
+    #     k: numpy.ndarray
+    #         Values of the requested wavemodes :math:`k`.
+    #     ell: int
+    #         Specific multipole order :math:`\ell`.
+    #         Can be chosen from the list [0,2,4,6], whose entries correspond to
+    #         monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`),
+    #         hexadecapole (:math:`\ell=4`) and octopole (:math:`\ell=6`).
+    #
+    #     Returns
+    #     -------
+    #     spline: numpy.ndarray
+    #         Interpolated power spectrum multipole of order :math:`\ell` at the
+    #         requested wavemodes :math:`k`.
+    #     """
+    #     spline = \
+    #         np.where(k < self.k_table_min[ell],
+    #             self.Pell_lowk_extrapolation[ell](k),
+    #             np.where(k > self.k_table_max[ell],
+    #                 self.Pell_highk_extrapolation[ell](k),
+    #                 self.Pell_spline[ell](k)))
+    #     return spline
+    #
+    # def eval_Pdw_spline(self, k):
+    #     r"""Evaluate the spline of the linear de-wiggled power spectrum.
+    #
+    #     Calls the spline object stored as class attribute for the linear
+    #     de-wiggled power spectrum on the input wavemodes :math:`k`. The called
+    #     interpolator results in a cubic spline or in a power-law extrapolation,
+    #     depending if the value of :math:`k` is within or outside the original
+    #     boundary spcified by the training table.
+    #
+    #     Parameters
+    #     ----------
+    #     k: numpy.ndarray
+    #         Values of the requested wavemodes :math:`k`.
+    #
+    #     Returns
+    #     -------
+    #     spline: numpy.ndarray
+    #         Interpolated linear de-wiggled power spectrum at the requested
+    #         wavemodes :math:`k`.
+    #     """
+    #     mask_low = k < self.k_table_min[0]
+    #     mask_high = k > self.k_table_max[0]
+    #     spline = np.hstack(
+    #         [self.Pdw_min *
+    #          (k[mask_low]/self.k_table_min[0])**self.neff_dw_min,
+    #          self.Pdw_spline(k[np.invert(mask_low) & np.invert(mask_high)]),
+    #          self.Pdw_max *
+    #          (k[mask_high]/self.k_table_max[0])**self.neff_dw_max]
+    #         )
+    #     return spline
 
     def PL(self, k, params, de_model=None):
         r"""Compute the linear power spectrum predictions.
@@ -1898,11 +1909,8 @@ class PTEmu:
                     not self.splines_up_to_date):
                 Pell = self.Pell_fid_ktable(params, ell=ell_for_recon,
                                             de_model=de_model)
-                for i, m in enumerate(ell_for_recon):
-                    self.build_Pell_spline(Pell[:, i], m)
+                self.Pell_spline.build(Pell)
                 self.splines_up_to_date = True
-                # self.X_splines_up_to_date = {X: False for X in self.diagrams_all}
-                # self.chi2_decomposition = None
 
             self.update_AP_params(params, de_model=de_model,
                                   q_tr_lo=q_tr_lo)
