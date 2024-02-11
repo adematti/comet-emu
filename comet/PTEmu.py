@@ -175,13 +175,14 @@ class PTEmu:
                   '`load_emulator`, or train the emulator first, '
                   'if necessary.')
 
-        self.Pell_spline = Splines(ncol=4, id_min_ell6=self.nk-self.nkloop,
+        self.Pell_spline = Splines(ncol=4, use_Mpc=self.use_Mpc,
+                                   id_min_ell6=self.nk-self.nkloop,
                                    crossover_check=True)
-        self.PL_spline = Splines(ncol=0)
-        self.Pdw_spline = Splines(ncol=0)
+        self.PL_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
+        self.Pdw_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
         self.PX_ell_spline = {}
         for X in self.diagrams_all:
-            self.PX_ell_spline[X] = Splines(ncol=4,
+            self.PX_ell_spline[X] = Splines(use_Mpc=self.use_Mpc, ncol=4,
                                             id_min_ell6=self.nk-self.nkloop,
                                             crossover_check=True)
 
@@ -340,6 +341,17 @@ class PTEmu:
             self.nbar = 1.0  # units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
             for obs_id in self.data.keys():
                 self.data[obs_id].clear_data()
+
+            self.Pell_spline = Splines(use_Mpc=self.use_Mpc, ncol=4,
+                                       id_min_ell6=self.nk-self.nkloop,
+                                       crossover_check=True)
+            self.PL_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
+            self.Pdw_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
+            self.PX_ell_spline = {}
+            for X in self.diagrams_all:
+                self.PX_ell_spline[X] = Splines(use_Mpc=self.use_Mpc, ncol=4,
+                                                id_min_ell6=self.nk-self.nkloop,
+                                                crossover_check=True)
             self.splines_up_to_date = False
             self.dw_spline_up_to_date = False
             self.Bisp.define_units(self.use_Mpc)
