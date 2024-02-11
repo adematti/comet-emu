@@ -61,6 +61,11 @@ class Cosmology:
         self.w0 = np.atleast_1d(w0)
         self.wa = np.atleast_1d(wa)
 
+        if len(self.Ok0) != len(self.Om0):
+            self.Ok0 = np.ones_like(self.Om0) * self.Ok0
+        if len(self.Or0) != len(self.Om0):
+            self.Or0 = np.ones_like(self.Om0) * self.Or0
+
         self.flat = np.where(self.Ok0 == 0.0, True, False)
         self.relspecies = np.where(self.Or0 == 0.0, False, True)
 
@@ -109,6 +114,11 @@ class Cosmology:
         self.de_model = de_model
         self.w0 = np.atleast_1d(w0)
         self.wa = np.atleast_1d(wa)
+
+        if len(self.Ok0) != len(self.Om0):
+            self.Ok0 = np.ones_like(self.Om0) * self.Ok0
+        if len(self.Or0) != len(self.Om0):
+            self.Or0 = np.ones_like(self.Om0) * self.Or0
 
         self.flat = np.where(self.Ok0 == 0.0, True, False)
         self.relspecies = np.where(self.Or0 == 0.0, False, True)
@@ -560,6 +570,7 @@ class Cosmology:
             maximum redshifts, and for the given sky fraction.
         """
         def differential_comoving_volume(z):
+            z = np.atleast_1d(z)
             dm = self.comoving_transverse_distance(z)
             return self.hubble_distance*dm**2/self.Ez(z)
 
