@@ -1289,10 +1289,9 @@ class PTEmu:
         if ell_for_recon is None:
             ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
         ell_eval_emu = ell_for_recon.copy()
-        try:
+        if 6 in ell_eval_emu:
             ell_eval_emu.remove(6)
-        except Exception:
-            pass
+
         self.eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
 
         Pdw_ell = np.zeros([self.nk, len(ell_for_recon)])
@@ -1374,10 +1373,8 @@ class PTEmu:
         if ell_for_recon is None:
             ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
         ell_eval_emu = ell_for_recon.copy()
-        try:
+        if 6 in ell_eval_emu:
             ell_eval_emu.remove(6)
-        except Exception:
-            pass
 
         self.eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
 
@@ -1435,10 +1432,8 @@ class PTEmu:
         """
         ell = [ell] if not isinstance(ell, list) else ell
         ell_eval_emu = ell.copy()
-        try:
+        if 6 in ell_eval_emu:
             ell_eval_emu.remove(6)
-        except Exception:
-            pass
 
         self.eval_emulator(params, ell_eval_emu, de_model=de_model)
         bij = self.get_bias_coeff()
@@ -2324,10 +2319,8 @@ class PTEmu:
         if ell_for_recon is None:
             ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
         ell_eval_emu = ell_for_recon.copy()
-        try:
+        if 6 in ell_eval_emu:
             ell_eval_emu.remove(6)
-        except Exception:
-            pass
 
         ell = [ell] if not isinstance(ell, list) else ell
 
