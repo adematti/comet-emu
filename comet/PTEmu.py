@@ -482,9 +482,9 @@ class PTEmu:
                 wa = params_fid['wa']
             self.cosmo.update_cosmology(Om0, H0, Ok0=Ok0, de_model=de_model,
                                         w0=w0, wa=wa)
-            self.H_fid = self.cosmo.Hz(params_fid['z'])
-            self.Dm_fid = \
-                self.cosmo.comoving_transverse_distance(params_fid['z'])
+            self.H_fid = np.diag(self.cosmo.Hz(params_fid['z']))
+            self.Dm_fid = np.diag(
+                self.cosmo.comoving_transverse_distance(params_fid['z']))
             if not self.use_Mpc:
                 self.H_fid /= params_fid['h']
                 self.Dm_fid *= params_fid['h']
@@ -538,13 +538,13 @@ class PTEmu:
                                   + self.de_model_params_list[de_model]
                 if 'Ok' not in params:
                     expected_params.remove('Ok')
-                emu_params_updated = any([params[p] != self.params[p] for p
-                                          in expected_params])
+                emu_params_updated = np.any([params[p] != self.params[p] for p
+                                             in expected_params])
                 for p in expected_params:
                     self.params[p] = np.atleast_1d(params[p])
                 if de_model == 'lambda' and \
-                        np.any(self.params['w0'] != -1.0 or \
-                               self.params['wa'] != 0.0):
+                        (np.any(self.params['w0'] != -1.0) or \
+                         np.any(self.params['wa'] != 0.0)):
                     self.params['w0'] = -np.ones_like(self.params['w0'])
                     self.params['wa'] = np.zeros_like(self.params['wa'])
                     emu_params_updated = True
@@ -564,8 +564,8 @@ class PTEmu:
             self.chi2_decomposition = None
             self.Bisp_chi2_decomposition = None
 
-        RSD_params_updated = any([params[p] != self.params[p] for p
-                                  in list(set(params) \
+        RSD_params_updated = np.any([params[p] != self.params[p] for p
+                                     in list(set(params) \
                                           & set(self.RSD_params_list))])
         if RSD_params_updated:
             self.chi2_decomposition = None
@@ -576,7 +576,7 @@ class PTEmu:
         return emu_params_updated
 
     def update_bias_params(self, params, include_RSD_params=False):
-        params_list = self.bias_params_list
+        params_list = self.bias_params_list.copy()
         if include_RSD_params:
             params_list += self.RSD_params_list
 
@@ -964,7 +964,7 @@ class PTEmu:
                 # rescale linear power spectrum and sigma12
                 amplitude_scaling = np.sqrt(
                     self.params['As']/self.emu_LCDM_params['As']) \
-                    * np.diag(D)/Dfid # N
+                    * np.diag(D)/np.diag(Dfid) # N
                 self.Pk_lin *= amplitude_scaling**2
                 self.params['s12'] = sigma12*amplitude_scaling
                 self.params['f'] = np.diag(f)
@@ -1459,10 +1459,10 @@ class PTEmu:
                         (10, self.nkloop, self.nparams)),
                     self.Pk_lin[(self.nk-self.nkloop):]), 0, 1)
 
-                Pell[:, i] = np.einsum("abc,b", Pk_bij, bij)
+                Pell[:, i] = np.einsum("abc,bc->ac", Pk_bij, bij)
             else:
                 bij_for_P6 = self.get_bias_coeff_for_P6()
-                Pell[:, i] = np.dot(bij_for_P6, self.P6.T)[:,None]
+                Pell[:, i] = np.einsum("ab,bc->ac", self.P6, bij_for_P6)
 
         return Pell
 
@@ -1835,7 +1835,7 @@ class PTEmu:
                     kp = np.multiply.outer(keff, APfac)
                     mup = np.divide.outer(mu, self.params['q_lo'])/APfac
                     P2d_tot = P2d(kp, mup) + P2d_stoch(kp, mup)
-                    legendre = np.array([eval_legendre(l, mu) for l in ell])
+                    legendre = eval_legendre.outer(ell, mu)
                     return np.einsum("abc,db->adcb", P2d_tot, legendre) # nk x nell x N x nmu
             else:
                 def shell_average():
@@ -1869,8 +1869,8 @@ class PTEmu:
                     mup = np.divide.outer(mu, self.params['q_lo'])/APfac
                     P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
                     P2d_tot = P2d_damped + P2d_stoch(kp, mup)
-                    legendre = np.array([eval_legendre(l, mu) for l in ell])
-                    return np.einsum("ab,cb->acb", P2d_tot, legendre)
+                    legendre = eval_legendre.outer(ell, mu)
+                    return np.einsum("abc,db->adcb", P2d_tot, legendre)
             else:
                 def shell_average():
                     mu2 = self.grid.mu**2
@@ -1897,10 +1897,11 @@ class PTEmu:
             params_updated = [params[p] != self.params[p] for p in
                               params.keys()]
             params_nonzero = [x for x in self.bias_params_list +
-                              self.RSD_params_list if self.params[x] != 0]
+                              self.RSD_params_list if np.any(
+                                  self.params[x] != 0)]
 
-            if (any(params_updated) or
-                    any(p not in params.keys() for p in params_nonzero) or
+            if (np.any(params_updated) or
+                    np.any([p not in params.keys() for p in params_nonzero]) or
                     not self.splines_up_to_date):
                 Pell = self.Pell_fid_ktable(params, ell=ell_for_recon,
                                             de_model=de_model)
