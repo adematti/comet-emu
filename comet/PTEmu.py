@@ -914,6 +914,7 @@ class PTEmu:
         emu_params_updated = self.update_params(params, de_model=de_model)
         params_shape = np.array(
             [self.params[p] for p in self.params_shape_list]).T
+        self.nparams = len(self.params['wc'])
 
         if de_model is None:
             params_all = np.array([self.params[p] for p in self.params_list]).T
@@ -1238,14 +1239,9 @@ class PTEmu:
             input wavemodes :math:`k`.
         """
         self.eval_emulator(params, ell=[], de_model=de_model)
-
-        if self.use_Mpc:
-            self.PL_spline.build(self.k_table, self.Pk_lin)
-        else:
-            self.PL_spline.build(self.k_table/self.params['h'],
-                                 self.Pk_lin*self.params['h']**3)
-
-        return self.PL_spline.eval(k)
+        self.PL_spline.build(self.k_table, self.Pk_lin, h=self.params['h'])
+        PL = np.squeeze(self.PL_spline.eval(k))
+        return PL
 
     # TODO
     def Pdw_2d(self, k, mu, params, de_model=None, ell_for_recon=None):
@@ -1403,10 +1399,10 @@ class PTEmu:
             Pdw = np.einsum("abc,b", Pdw_ell,
                             eval_legendre.outer(ell_for_recon, 0.0))
 
-            self.Pdw_spline.build(self.k_table, Pdw, h=params['h'])
+            self.Pdw_spline.build(self.k_table, Pdw, h=self.params['h'])
             self.dw_spline_up_to_date = True
 
-        Pdw = self.Pdw_spline.eval(k)
+        Pdw = np.squeeze(self.Pdw_spline.eval(k))
         return Pdw
 
     def Pell_fid_ktable(self, params, ell, de_model=None):
@@ -1450,24 +1446,27 @@ class PTEmu:
         self.eval_emulator(params, ell_eval_emu, de_model=de_model)
         bij = self.get_bias_coeff()
 
-        Pell = np.zeros([self.nk, len(ell)])
+        Pell = np.zeros([self.nk, len(ell), self.nparams])
         for i, m in enumerate(ell):
             if m != 6:
-                Pk_bij = np.zeros([self.nk, self.n_diagrams])
-                Pk_bij[:, :9] = np.multiply(
-                    self.Pk_ratios[m][:9*self.nk].reshape((9, self.nk)),
-                    self.Pk_lin).T
-                Pk_bij[(self.nk-self.nkloop):, 9:19] = np.multiply(
-                    self.Pk_ratios[m][9*self.nk:].reshape((10, self.nkloop)),
-                    self.Pk_lin[(self.nk-self.nkloop):]).T
+                Pk_bij = np.zeros([self.nk, self.n_diagrams, self.nparams])
+                Pk_bij[:, :9] = np.moveaxis(np.multiply(
+                    self.Pk_ratios[m][:9*self.nk].reshape(
+                        (9, self.nk, self.nparams)),
+                    self.Pk_lin), 0, 1)
+                Pk_bij[(self.nk-self.nkloop):, 9:19] = np.moveaxis(np.multiply(
+                    self.Pk_ratios[m][9*self.nk:].reshape(
+                        (10, self.nkloop, self.nparams)),
+                    self.Pk_lin[(self.nk-self.nkloop):]), 0, 1)
 
-                Pell[:, i] = np.dot(bij, Pk_bij.T)
+                Pell[:, i] = np.einsum("abc,b", Pk_bij, bij)
             else:
                 bij_for_P6 = self.get_bias_coeff_for_P6()
-                Pell[:, i] = np.dot(bij_for_P6, self.P6.T)
+                Pell[:, i] = np.dot(bij_for_P6, self.P6.T)[:,None]
 
         return Pell
 
+    # TODO
     def Pell_quad(self, k, params, ell, de_model=None, binning=None,
                   obs_id=None, q_tr_lo=None, W_damping=None,
                   ell_for_recon=None):
@@ -1816,29 +1815,28 @@ class PTEmu:
         keff = self.grid.keff if use_effective_modes else k
 
         def P2d(q, mu):
-            t = 0.0
-            for m in ell_for_recon:
-                t += self.eval_Pell_spline(q, m).reshape(q.shape) \
-                     * eval_legendre(m, mu)
-            return t
+            t = np.einsum("abcd,cbd->abd", self.Pell_spline.eval_varx(q),
+                          eval_legendre.outer(np.array([0,2,4,6]),mu))
+            return t # nk x nmu x N
 
         def P2d_stoch(q, mu):
             t = self.params['NP0'] + q**2 * (self.params['NP20'] \
                 + self.params['NP22']*eval_legendre(2,mu))
-            return t/self.nbar
+            return t/self.nbar # nk x nmu x N
 
         if self.RSD_model == 'EFT':
 
             if binning is None or use_effective_modes:
                 def integrand(mu):
                     mu2 = mu**2
-                    APfac = np.sqrt(mu2/self.params['q_lo']**2 +
-                                    (1.0 - mu2)/self.params['q_tr']**2)
-                    kp = np.outer(keff, APfac)
-                    mup = mu/self.params['q_lo']/APfac
+                    APfac = np.sqrt(
+                        np.divide.outer(mu2, self.params['q_lo']**2) \
+                        + np.divide.outer(1.0 - mu2, self.params['q_tr']**2))
+                    kp = np.multiply.outer(keff, APfac)
+                    mup = np.divide.outer(mu, self.params['q_lo'])/APfac
                     P2d_tot = P2d(kp, mup) + P2d_stoch(kp, mup)
                     legendre = np.array([eval_legendre(l, mu) for l in ell])
-                    return np.einsum("ab,cb->acb", P2d_tot, legendre)
+                    return np.einsum("abc,db->adcb", P2d_tot, legendre) # nk x nell x N x nmu
             else:
                 def shell_average():
                     mu2 = self.grid.mu**2
@@ -1864,10 +1862,11 @@ class PTEmu:
             if binning is None or use_effective_modes:
                 def integrand(mu):
                     mu2 = mu**2
-                    APfac = np.sqrt(mu2/self.params['q_lo']**2 +
-                                    (1.0 - mu2)/self.params['q_tr']**2)
-                    kp = np.outer(keff, APfac)
-                    mup = mu/self.params['q_lo']/APfac
+                    APfac = np.sqrt(
+                        np.divide.outer(mu2, self.params['q_lo']**2) \
+                        + np.divide.outer(1.0 - mu2, self.params['q_tr']**2))
+                    kp = np.multiply.outer(keff, APfac)
+                    mup = np.divide.outer(mu, self.params['q_lo'])/APfac
                     P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
                     P2d_tot = P2d_damped + P2d_stoch(kp, mup)
                     legendre = np.array([eval_legendre(l, mu) for l in ell])
@@ -1905,7 +1904,7 @@ class PTEmu:
                     not self.splines_up_to_date):
                 Pell = self.Pell_fid_ktable(params, ell=ell_for_recon,
                                             de_model=de_model)
-                self.Pell_spline.build(Pell) # check h-units!!!!
+                self.Pell_spline.build(self.k_table, Pell, h=self.params['h'])
                 self.splines_up_to_date = True
 
             self.update_AP_params(params, de_model=de_model,
@@ -1913,15 +1912,17 @@ class PTEmu:
             q3 = self.params['q_tr']**2 * self.params['q_lo']
 
             if binning is None or use_effective_modes:
-                Pell_model = 0.5 * np.dot(integrand(self.gl_x), self.gl_weights)
+                Pell_model = 0.5 * np.einsum("abcd,d->abc",
+                                             integrand(self.gl_x),
+                                             self.gl_weights)
             else:
                 Pell_model = shell_average()
-            Pell_model *= (2.0*np.array(ell)+1.0) / q3
+            Pell_model *= np.divide.outer(2.0*np.array(ell)+1.0, q3)
 
             Pell_dict = {}
             for i, m in enumerate(ell):
                 ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
-                Pell_dict['ell{}'.format(m)] = Pell_model[ids, i]
+                Pell_dict['ell{}'.format(m)] = np.squeeze(Pell_model[ids, i])
         else:
             mixing_matrix_exists = True
             try:

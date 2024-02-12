@@ -22,11 +22,15 @@ class Splines:
         self.ids = np.arange(self.size_last, dtype=np.int32)
 
         if self.use_Mpc:
-            self.spline = make_interp_spline(x, y, axis=axis)
+            self.spline = [make_interp_spline(x, y[...,n], axis=axis) \
+                           for n in range(self.size_last)]
         else:
-            self.h = h
+            self.h = np.atleast_1d(h)
             self.h3 = self.h**3
-            self.spline = make_interp_spline(x, y*self.h3, axis=axis)
+            xh = np.divide.outer(x, self.h)
+            yh3 = y*self.h3
+            self.spline = [make_interp_spline(xh[...,n], yh3[...,n], axis=axis)\
+                           for n in range(self.size_last)]
 
         # low-k extrapolation
         dly_min = np.log10(np.abs(
@@ -38,8 +42,16 @@ class Splines:
         self.x_min = np.atleast_1d(x[self.id_min])
         if self.col is not None:
             self.x_min = self.x_min[:,None]
-        self.extrapolation_min = lambda x: self.y_min \
-            * np.divide.outer(x,self.x_min)**self.neff_min
+        if self.use_Mpc:
+            self.extrapolation_min = [lambda x: self.y_min[...,n] \
+                * np.divide.outer(x,self.x_min[...,0])**self.neff_min[...,n] \
+                for n in range(self.size_last)]
+        else:
+            self.y_min *= self.h3
+            self.x_min = self.x_min/self.h
+            self.extrapolation_min = [lambda x: self.y_min[...,n] \
+                * np.divide.outer(x,self.x_min[...,n])**self.neff_min[...,n] \
+                for n in range(self.size_last)]
 
         # high-k extrapolation
         dy_max = np.abs(y[self.id_max,self.col]/y[self.id_max-2,self.col])
@@ -51,12 +63,16 @@ class Splines:
         self.x_max = np.atleast_1d(x[self.id_max])
         if self.col is not None:
             self.x_max = self.x_max[:,None]
-        self.extrapolation_max_plaw = lambda x: self.y_max \
-            * np.divide.outer(x,self.x_max)**self.neff_max
-
-        if not self.use_Mpc:
-            self.y_min *= self.h3
+        if self.use_Mpc:
+            self.extrapolation_max_plaw = [lambda x: self.y_max[...,n] \
+                * np.divide.outer(x,self.x_max[...,0])**self.neff_max[...,n] \
+                for n in range(self.size_last)]
+        else:
             self.y_max *= self.h3
+            self.x_max = self.x_max/self.h
+            self.extrapolation_max_plaw = [lambda x: self.y_max[...,n] \
+                * np.divide.outer(x,self.x_max[...,n])**self.neff_max[...,n] \
+                for n in range(self.size_last)]
 
         if self.crossover_check:
             self.mask = np.where((dy_max > 2) | (dy_max < 0.5))
@@ -64,55 +80,111 @@ class Splines:
                          / (x[self.id_max,None] - x[self.id_max-2,None])
             self.intrcpt = y[self.id_max-2,self.col] \
                            - self.slope * x[self.id_max-2,None]
-            self.extrapolation_max_lin = lambda x: np.multiply.outer(x,
-                self.slope) + self.intrcpt
-
             if not self.use_Mpc:
-                self.slope *= self.h3
+                self.slope *= self.h3*self.h
                 self.intrcpt *= self.h3
+            self.extrapolation_max_lin = [lambda x: np.multiply.outer(x,
+                self.slope[...,n]) + self.intrcpt[...,n] \
+                for n in range(self.size_last)]
 
-            def extrapolation_max(x):
-                plaw = self.extrapolation_max_plaw(x)
-                lin = self.extrapolation_max_lin(x)
-                plaw[...,self.mask] = lin[...,self.mask]
-                return plaw
+    def _eval_extrapolation_min(self, x):
+        y = np.array([self.extrapolation_min[n](x) \
+                      for n in range(self.size_last)])
+        return np.moveaxis(y, 0, -1)
 
-            self.extrapolation_max = extrapolation_max
-        else:
-            self.extrapolation_max = self.extrapolation_max_plaw
+    def _eval_extrapolation_min_varx(self, x):
+        y = np.array([self.extrapolation_min[n](x[...,n]) \
+                      for n in range(self.size_last)])
+        return np.moveaxis(y, 0, -1)
 
-    def _eval(self, x):
-        mask_less = np.less.outer(x, self.x_min)[...,0]
-        mask_greater = np.greater.outer(x, self.x_max)[...,0]
-        mask_remainder = ~mask_less & ~mask_greater
+    def _eval_spline(self, x):
+        y = np.array([self.spline[n](x) for n in range(self.size_last)])
+        return np.moveaxis(y, 0, -1)
 
-        res = np.zeros(x.shape+(self.ncol,self.size_last)) if self.ncol > 0 \
-            else np.zeros(x.shape+(self.size_last,))
+    def _eval_spline_varx(self, x):
+        y = np.array([self.spline[n](x[...,n]) for n in range(self.size_last)])
+        return np.moveaxis(y, 0, -1)
 
-        if self.ncol > 0:
-            eval_less = self.extrapolation_min(x[mask_less[...,-1]])
-            eval_greater = self.extrapolation_max(x[mask_greater[...,0]])
-            eval_remainder = self.spline(x[mask_remainder[...,0]])
-            for i in range(self.ncol):
-                res[mask_less[...,i],i,...] = eval_less[
-                    mask_less[mask_less[...,-1],i],i,...]
-                res[mask_greater[...,i],i,...] = eval_greater[
-                    mask_greater[mask_greater[...,0],i],i,...]
-                res[mask_remainder[...,i],i,...] = eval_remainder[
-                    mask_remainder[mask_remainder[...,0],i],i,...]
-        else:
-            res[mask_less] = self.extrapolation_min(x[mask_less])
-            res[mask_greater] = self.extrapolation_max(x[mask_greater])
-            res[mask_remainder] = self.spline(x[mask_remainder])
+    def _eval_extrapolation_max(self, x):
+        yplaw = np.array([self.extrapolation_max_plaw[n](x) \
+                          for n in range(self.size_last)])
+        yplaw = np.moveaxis(yplaw, 0, -1)
+        if self.crossover_check:
+            ylin = np.array([self.extrapolation_max_lin[n](x) \
+                             for n in range(self.size_last)])
+            ylin = np.moveaxis(ylin, 0, -1)
+            yplaw[(Ellipsis, *self.mask)] = ylin[(Ellipsis, *self.mask)]
+        return yplaw
 
-        return res
+    def _eval_extrapolation_max_varx(self, x):
+        yplaw = np.array([self.extrapolation_max_plaw[n](x[...,n]) \
+                          for n in range(self.size_last)])
+        yplaw = np.moveaxis(yplaw, 0, -1)
+        if self.crossover_check:
+            ylin = np.array([self.extrapolation_max_lin[n](x[...,n]) \
+                             for n in range(self.size_last)])
+            ylin = np.moveaxis(ylin, 0, -1)
+            yplaw[(Ellipsis, *self.mask)] = ylin[(Ellipsis, *self.mask)]
+        return yplaw
 
     def eval(self, x):
-        x = np.atleast_1d(x)
-        if self.use_Mpc:
-            spline = self._eval(x)
-        else:
-            xh = np.outer(self.h, x)
-            spline = self._eval(xh)
-            spline = np.moveaxis(spline[self.ids,...,self.ids], 0, -1)
+        spline = np.where(np.less.outer(x, self.x_min),
+                          self._eval_extrapolation_min(x),
+                          np.where(np.greater.outer(x, self.x_max),
+                                   self._eval_extrapolation_max(x),
+                                   self._eval_spline(x)))
         return spline
+
+    def eval_varx(self, x):
+        n = len(x.shape) - 1
+        if self.use_Mpc:
+            mask_less = np.moveaxis(np.less.outer(x, self.x_min[:,0]), n, -1)
+            mask_greater = np.moveaxis(
+                np.greater.outer(x, self.x_max[:,0]), n, -1)
+        else:
+            mask_less = np.moveaxis(
+                np.less.outer(x, self.x_min), n, -1)[...,self.ids,self.ids]
+            mask_greater = np.moveaxis(
+                np.greater.outer(x, self.x_max), n, -1)[...,self.ids,self.ids]
+        spline = np.where(mask_less,
+                          self._eval_extrapolation_min_varx(x),
+                          np.where(mask_greater,
+                                   self._eval_extrapolation_max_varx(x),
+                                   self._eval_spline_varx(x)))
+        return spline
+
+    # def _eval(self, x):
+    #     mask_less = np.less.outer(x, self.x_min)[...,0]
+    #     mask_greater = np.greater.outer(x, self.x_max)[...,0]
+    #     mask_remainder = ~mask_less & ~mask_greater
+    #
+    #     res = np.zeros(x.shape+(self.ncol,self.size_last)) if self.ncol > 0 \
+    #         else np.zeros(x.shape+(self.size_last,))
+    #
+    #     if self.ncol > 0:
+    #         eval_less = self.extrapolation_min(x[mask_less[...,-1]])
+    #         eval_greater = self.extrapolation_max(x[mask_greater[...,0]])
+    #         eval_remainder = self.spline(x[mask_remainder[...,0]])
+    #         for i in range(self.ncol):
+    #             res[mask_less[...,i],i,...] = eval_less[
+    #                 mask_less[mask_less[...,-1],i],i,...]
+    #             res[mask_greater[...,i],i,...] = eval_greater[
+    #                 mask_greater[mask_greater[...,0],i],i,...]
+    #             res[mask_remainder[...,i],i,...] = eval_remainder[
+    #                 mask_remainder[mask_remainder[...,0],i],i,...]
+    #     else:
+    #         res[mask_less] = self.extrapolation_min(x[mask_less])
+    #         res[mask_greater] = self.extrapolation_max(x[mask_greater])
+    #         res[mask_remainder] = self.spline(x[mask_remainder])
+    #
+    #     return res
+
+    # def eval(self, x):
+    #     x = np.atleast_1d(x)
+    #     if self.use_Mpc:
+    #         spline = self._eval(x)
+    #     else:
+    #         xh = np.outer(self.h, x)
+    #         spline = self._eval(xh)
+    #         spline = np.moveaxis(spline[self.ids,...,self.ids], 0, -1)
+    #     return spline
