@@ -43,15 +43,13 @@ class Splines:
         if self.col is not None:
             self.x_min = self.x_min[:,None]
         if self.use_Mpc:
-            self.extrapolation_min = [lambda x: self.y_min[...,n] \
-                * np.divide.outer(x,self.x_min[...,0])**self.neff_min[...,n] \
-                for n in range(self.size_last)]
+            self.extrapolation_min = lambda x,n: self.y_min[...,n] \
+                * np.divide.outer(x,self.x_min[...,0])**self.neff_min[...,n]
         else:
             self.y_min *= self.h3
             self.x_min = self.x_min/self.h
-            self.extrapolation_min = [lambda x: self.y_min[...,n] \
-                * np.divide.outer(x,self.x_min[...,n])**self.neff_min[...,n] \
-                for n in range(self.size_last)]
+            self.extrapolation_min = lambda x,n: self.y_min[...,n] \
+                * np.divide.outer(x,self.x_min[...,n])**self.neff_min[...,n]
 
         # high-k extrapolation
         dy_max = np.abs(y[self.id_max,self.col]/y[self.id_max-2,self.col])
@@ -64,15 +62,13 @@ class Splines:
         if self.col is not None:
             self.x_max = self.x_max[:,None]
         if self.use_Mpc:
-            self.extrapolation_max_plaw = [lambda x: self.y_max[...,n] \
-                * np.divide.outer(x,self.x_max[...,0])**self.neff_max[...,n] \
-                for n in range(self.size_last)]
+            self.extrapolation_max_plaw = lambda x,n: self.y_max[...,n] \
+                * np.divide.outer(x,self.x_max[...,0])**self.neff_max[...,n]
         else:
             self.y_max *= self.h3
             self.x_max = self.x_max/self.h
-            self.extrapolation_max_plaw = [lambda x: self.y_max[...,n] \
-                * np.divide.outer(x,self.x_max[...,n])**self.neff_max[...,n] \
-                for n in range(self.size_last)]
+            self.extrapolation_max_plaw = lambda x,n: self.y_max[...,n] \
+                * np.divide.outer(x,self.x_max[...,n])**self.neff_max[...,n]
 
         if self.crossover_check:
             self.mask = np.where((dy_max > 2) | (dy_max < 0.5))
@@ -83,17 +79,16 @@ class Splines:
             if not self.use_Mpc:
                 self.slope *= self.h3*self.h
                 self.intrcpt *= self.h3
-            self.extrapolation_max_lin = [lambda x: np.multiply.outer(x,
-                self.slope[...,n]) + self.intrcpt[...,n] \
-                for n in range(self.size_last)]
+            self.extrapolation_max_lin = lambda x,n: np.multiply.outer(x,
+                self.slope[...,n]) + self.intrcpt[...,n]
 
     def _eval_extrapolation_min(self, x):
-        y = np.array([self.extrapolation_min[n](x) \
+        y = np.array([self.extrapolation_min(x,n) \
                       for n in range(self.size_last)])
         return np.moveaxis(y, 0, -1)
 
     def _eval_extrapolation_min_varx(self, x):
-        y = np.array([self.extrapolation_min[n](x[...,n]) \
+        y = np.array([self.extrapolation_min(x[...,n],n) \
                       for n in range(self.size_last)])
         return np.moveaxis(y, 0, -1)
 
@@ -106,22 +101,22 @@ class Splines:
         return np.moveaxis(y, 0, -1)
 
     def _eval_extrapolation_max(self, x):
-        yplaw = np.array([self.extrapolation_max_plaw[n](x) \
+        yplaw = np.array([self.extrapolation_max_plaw(x,n) \
                           for n in range(self.size_last)])
         yplaw = np.moveaxis(yplaw, 0, -1)
         if self.crossover_check:
-            ylin = np.array([self.extrapolation_max_lin[n](x) \
+            ylin = np.array([self.extrapolation_max_lin(x,n) \
                              for n in range(self.size_last)])
             ylin = np.moveaxis(ylin, 0, -1)
             yplaw[(Ellipsis, *self.mask)] = ylin[(Ellipsis, *self.mask)]
         return yplaw
 
     def _eval_extrapolation_max_varx(self, x):
-        yplaw = np.array([self.extrapolation_max_plaw[n](x[...,n]) \
+        yplaw = np.array([self.extrapolation_max_plaw(x[...,n],n) \
                           for n in range(self.size_last)])
         yplaw = np.moveaxis(yplaw, 0, -1)
         if self.crossover_check:
-            ylin = np.array([self.extrapolation_max_lin[n](x[...,n]) \
+            ylin = np.array([self.extrapolation_max_lin(x[...,n],n) \
                              for n in range(self.size_last)])
             ylin = np.moveaxis(ylin, 0, -1)
             yplaw[(Ellipsis, *self.mask)] = ylin[(Ellipsis, *self.mask)]

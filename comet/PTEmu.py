@@ -964,7 +964,7 @@ class PTEmu:
                 # rescale linear power spectrum and sigma12
                 amplitude_scaling = np.sqrt(
                     self.params['As']/self.emu_LCDM_params['As']) \
-                    * np.diag(D)/np.diag(Dfid) # N
+                    * np.diag(D)/Dfid[0] # N
                 self.Pk_lin *= amplitude_scaling**2
                 self.params['s12'] = sigma12*amplitude_scaling
                 self.params['f'] = np.diag(f)
