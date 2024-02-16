@@ -552,7 +552,7 @@ class PTEmu:
         return emu_params_updated
 
     def update_bias_params(self, params, include_RSD_params=False):
-        params_list = self.bias_params_list
+        params_list = self.bias_params_list.copy()
         if include_RSD_params:
             params_list += self.RSD_params_list
 
