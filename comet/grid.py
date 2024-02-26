@@ -88,6 +88,7 @@ class Grid:
             self.weights = self.weights_all
             self.nmodes = self.nmodes_all
             self.keff_all = np.zeros(len(self.nmodes_all)-1)
+            self.weights_sum = np.add.reduceat(self.weights, self.nmodes[:-1])
         elif kbin.size != self.kbin.size:
             ids = np.intersect1d(kbin, self.kbin, return_indices=True)[2]
             self.k = None
@@ -107,6 +108,7 @@ class Grid:
                     if self.weights is not None else self.weights_all[n1:n2]
                 self.nmodes.append(self.nmodes[-1] + self.nmodes_all[i+1]
                                    - self.nmodes_all[i])
+            self.weights_sum = np.add.reduceat(self.weights, self.nmodes[:-1])
         else:
             self.k = self.k_all
             self.mu = self.mu_all

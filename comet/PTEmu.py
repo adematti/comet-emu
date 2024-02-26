@@ -1791,8 +1791,8 @@ class PTEmu:
 
         if isinstance(k, list):
             if len(k) != len(ell):
-                raise ValueError("If 'k' is given as a list, it must match the"
-                                 " length of 'ell'.")
+                raise ValueError("If 'k' is given as a list, it must match the "
+                                 "length of 'ell'.")
             else:
                 k_list = k
                 k = np.unique(np.hstack(k_list))
@@ -1814,6 +1814,14 @@ class PTEmu:
 
         keff = self.grid.keff if use_effective_modes else k
 
+        if self.RSD_model == 'EFT':
+            W_damping = lambda k, mu: 1.0
+        elif self.RSD_model == 'VDG_infty':
+            if W_damping is None:
+                W_damping = self.W_kurt
+        else:
+            raise ValueError('Unsupported RSD model.')
+
         def P2d(q, mu):
             t = np.einsum("abcd,cbd->abd", self.Pell_spline.eval_varx(q),
                           eval_legendre.outer(np.array([0,2,4,6]),mu))
@@ -1824,74 +1832,34 @@ class PTEmu:
                 + self.params['NP22']*eval_legendre(2,mu))
             return t/self.nbar # nk x nmu x N
 
-        if self.RSD_model == 'EFT':
-
-            if binning is None or use_effective_modes:
-                def integrand(mu):
-                    mu2 = mu**2
-                    APfac = np.sqrt(
-                        np.divide.outer(mu2, self.params['q_lo']**2) \
-                        + np.divide.outer(1.0 - mu2, self.params['q_tr']**2))
-                    kp = np.multiply.outer(keff, APfac)
-                    mup = np.divide.outer(mu, self.params['q_lo'])/APfac
-                    P2d_tot = P2d(kp, mup) + P2d_stoch(kp, mup)
-                    legendre = eval_legendre.outer(ell, mu)
-                    return np.einsum("abc,db->adcb", P2d_tot, legendre) # nk x nell x N x nmu
-            else:
-                def shell_average():
-                    mu2 = self.grid.mu**2
-                    APfac = np.sqrt(mu2/self.params['q_lo']**2 +
-                                    (1.0 - mu2)/self.params['q_tr']**2)
-                    kp = self.grid.k*APfac
-                    mup = self.grid.mu/self.params['q_lo']/APfac
-                    legendre = np.array([eval_legendre(l, self.grid.mu)
-                                         for l in ell])
-                    prod = (P2d(kp, mup) + P2d_stoch(kp, mup)) * legendre
-                    avg = np.zeros([len(self.grid.nmodes)-1, len(ell)])
-                    for i in range(len(self.grid.nmodes)-1):
-                        n1 = self.grid.nmodes[i]
-                        n2 = self.grid.nmodes[i+1]
-                        avg[i] = np.average(prod[:,n1:n2], axis=1,
-                                            weights=self.grid.weights[n1:n2])
-                    return avg
-
-        elif self.RSD_model == 'VDG_infty':
-            if W_damping is None:
-                W_damping = self.W_kurt
-
-            if binning is None or use_effective_modes:
-                def integrand(mu):
-                    mu2 = mu**2
-                    APfac = np.sqrt(
-                        np.divide.outer(mu2, self.params['q_lo']**2) \
-                        + np.divide.outer(1.0 - mu2, self.params['q_tr']**2))
-                    kp = np.multiply.outer(keff, APfac)
-                    mup = np.divide.outer(mu, self.params['q_lo'])/APfac
-                    P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
-                    P2d_tot = P2d_damped + P2d_stoch(kp, mup)
-                    legendre = eval_legendre.outer(ell, mu)
-                    return np.einsum("abc,db->adcb", P2d_tot, legendre)
-            else:
-                def shell_average():
-                    mu2 = self.grid.mu**2
-                    APfac = np.sqrt(mu2/self.params['q_lo']**2 +
-                                    (1.0 - mu2)/self.params['q_tr']**2)
-                    kp = self.grid.k*APfac
-                    mup = self.grid.mu/self.params['q_lo']/APfac
-                    legendre = np.array([eval_legendre(l, self.grid.mu)
-                                         for l in ell])
-                    P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
-                    prod = (P2d_damped + P2d_stoch(kp, mup)) * legendre
-                    avg = np.zeros([len(self.grid.nmodes)-1, len(ell)])
-                    for i in range(len(self.grid.nmodes)-1):
-                        n1 = self.grid.nmodes[i]
-                        n2 = self.grid.nmodes[i+1]
-                        avg[i] = np.average(prod[:,n1:n2], axis=1,
-                                            weights=self.grid.weights[n1:n2])
-                    return avg
-
+        if binning is None or use_effective_modes:
+            def LOS_average_continuous(mu):
+                mu2 = mu**2
+                APfac = np.sqrt(
+                    np.divide.outer(mu2, self.params['q_lo']**2) \
+                    + np.divide.outer(1.0 - mu2, self.params['q_tr']**2))
+                kp = np.multiply.outer(keff, APfac)
+                mup = np.divide.outer(mu, self.params['q_lo'])/APfac
+                P2d_tot = P2d(kp, mup) * W_damping(kp, mup) + P2d_stoch(kp, mup)
+                legendre = eval_legendre.outer(ell, mu)
+                return np.einsum("abc,db->adcb", P2d_tot, legendre) # nk x nell x N x nmu
         else:
-            raise ValueError('Unsupported RSD model.')
+            def LOS_average_discrete():
+                mu2 = self.grid.mu**2
+                APfac = np.sqrt(
+                    np.divide.outer(mu2, self.params['q_lo']**2) \
+                    + np.divide.outer(1.0 - mu2, self.params['q_tr']**2))
+                kp = np.einsum("a,ab->ab", self.grid.k, APfac)[None]
+                mup = np.divide.outer(self.grid.mu, self.params['q_lo'])/APfac
+                legendre = eval_legendre.outer(ell, self.grid.mu)[...,None]
+                prod = legendre * (P2d(kp, mup) * W_damping(kp, mup) \
+                                   + P2d_stoch(kp, mup))[0]
+                prod = np.moveaxis(prod, 0, 1)
+                avg = np.add.reduceat(
+                    np.einsum("abc,a->abc", prod, self.grid.weights),
+                    self.grid.nmodes[:-1], axis=0)
+                avg /= self.grid.weights_sum[:,None,None]
+                return avg
 
         if obs_id is None:
             params_updated = [params[p] != self.params[p] for p in
@@ -1913,11 +1881,11 @@ class PTEmu:
             q3 = self.params['q_tr']**2 * self.params['q_lo']
 
             if binning is None or use_effective_modes:
-                Pell_model = 0.5 * np.einsum("abcd,d->abc",
-                                             integrand(self.gl_x),
-                                             self.gl_weights)
+                Pell_model = 0.5 * np.einsum(
+                    "abcd,d->abc", LOS_average_continuous(self.gl_x),
+                    self.gl_weights)
             else:
-                Pell_model = shell_average()
+                Pell_model = LOS_average_discrete()
             Pell_model *= np.divide.outer(2.0*np.array(ell)+1.0, q3)
 
             Pell_dict = {}
@@ -1925,51 +1893,47 @@ class PTEmu:
                 ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
                 Pell_dict['ell{}'.format(m)] = np.squeeze(Pell_model[ids, i])
         else:
-            mixing_matrix_exists = True
-            try:
-                self.data[obs_id].bins_mixing_matrix
-            except AttributeError:
-                mixing_matrix_exists = False
-            try:
-                self.data[obs_id].W_mixing_matrix
-            except AttributeError:
-                mixing_matrix_exists = False
-            if mixing_matrix_exists:
+            if self.data[obs_id].mixing_matrix_exists:
                 ell_for_mixing_matrix = [0,2,4] if not self.real_space else [0]
                 Pell_model = self.Pell(
                     self.data[obs_id].bins_mixing_matrix_compressed,
-                    params, ell_for_mixing_matrix, de_model, obs_id=None,
-                    q_tr_lo=q_tr_lo, W_damping=W_damping,
-                    ell_for_recon=ell_for_recon)
-                Pell_list = []
-                for l in ell_for_mixing_matrix:
-                    spline = UnivariateSpline(
-                        self.data[obs_id].bins_mixing_matrix_compressed,
-                        Pell_model['ell{}'.format(l)], k=3, s=0)
-                    Pell_list = np.hstack(
-                        [Pell_list,
-                         spline(self.data[obs_id].bins_mixing_matrix[1])])
-                Pell_convolved = np.dot(self.data[obs_id].W_mixing_matrix,
-                                        Pell_list)
+                    params, ell_for_mixing_matrix, de_model,
+                    binning=None, obs_id=None, q_tr_lo=q_tr_lo,
+                    W_damping=W_damping, ell_for_recon=ell_for_recon)
+                Pell_list = np.stack([Pell_model[ell] for ell in Pell_model],
+                                     axis=1)
+                spline = make_interp_spline(
+                    self.data[obs_id].bins_mixing_matrix_compressed,
+                    Pell_list, axis=0)(self.data[obs_id].bins_mixing_matrix[1])
+                spline = spline.reshape((spline.shape[0]*spline.shape[1],
+                                        spline.shape[-1]), order='F')
+                Pell_convolved = np.einsum(
+                    "ab,bc->ac", self.data[obs_id].W_mixing_matrix, spline)
                 nb = len(self.data[obs_id].bins_mixing_matrix[0])
 
                 Pell_dict = {}
                 if k.size != np.intersect1d(
                     k, self.data[obs_id].bins_mixing_matrix[0]).size:
+                        Pell_convolved = Pell_convolved.reshape(
+                            (nb, len(ell_for_mixing_matrix),
+                             Pell_convolved.shape[-1]), order='F')
+                        ell_ids = (np.array(ell)/2).astype(np.int)
+                        spline = make_interp_spline(
+                            self.data[obs_id].bins_mixing_matrix[0],
+                            Pell_convolved[:,ell_ids], axis=0)(k)
                         for i, m in enumerate(ell):
-                            spline = UnivariateSpline(
-                                self.data[obs_id].bins_mixing_matrix[0],
-                                Pell_convolved[int(m/2)*nb:(int(m/2)+1)*nb],
-                                k=3, s=0)
-                            Pell_dict['ell{}'.format(m)] = spline(k_list[i])
+                            ids = np.intersect1d(
+                                k, k_list[i], return_indices=True)[1]
+                            Pell_dict['ell{}'.format(m)] = np.squeeze(
+                                spline[ids,i])
                 else:
                     for i, m in enumerate(ell):
                         ids = np.intersect1d(
                             k_list[i],
                             self.data[obs_id].bins_mixing_matrix[0],
                             return_indices=True)[1]
-                        Pell_dict['ell{}'.format(m)] = Pell_convolved[ids +
-                            int(m/2)*nb]
+                        Pell_dict['ell{}'.format(m)] = np.squeeze(
+                            Pell_convolved[ids + int(m/2)*nb])
             else:
                 print('Warning! Bins for mixing matrix and/or mixing matrix '
                       'itself not provided. Returning unconvolved power '

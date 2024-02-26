@@ -75,6 +75,12 @@ class MeasuredData:
                 int(self.bins_mixing_matrix[1][-1]/0.5*100))
         if 'W_mixing_matrix' in kwargs:
             self.W_mixing_matrix = kwargs.get('W_mixing_matrix')
+        if hasattr(self, 'bins_mixing_matrix') \
+                and hasattr(self, 'W_mixing_matrix'):
+            self.mixing_matrix_exists = True
+        else:
+            self.mixing_matrix_exists = False
+
         if 'theory_cov' in kwargs:
             self.theory_cov = kwargs.get('theory_cov')
         else:
@@ -169,6 +175,12 @@ class MeasuredData:
                 int(self.bins_mixing_matrix[1][-1]/0.5*100))
         if 'W_mixing_matrix' in kwargs:
             self.W_mixing_matrix = kwargs.get('W_mixing_matrix')
+        if hasattr(self, 'bins_mixing_matrix') \
+                and hasattr(self, 'W_mixing_matrix'):
+            self.mixing_matrix_exists = True
+        else:
+            self.mixing_matrix_exists = False
+            
         if 'theory_cov' in kwargs:
             self.theory_cov = kwargs.get('theory_cov')
         if 'kfun' in kwargs:
