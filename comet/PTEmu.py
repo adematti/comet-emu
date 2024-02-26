@@ -1824,7 +1824,7 @@ class PTEmu:
 
         def P2d(q, mu):
             t = np.einsum("abcd,cbd->abd", self.Pell_spline.eval_varx(q),
-                          eval_legendre.outer(np.array([0,2,4,6]),mu))
+                          eval_legendre.outer(np.array(ell_for_recon),mu))
             return t # nk x nmu x N
 
         def P2d_stoch(q, mu):
@@ -1845,16 +1845,16 @@ class PTEmu:
                 return np.einsum("abc,db->adcb", P2d_tot, legendre) # nk x nell x N x nmu
         else:
             def LOS_average_discrete():
-                mu2 = self.grid.mu**2
+                mu2 = self.grid.mu**2 # move to grid.py
                 APfac = np.sqrt(
                     np.divide.outer(mu2, self.params['q_lo']**2) \
                     + np.divide.outer(1.0 - mu2, self.params['q_tr']**2))
-                kp = np.einsum("a,ab->ab", self.grid.k, APfac)[None]
+                kp = np.einsum("a,ab->ab", self.grid.k, APfac)
                 mup = np.divide.outer(self.grid.mu, self.params['q_lo'])/APfac
-                legendre = eval_legendre.outer(ell, self.grid.mu)[...,None]
-                prod = legendre * (P2d(kp, mup) * W_damping(kp, mup) \
-                                   + P2d_stoch(kp, mup))[0]
-                prod = np.moveaxis(prod, 0, 1)
+                legendre = eval_legendre.outer(ell, self.grid.mu)
+                P2d_tot = P2d(kp, mup) * W_damping(kp, mup) \
+                          + P2d_stoch(kp, mup)
+                prod = np.einsum("ab,bc->bac", legendre, Pwd_tot)
                 avg = np.add.reduceat(
                     np.einsum("abc,a->abc", prod, self.grid.weights),
                     self.grid.nmodes[:-1], axis=0)
