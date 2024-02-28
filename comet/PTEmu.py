@@ -175,15 +175,13 @@ class PTEmu:
                   '`load_emulator`, or train the emulator first, '
                   'if necessary.')
 
-        self.Pell_spline = Splines(ncol=4, use_Mpc=self.use_Mpc,
-                                   id_min_ell6=self.nk-self.nkloop,
+        self.Pell_spline = Splines(use_Mpc=self.use_Mpc, ncol=4,
                                    crossover_check=True)
         self.PL_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
         self.Pdw_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
         self.PX_ell_spline = {}
         for X in self.diagrams_all:
             self.PX_ell_spline[X] = Splines(use_Mpc=self.use_Mpc, ncol=4,
-                                            id_min_ell6=self.nk-self.nkloop,
                                             crossover_check=True)
 
     def init_params_dict(self):
@@ -279,6 +277,16 @@ class PTEmu:
         if not self.real_space:
             self.s12_for_P6 = hdul['MODEL_Pell6'].header['SIG12']
             self.P6 = hdul['MODEL_Pell6'].data['P_all']
+            # better compute P6 table for full k-range...
+            nkdiff = self.nk-self.nkloop
+            for i in range(3,25):
+                dly = np.log10(
+                    np.abs(self.P6[nkdiff+2,i]/self.P6[nkdiff,i]))
+                dlx = np.log10(
+                    np.abs(self.k_table[nkdiff+2]/self.k_table[nkdiff]))
+                neff = dly/dlx
+                self.P6[:nkdiff,i] = self.P6[nkdiff,i] \
+                    * (self.k_table[:nkdiff]/self.k_table[nkdiff])**neff
 
         self.Bisp = Bispectrum(self.real_space, self.RSD_model, self.use_Mpc)
 
@@ -343,14 +351,12 @@ class PTEmu:
                 self.data[obs_id].clear_data()
 
             self.Pell_spline = Splines(use_Mpc=self.use_Mpc, ncol=4,
-                                       id_min_ell6=self.nk-self.nkloop,
                                        crossover_check=True)
             self.PL_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
             self.Pdw_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
             self.PX_ell_spline = {}
             for X in self.diagrams_all:
                 self.PX_ell_spline[X] = Splines(use_Mpc=self.use_Mpc, ncol=4,
-                                                id_min_ell6=self.nk-self.nkloop,
                                                 crossover_check=True)
             self.splines_up_to_date = False
             self.dw_spline_up_to_date = False
@@ -1845,10 +1851,10 @@ class PTEmu:
                 return np.einsum("abc,db->adcb", P2d_tot, legendre) # nk x nell x N x nmu
         else:
             def LOS_average_discrete():
-                mu2 = self.grid.mu**2 # move to grid.py
                 APfac = np.sqrt(
-                    np.divide.outer(mu2, self.params['q_lo']**2) \
-                    + np.divide.outer(1.0 - mu2, self.params['q_tr']**2))
+                    np.divide.outer(self.grid.mu2, self.params['q_lo']**2) \
+                    + np.divide.outer(1.0 - self.grid.mu2,
+                                      self.params['q_tr']**2))
                 kp = np.einsum("a,ab->ab", self.grid.k, APfac)
                 mup = np.divide.outer(self.grid.mu, self.params['q_lo'])/APfac
                 legendre = eval_legendre.outer(ell, self.grid.mu)
