@@ -488,9 +488,9 @@ class PTEmu:
                 wa = params_fid['wa']
             self.cosmo.update_cosmology(Om0, H0, Ok0=Ok0, de_model=de_model,
                                         w0=w0, wa=wa)
-            self.H_fid = np.diag(self.cosmo.Hz(params_fid['z']))
-            self.Dm_fid = np.diag(
-                self.cosmo.comoving_transverse_distance(params_fid['z']))
+            self.H_fid = self.cosmo.Hz(params_fid['z'])
+            self.Dm_fid = self.cosmo.comoving_transverse_distance(
+                params_fid['z'])
             if not self.use_Mpc:
                 self.H_fid /= params_fid['h']
                 self.Dm_fid *= params_fid['h']
@@ -641,11 +641,9 @@ class PTEmu:
             self.cosmo.update_cosmology(
                 Om0=Om0, H0=H0, Ok0=self.params['Ok'],
                 de_model=de_model, w0=self.params['w0'], wa=self.params['wa'])
-            self.params['q_lo'] = \
-                self.H_fid / np.diag(self.cosmo.Hz(self.params['z']))
-            self.params['q_tr'] = np.diag(
-                self.cosmo.comoving_transverse_distance(self.params['z'])) \
-                / self.Dm_fid
+            self.params['q_lo'] = self.H_fid / self.cosmo.Hz(self.params['z'])
+            self.params['q_tr'] = self.cosmo.comoving_transverse_distance(
+                self.params['z']) / self.Dm_fid
             if not self.use_Mpc:
                 self.params['q_lo'] *= self.params['h']
                 self.params['q_tr'] *= self.params['h']
@@ -1829,7 +1827,7 @@ class PTEmu:
             raise ValueError('Unsupported RSD model.')
 
         def P2d(q, mu):
-            t = np.einsum("abcd,cbd->abd", self.Pell_spline.eval_varx(q),
+            t = np.einsum("...bcd,cbd->...bd", self.Pell_spline.eval_varx(q),
                           eval_legendre.outer(np.array(ell_for_recon),mu))
             return t # nk x nmu x N
 
@@ -1860,7 +1858,7 @@ class PTEmu:
                 legendre = eval_legendre.outer(ell, self.grid.mu)
                 P2d_tot = P2d(kp, mup) * W_damping(kp, mup) \
                           + P2d_stoch(kp, mup)
-                prod = np.einsum("ab,bc->bac", legendre, Pwd_tot)
+                prod = np.einsum("ab,bc->bac", legendre, P2d_tot)
                 avg = np.add.reduceat(
                     np.einsum("abc,a->abc", prod, self.grid.weights),
                     self.grid.nmodes[:-1], axis=0)

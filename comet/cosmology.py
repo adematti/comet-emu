@@ -69,6 +69,8 @@ class Cosmology:
         self.flat = np.where(self.Ok0 == 0.0, True, False)
         self.relspecies = np.where(self.Or0 == 0.0, False, True)
 
+        self.gl_x, self.gl_weights = np.polynomial.legendre.leggauss(10)
+
     def update_cosmology(self, Om0, H0, Ok0=0.0, Or0=0.0, de_model='lambda',
                          w0=-1.0, wa=0.0):
         r"""
@@ -263,7 +265,8 @@ class Cosmology:
         Hz: float or numpy.ndarray
             Hubble expansion factor at the specified redshifts.
         """
-        Hz = self.H0*self.Ez(z)
+        mask = np.eye(len(z),dtype=bool)
+        Hz = self.H0*self.Ez(z)[mask]
         return Hz
 
     def Om(self, z):
@@ -366,7 +369,10 @@ class Cosmology:
             Transverse comoving distance at the specified redshift.
         """
         z = np.atleast_1d(z)
-        r = quad_vec(lambda x: z[:,None]*self.one_over_Ez(x*z), 0.0, 1.0)[0]
+        mask = np.eye(len(z),dtype=bool)
+        #r = quad_vec(lambda x: z[:,None]*self.one_over_Ez(x*z), 0.0, 1.0)[0]
+        temp = self.one_over_Ez(np.outer(self.gl_x, z))[:,mask]
+        r = 0.5 * np.einsum("ab,a->b", z*temp, self.gl_weights)
 
         dm = r
         if np.any(self.Ok0 > 0.0):
@@ -400,7 +406,7 @@ class Cosmology:
             Angular diameter distance at the specified redshift.
         """
         a = np.atleast_1d(1.0 / (1.0+z))
-        da = self.comoving_transverse_distance(z) * a[:,None]
+        da = self.comoving_transverse_distance(z) * a
         return da
 
     def growth_factor(self, z, get_growth_rate=False):
