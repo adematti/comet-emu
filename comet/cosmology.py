@@ -70,6 +70,7 @@ class Cosmology:
         self.relspecies = np.where(self.Or0 == 0.0, False, True)
 
         self.gl_x, self.gl_weights = np.polynomial.legendre.leggauss(10)
+        self.gl_x = 0.5 * self.gl_x + 0.5
 
     def update_cosmology(self, Om0, H0, Ok0=0.0, Or0=0.0, de_model='lambda',
                          w0=-1.0, wa=0.0):
