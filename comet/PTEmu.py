@@ -1918,8 +1918,7 @@ class PTEmu:
                     Pell_list, axis=0)(self.data[obs_id].bins_mixing_matrix[1])
                 spline = spline.reshape((spline.shape[0]*spline.shape[1],
                                         spline.shape[-1]), order='F')
-                Pell_convolved = np.einsum(
-                    "ab,bc->ac", self.data[obs_id].W_mixing_matrix, spline)
+                Pell_convolved = self.data[obs_id].W_mixing_matrix @ spline
                 nb = len(self.data[obs_id].bins_mixing_matrix[0])
 
                 Pell_dict = {}
@@ -1954,6 +1953,7 @@ class PTEmu:
 
         return Pell_dict
 
+    # TODO
     def Pell_fixed_cosmo_boost(self, k, params, ell, de_model=None,
                                binning=None, obs_id=None, q_tr_lo=None, W_damping=None, ell_for_recon=None):
         r"""Compute the power spectrum multipoles (fast for fixed cosmology).
@@ -2087,6 +2087,7 @@ class PTEmu:
 
         return Pell_dict
 
+    # TODO
     def PX(self, k, mu, params, X, de_model=None):
         r"""Compute the individual contribution X to the galaxy power spectrum.
 
@@ -3097,7 +3098,6 @@ class PTEmu:
 
         ell = {}
         for oi in obs_id:
-            # kmax_updated = False
             if (not self.data[oi].kmax_is_set or
                 (self.data[oi].kmax != kmax[oi] and self.data[oi].kmax !=
                     [kmax[oi] for i in range(self.data[oi].n_ell)])):
@@ -3106,22 +3106,8 @@ class PTEmu:
                             self.chi2_decomposition = None
                         elif self.data[oi].stat == 'bispectrum':
                             self.Bisp_chi2_decomposition = None
-                        # kmax_updated = True
-
             ell[oi] = self.data[oi].ell
-
             if self.data[oi].stat == 'bispectrum':
-                # if self.Bisp.tri is not None:
-                #     ntri = list(self.Bisp.ntri_ell.values())
-                # else:
-                #     ntri = None
-                # if kmax_updated or self.Bisp.tri is None or \
-                #         ntri != self.data[oi].nbins or \
-                #         self.Bisp.kfun != self.data[oi].kfun:
-                #     self.Bisp_binning = binning
-                #     self.Bisp.set_tri(self.data[oi].bins_kmax, ell[oi],
-                #                       self.data[oi].kfun, binning=binning[oi])
-                #     self._Bisp_tri_has_changed = True
                 tri_has_changed, binning_has_changed = \
                     self.Bisp.set_tri(self.data[oi].bins_kmax, ell[oi],
                                       self.data[oi].kfun, binning=binning[oi])
