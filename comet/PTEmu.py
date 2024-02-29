@@ -1,7 +1,7 @@
 """Main PTEmu module."""
 
 import numpy as np
-from scipy.interpolate import UnivariateSpline
+from scipy.interpolate import UnivariateSpline, make_interp_spline
 from scipy.integrate import quad_vec
 from scipy.integrate import quad,dblquad
 from scipy.special import eval_legendre
@@ -350,6 +350,7 @@ class PTEmu:
             for obs_id in self.data.keys():
                 self.data[obs_id].clear_data()
 
+            self.Pk_lin = None
             self.Pell_spline = Splines(use_Mpc=self.use_Mpc, ncol=4,
                                        crossover_check=True)
             self.PL_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
@@ -648,8 +649,14 @@ class PTEmu:
                 self.params['q_lo'] *= self.params['h']
                 self.params['q_tr'] *= self.params['h']
         elif de_model is not None:
-            self.params['q_lo'] = np.atleast_1d(q_tr_lo[1])
-            self.params['q_tr'] = np.atleast_1d(q_tr_lo[0])
+            q_lo = np.atleast_1d(q_tr_lo[1])
+            q_tr = np.atleast_1d(q_tr_lo[0])
+            if q_lo.size != self.params['wc'].size:
+                q_lo = np.repeat(q_lo, self.params['wc'].size)
+            if q_tr.size != self.params['wc'].size:
+                q_tr = np.repeat(q_tr, self.params['wc'].size)
+            self.params['q_lo'] = q_lo
+            self.params['q_tr'] = q_tr
         elif (de_model is None and 'q_lo' in params and 'q_tr' in params):
             self.params['q_lo'] = params['q_lo']
             self.params['q_tr'] = params['q_tr']
