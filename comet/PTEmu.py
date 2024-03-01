@@ -449,15 +449,19 @@ class PTEmu:
         obs_id_list = [oi for oi in self.data \
                        if self.data[oi].mixing_matrix_exists]
         obs_id_joint = [oi for oi in obs_id_list if '|' in oi]
-        obs_id_list.remove(obs_id_joint)
+        obs_id_joint = next((oi for oi in obs_id_list if '|' in oi), None)
+        if obs_id_joint in self.data:
+            obs_id_list.remove(obs_id_joint)
         # obs_id_list = sorted(obs_id_list)
         obs_id_joint_new = reduce(lambda s1, s2: s1+'|'+s2, obs_id_list)
         if obs_id_joint_new != obs_id_joint:
             W_stacked = np.ascontiguousarray(
                 np.hstack([self.data[oi].W_mixing_matrix
                            for oi in obs_id_list]))
-            self.data.pop(obs_id_joint)
+            if obs_id_joint in self.data:
+                self.data.pop(obs_id_joint)
             self.data[obs_id_joint_new] = MeasuredData(
+                stat='powerspectrum',
                 bins_mixing_matrix=self.data[obs_id_list[0]].bins_mixing_matrix,
                 W_mixing_matrix=W_stacked)
 
