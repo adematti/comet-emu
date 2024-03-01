@@ -6,6 +6,7 @@ from scipy.integrate import quad_vec
 from scipy.integrate import quad,dblquad
 from scipy.special import eval_legendre
 from astropy.io import fits
+from functools import reduce
 import pickle
 from comet.cosmology import Cosmology
 from comet.data import MeasuredData
@@ -144,6 +145,7 @@ class PTEmu:
 
         self.gl_x, self.gl_weights = np.polynomial.legendre.leggauss(10)
         self.gl_x = 0.5 * self.gl_x + 0.5
+        self.gl_x2 = self.gl_x**2
 
         self.data = {}
         self.grid = None
@@ -439,10 +441,25 @@ class PTEmu:
             Dictionary of keyword arguments (check docs of **MeasuredData**
             class for the list of allowed keyword arguments).
         """
-        if obs_id not in self.data.keys():
+        if obs_id not in self.data:
             self.data[obs_id] = MeasuredData(**kwargs)
         else:
             self.data[obs_id].update(**kwargs)
+
+        obs_id_list = [oi for oi in self.data \
+                       if self.data[oi].mixing_matrix_exists]
+        obs_id_joint = [oi for oi in obs_id_list if '|' in oi]
+        obs_id_list.remove(obs_id_joint)
+        # obs_id_list = sorted(obs_id_list)
+        obs_id_joint_new = reduce(lambda s1, s2: s1+'|'+s2, obs_id_list)
+        if obs_id_joint_new != obs_id_joint:
+            W_stacked = np.ascontiguousarray(
+                np.hstack([self.data[oi].W_mixing_matrix
+                           for oi in obs_id_list]))
+            self.data.pop(obs_id_joint)
+            self.data[obs_id_joint_new] = MeasuredData(
+                bins_mixing_matrix=self.data[obs_id_list[0]].bins_mixing_matrix,
+                W_mixing_matrix=W_stacked)
 
     def define_fiducial_cosmology(self, HDm_fid=None, params_fid=None,
                                   de_model='lambda'):
@@ -1843,34 +1860,35 @@ class PTEmu:
                 + self.params['NP22']*eval_legendre(2,mu))
             return t/self.nbar # nk x nmu x N
 
-        if binning is None or use_effective_modes:
-            def LOS_average_continuous(mu):
-                mu2 = mu**2
-                APfac = np.sqrt(
-                    np.divide.outer(mu2, self.params['q_lo']**2) \
-                    + np.divide.outer(1.0 - mu2, self.params['q_tr']**2))
-                kp = np.multiply.outer(keff, APfac)
-                mup = np.divide.outer(mu, self.params['q_lo'])/APfac
-                P2d_tot = P2d(kp, mup) * W_damping(kp, mup) + P2d_stoch(kp, mup)
-                legendre = eval_legendre.outer(ell, mu)
-                return np.einsum("abc,db->adcb", P2d_tot, legendre) # nk x nell x N x nmu
-        else:
-            def LOS_average_discrete():
-                APfac = np.sqrt(
-                    np.divide.outer(self.grid.mu2, self.params['q_lo']**2) \
-                    + np.divide.outer(1.0 - self.grid.mu2,
-                                      self.params['q_tr']**2))
-                kp = np.einsum("a,ab->ab", self.grid.k, APfac)
-                mup = np.divide.outer(self.grid.mu, self.params['q_lo'])/APfac
-                legendre = eval_legendre.outer(ell, self.grid.mu)
-                P2d_tot = P2d(kp, mup) * W_damping(kp, mup) \
-                          + P2d_stoch(kp, mup)
-                prod = np.einsum("ab,bc->bac", legendre, P2d_tot)
-                avg = np.add.reduceat(
-                    np.einsum("abc,a->abc", prod, self.grid.weights),
-                    self.grid.nmodes[:-1], axis=0)
-                avg /= self.grid.weights_sum[:,None,None]
-                return avg
+        def LOS_average_continuous():
+            mu = self.gl_x
+            mu2 = self.gl_x2
+            APfac = np.sqrt(
+                np.divide.outer(mu2, self.params['q_lo']**2) \
+                + np.divide.outer(1.0 - mu2, self.params['q_tr']**2))
+            kp = np.multiply.outer(keff, APfac)
+            mup = np.divide.outer(mu, self.params['q_lo'])/APfac
+            P2d_tot = P2d(kp, mup) * W_damping(kp, mup) + P2d_stoch(kp, mup)
+            legendre = eval_legendre.outer(ell, mu)
+            return 0.5 * np.einsum("abc,db,b->adc", P2d_tot, legendre,
+                                   self.gl_weights) # nk x nell x N x nmu
+
+        def LOS_average_discrete():
+            APfac = np.sqrt(
+                np.divide.outer(self.grid.mu2, self.params['q_lo']**2) \
+                + np.divide.outer(1.0 - self.grid.mu2,
+                                  self.params['q_tr']**2))
+            kp = np.einsum("a,ab->ab", self.grid.k, APfac)
+            mup = np.divide.outer(self.grid.mu, self.params['q_lo'])/APfac
+            legendre = eval_legendre.outer(ell, self.grid.mu)
+            P2d_tot = P2d(kp, mup) * W_damping(kp, mup) \
+                      + P2d_stoch(kp, mup)
+            avg = np.add.reduceat(
+                np.einsum("ab,bc,b->bac", legendre, P2d_tot,
+                          self.grid.weights),
+                self.grid.nmodes[:-1], axis=0)
+            avg /= self.grid.weights_sum[:,None,None]
+            return avg
 
         if obs_id is None:
             params_updated = [params[p] != self.params[p] for p in
@@ -1892,9 +1910,7 @@ class PTEmu:
             q3 = self.params['q_tr']**2 * self.params['q_lo']
 
             if binning is None or use_effective_modes:
-                Pell_model = 0.5 * np.einsum(
-                    "abcd,d->abc", LOS_average_continuous(self.gl_x),
-                    self.gl_weights)
+                Pell_model = LOS_average_continuous()
             else:
                 Pell_model = LOS_average_discrete()
             Pell_model *= np.divide.outer(2.0*np.array(ell)+1.0, q3)
@@ -1904,32 +1920,45 @@ class PTEmu:
                 ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
                 Pell_dict['ell{}'.format(m)] = np.squeeze(Pell_model[ids, i])
         else:
-            if self.data[obs_id].mixing_matrix_exists:
+            if isinstance(obs_id, list):
+                obs_id_use = reduce(lambda s1, s2: s1+'|'+s2, obs_id)
+            else:
+                obs_id_use = obs_id
+            if self.data[obs_id_use].mixing_matrix_exists:
                 ell_for_mixing_matrix = [0,2,4] if not self.real_space else [0]
                 Pell_model = self.Pell(
-                    self.data[obs_id].bins_mixing_matrix_compressed,
+                    self.data[obs_id_use].bins_mixing_matrix_compressed,
                     params, ell_for_mixing_matrix, de_model,
                     binning=None, obs_id=None, q_tr_lo=q_tr_lo,
                     W_damping=W_damping, ell_for_recon=ell_for_recon)
                 Pell_list = np.stack([Pell_model[ell] for ell in Pell_model],
                                      axis=1)
                 spline = make_interp_spline(
-                    self.data[obs_id].bins_mixing_matrix_compressed,
-                    Pell_list, axis=0)(self.data[obs_id].bins_mixing_matrix[1])
-                spline = spline.reshape((spline.shape[0]*spline.shape[1],
-                                        spline.shape[-1]), order='F')
-                Pell_convolved = self.data[obs_id].W_mixing_matrix @ spline
-                nb = len(self.data[obs_id].bins_mixing_matrix[0])
+                    self.data[obs_id_use].bins_mixing_matrix_compressed,
+                    Pell_list, axis=0)(
+                        self.data[obs_id_use].bins_mixing_matrix[1])
+                if isinstance(obs_id, list):
+                    nbin_kp = spline.shape[0]*spline.shape[1]
+                    spline = spline.flatten(order='F')
+                    Pell_convolved = np.add.reduceat(
+                        self.data[obs_id_use].W_mixing_matrix * spline,
+                        np.arange(0,len(spline),nbin_kp), axis=-1)
+                else:
+                    spline = spline.reshape((spline.shape[0]*spline.shape[1],
+                                            spline.shape[-1]), order='F')
+                    Pell_convolved = self.data[obs_id_use].W_mixing_matrix \
+                                     @ spline
+                nb = len(self.data[obs_id_use].bins_mixing_matrix[0])
 
                 Pell_dict = {}
                 if k.size != np.intersect1d(
-                    k, self.data[obs_id].bins_mixing_matrix[0]).size:
+                    k, self.data[obs_id_use].bins_mixing_matrix[0]).size:
                         Pell_convolved = Pell_convolved.reshape(
                             (nb, len(ell_for_mixing_matrix),
                              Pell_convolved.shape[-1]), order='F')
                         ell_ids = (np.array(ell)/2).astype(np.int)
                         spline = make_interp_spline(
-                            self.data[obs_id].bins_mixing_matrix[0],
+                            self.data[obs_id_use].bins_mixing_matrix[0],
                             Pell_convolved[:,ell_ids], axis=0)(k)
                         for i, m in enumerate(ell):
                             ids = np.intersect1d(
@@ -1940,7 +1969,7 @@ class PTEmu:
                     for i, m in enumerate(ell):
                         ids = np.intersect1d(
                             k_list[i],
-                            self.data[obs_id].bins_mixing_matrix[0],
+                            self.data[obs_id_use].bins_mixing_matrix[0],
                             return_indices=True)[1]
                         Pell_dict['ell{}'.format(m)] = np.squeeze(
                             Pell_convolved[ids + int(m/2)*nb])
@@ -3089,11 +3118,11 @@ class PTEmu:
 
         if binning is None:
             binning = {oi:None for oi in obs_id}
-        if not np.any([oi in binning.keys() for oi in obs_id]):
+        if not np.any([oi in binning for oi in obs_id]):
             binning = {oi:binning for oi in obs_id}
         else:
             for oi in obs_id:
-                if oi not in binning.keys():
+                if oi not in binning:
                     binning[oi] = None
 
         ell = {}
