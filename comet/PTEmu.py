@@ -1,6 +1,7 @@
 """Main PTEmu module."""
 
 import numpy as np
+import numba as nb
 from scipy.interpolate import UnivariateSpline, make_interp_spline
 from scipy.integrate import quad_vec
 from scipy.integrate import quad,dblquad
@@ -18,6 +19,8 @@ from comet.bispectrum import Bispectrum
 import os
 
 base_dir = os.path.join(os.path.dirname(__file__))
+
+nb.config.THREADING_LAYER = 'workqueue'
 
 
 class PTEmu:
@@ -456,8 +459,11 @@ class PTEmu:
         # obs_id_list = sorted(obs_id_list)
         obs_id_joint_new = reduce(lambda s1, s2: s1+'|'+s2, obs_id_list)
         if obs_id_joint_new != obs_id_joint:
+            # W_stacked = np.ascontiguousarray(
+            #     np.hstack([self.data[oi].W_mixing_matrix
+            #                for oi in obs_id_list]))
             W_stacked = np.ascontiguousarray(
-                np.hstack([self.data[oi].W_mixing_matrix
+                np.dstack([self.data[oi].W_mixing_matrix
                            for oi in obs_id_list]))
             if obs_id_joint in self.data:
                 self.data.pop(obs_id_joint)
@@ -574,11 +580,11 @@ class PTEmu:
                 if de_model == 'lambda' and \
                         (np.any(self.params['w0'] != -1.0) or \
                          np.any(self.params['wa'] != 0.0)):
-                    self.params['w0'] = -np.ones_like(self.params['w0'])
-                    self.params['wa'] = np.zeros_like(self.params['wa'])
+                    self.params['w0'] = -np.ones_like(self.params['wc'])
+                    self.params['wa'] = np.zeros_like(self.params['wc'])
                     emu_params_updated = True
                 elif de_model == 'w0' and np.any(self.params['wa'] != 0.0):
-                    self.params['wa'] = np.zeros_like(self.params['wa'])
+                    self.params['wa'] = np.zeros_like(self.params['wc'])
                     emu_params_updated = True
                 check_ranges(self.params_shape_list)
         except KeyError:
@@ -1589,6 +1595,16 @@ class PTEmu:
 
         return Pell_dict
 
+    @staticmethod
+    @nb.njit(parallel=True)
+    def _contract(W, a):
+        b = np.zeros((W.shape[0],W.shape[-1]))
+        for i in nb.prange(W.shape[-1]):
+            for j in nb.prange(W.shape[0]):
+                for n in nb.prange(W.shape[1]):
+                    b[j,i] += W[j,n,i]*a[n,i]
+        return b
+
     def Pell(self, k, params, ell, de_model=None, binning=None, obs_id=None,
              q_tr_lo=None, W_damping=None, ell_for_recon=None):
         r"""Compute the power spectrum multipoles.
@@ -1776,15 +1792,19 @@ class PTEmu:
                     self.data[obs_id_use].bins_mixing_matrix_compressed,
                     Pell_list, axis=0)(
                         self.data[obs_id_use].bins_mixing_matrix[1])
-                if isinstance(obs_id, list):
-                    nbin_kp = spline.shape[0]*spline.shape[1]
-                    spline = spline.flatten(order='F')
-                    Pell_convolved = np.add.reduceat(
-                        self.data[obs_id_use].W_mixing_matrix * spline,
-                        np.arange(0,len(spline),nbin_kp), axis=-1)
-                else:
+                if len(list(obs_id)) > 1 or spline.ndim > 2:
+                    # nbin_kp = spline.shape[0]*spline.shape[1]
+                    # spline = spline.flatten(order='F')
+                    # Pell_convolved = np.add.reduceat(
+                    #     self.data[obs_id_use].W_mixing_matrix * spline,
+                    #     np.arange(0,len(spline),nbin_kp), axis=-1)
                     spline = spline.reshape((spline.shape[0]*spline.shape[1],
                                             spline.shape[-1]), order='F')
+                    Pell_convolved = self._contract(
+                        self.data[obs_id_use].W_mixing_matrix, spline)
+                else:
+                    spline = spline.reshape(spline.shape[0]*spline.shape[1],
+                                            order='F')
                     Pell_convolved = self.data[obs_id_use].W_mixing_matrix \
                                      @ spline
                 nb = len(self.data[obs_id_use].bins_mixing_matrix[0])
@@ -2907,10 +2927,16 @@ class PTEmu:
                 ids = [np.intersect1d(bins_kmax[i], self.data[oi].bins_kmax[i],
                                       return_indices=True)[1]
                        for i,l in enumerate(ell[oi])]
-                Pell_list = np.vstack(
-                    [Pell['ell{}'.format(l)][ids[i],n::len(obs_id)]
-                     for i,l in enumerate(ell[oi])])
-                diff = Pell_list - self.data[oi].signal_kmax[:,None]
+                if Pell['ell{}'.format(ell[oi][0])].ndim == 1:
+                    Pell_list = np.hstack(
+                        [Pell['ell{}'.format(l)][ids[i]]
+                         for i,l in enumerate(ell[oi])])
+                    diff = Pell_list - self.data[oi].signal_kmax
+                else:
+                    Pell_list = np.vstack(
+                        [Pell['ell{}'.format(l)][ids[i],n::len(obs_id)]
+                         for i,l in enumerate(ell[oi])])
+                    diff = Pell_list - self.data[oi].signal_kmax[:,None]
                 chi2 += inner1d(diff.T,
                                 (self.data[oi].inverse_cov_kmax @ diff).T)
         else:
@@ -3222,7 +3248,7 @@ class PTEmu:
         # - reorder the params arrays such that o1(1),o2(1),...,o1(2),o2(2),...,
         #   o1(N),o2(N),...
 
-        # return multiple chi2
+        # sort joint mixing matrix, so it matches the sorting of params_eval
 
         chi2 = 0.0
         for stat in obs_id_stat:
