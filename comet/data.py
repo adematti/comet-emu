@@ -39,6 +39,8 @@ class MeasuredData:
         if 'stat' in kwargs and \
             kwargs.get('stat') in ['powerspectrum', 'bispectrum']:
                 self.stat = kwargs.get('stat')
+        if 'zeff' in kwargs:
+            self.zeff = kwargs.get('zeff')
         if 'bins' in kwargs:
             self.bins = kwargs.get('bins')
             if 'stat' not in kwargs and self.bins.ndim == 1:
@@ -139,6 +141,8 @@ class MeasuredData:
         if 'stat' in kwargs and \
             kwargs.get('stat') in ['powerspectrum', 'bispectrum']:
                 self.stat = kwargs.get('stat')
+        if 'zeff' in kwargs:
+            self.zeff = kwargs.get('zeff')
         if 'bins' in kwargs:
             self.bins = kwargs.get('bins')
             if 'stat' not in kwargs and self.bins.ndim == 1:
@@ -180,7 +184,7 @@ class MeasuredData:
             self.mixing_matrix_exists = True
         else:
             self.mixing_matrix_exists = False
-            
+
         if 'theory_cov' in kwargs:
             self.theory_cov = kwargs.get('theory_cov')
         if 'kfun' in kwargs:

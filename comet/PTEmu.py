@@ -5,6 +5,7 @@ from scipy.interpolate import UnivariateSpline, make_interp_spline
 from scipy.integrate import quad_vec
 from scipy.integrate import quad,dblquad
 from scipy.special import eval_legendre
+from numpy.core.umath_tests import inner1d
 from astropy.io import fits
 from functools import reduce
 import pickle
@@ -1075,172 +1076,6 @@ class PTEmu:
             * (np.outer(k1,mu1)**2 + (k2*mu2)**2 + (k3*mu3)**2)
         t = 1.0 + lsq*self.params['avirB']**2
         return 1.0/np.sqrt(t**3) * np.exp(-lsq*self.params['sv']**2/t)
-
-    # def build_Pell_spline(self, Pell, ell):
-    #     r"""Build spline object for power spectrum multipoles.
-    #
-    #     Generates a cubic spline object for the specified power spectrum
-    #     multipole, including the computation of effective indexes for the low-
-    #     and high-:math:`k` tails of the multipole, and stores it as class
-    #     attribute.
-    #
-    #     Parameters
-    #     ----------
-    #     Pell: list or numpy.ndarray
-    #         Array containing the power spectrum multipole of order
-    #         :math:`\ell`, evaluated at the wavemodes defined by the class
-    #         attribute **k_table**.
-    #     ell: int
-    #         Specific multipole order :math:`\ell`.
-    #         Can be chosen from the list [0,2,4,6], whose entries correspond to
-    #         monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`),
-    #         hexadecapole (:math:`\ell=4`) and octopole (:math:`\ell=6`).
-    #     """
-    #     id_min = 0 if not ell == 6 else self.nk-self.nkloop
-    #     id_max = -1
-    #
-    #     if self.use_Mpc:
-    #         self.Pell_spline[ell] = UnivariateSpline(self.k_table, Pell,
-    #                                                  k=3, s=0)
-    #         self.k_table_min[ell] = self.k_table[id_min]
-    #         self.k_table_max[ell] = self.k_table[id_max]
-    #     else:
-    #         Pell *= self.params['h']**3
-    #         self.Pell_spline[ell] = UnivariateSpline(
-    #             self.k_table/self.params['h'], Pell, k=3, s=0)
-    #         self.k_table_min[ell] = self.k_table[id_min]/self.params['h']
-    #         self.k_table_max[ell] = self.k_table[id_max]/self.params['h']
-    #
-    #     # low-k extrapolation
-    #     self.Pell_min[ell] = Pell[id_min]
-    #     dlP_min = np.log10(np.abs(Pell[id_min+2]/Pell[id_min]))
-    #     dlk_min = np.log10(self.k_table[id_min+2]/self.k_table[id_min])
-    #     self.neff_min[ell] = dlP_min/dlk_min
-    #     self.Pell_lowk_extrapolation[ell] = lambda k: self.Pell_min[ell] \
-    #         * (k/self.k_table_min[ell])**self.neff_min[ell]
-    #
-    #     # high-k extrapolation
-    #     if np.abs(Pell[id_max]/Pell[id_max-2]) < 2 \
-    #             and np.abs(Pell[id_max-2]/Pell[id_max]) < 2:
-    #         self.Pell_max[ell] = Pell[id_max]
-    #         dlP_max = np.log10(np.abs(Pell[id_max]/Pell[id_max-2]))
-    #         dlk_max = np.log10(self.k_table[id_max]/self.k_table[id_max-2])
-    #         self.neff_max[ell] = dlP_max/dlk_max
-    #         self.Pell_highk_extrapolation[ell] = lambda k: self.Pell_max[ell] \
-    #             * (k/self.k_table_max[ell])**self.neff_max[ell]
-    #     else:
-    #         a = (Pell[id_max] - Pell[id_max-2]) \
-    #             / (self.k_table[id_max] - self.k_table[id_max-2])
-    #         b = Pell[id_max-2] - a*self.k_table[id_max-2]
-    #         if not self.use_Mpc:
-    #             a *= self.params['h']
-    #         self.Pell_highk_extrapolation[ell] = lambda k: a*k + b
-    #
-    # def build_Pdw_spline(self, Pdw):
-    #     r"""Build spline object for multipoles of linear de-wiggled power
-    #     spectrum.
-    #
-    #     Generates a cubic spline object for the linear de-wiggled power
-    #     spectrum, including the computation of effective indexes for the low-
-    #     and high-:math:`k` tails, and stores it as class attribute.
-    #
-    #     Parameters
-    #     ----------
-    #     Pdw: list or numpy.ndarray
-    #         Array containing the de-wiggled linear power spectrum evaluated at
-    #         the wavemodes defined by the class attribute **k_table**.
-    #     """
-    #     id_min = 0
-    #     if self.use_Mpc:
-    #         self.Pdw_spline = UnivariateSpline(self.k_table, Pdw, k=3, s=0)
-    #         self.Pdw_min = Pdw[id_min]
-    #         self.Pdw_max = Pdw[-1]
-    #         self.k_table_min[0] = self.k_table[id_min]
-    #         self.k_table_max[0] = self.k_table[-1]
-    #         dlP_min = np.log10(np.abs(Pdw[id_min+2]/Pdw[id_min]))
-    #         dlP_max = np.log10(np.abs(Pdw[-1]/Pdw[-3]))
-    #         dlk_min = np.log10(self.k_table[id_min+2]/self.k_table[id_min])
-    #         dlk_max = np.log10(self.k_table[-1]/self.k_table[-3])
-    #         self.neff_dw_min = dlP_min/dlk_min
-    #         self.neff_dw_max = dlP_max/dlk_max
-    #     else:
-    #         Pdw *= self.params['h']**3
-    #         self.Pdw_spline = UnivariateSpline(self.k_table/self.params['h'],
-    #                                            Pdw, k=3, s=0)
-    #         self.Pdw_min = Pdw[id_min]
-    #         self.Pdw_max = Pdw[-1]
-    #         self.k_table_min[0] = self.k_table[id_min]/self.params['h']
-    #         self.k_table_max[0] = self.k_table[-1]/self.params['h']
-    #         dlP_min = np.log10(np.abs(Pdw[id_min+2]/Pdw[id_min]))
-    #         dlP_max = np.log10(np.abs(Pdw[-1]/Pdw[-3]))
-    #         dlk_min = np.log10(self.k_table[id_min+2]/self.k_table[id_min])
-    #         dlk_max = np.log10(self.k_table[-1]/self.k_table[-3])
-    #         self.neff_dw_min = dlP_min/dlk_min
-    #         self.neff_dw_max = dlP_max/dlk_max
-    #
-    # def eval_Pell_spline(self, k, ell):
-    #     r"""Evaluate the spline of the specified power spectrum multipole.
-    #
-    #     Calls the spline object stored as class attribute for the power
-    #     spectrum multipole of given order :math:`\ell` on the input wavemodes
-    #     :math:`k`. The called interpolator results in a cubic spline or in a
-    #     power-law extrapolation, depending if the value of :math:`k` is within
-    #     or outside the original boundary spcified by the training table.
-    #
-    #     Parameters
-    #     ----------
-    #     k: numpy.ndarray
-    #         Values of the requested wavemodes :math:`k`.
-    #     ell: int
-    #         Specific multipole order :math:`\ell`.
-    #         Can be chosen from the list [0,2,4,6], whose entries correspond to
-    #         monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`),
-    #         hexadecapole (:math:`\ell=4`) and octopole (:math:`\ell=6`).
-    #
-    #     Returns
-    #     -------
-    #     spline: numpy.ndarray
-    #         Interpolated power spectrum multipole of order :math:`\ell` at the
-    #         requested wavemodes :math:`k`.
-    #     """
-    #     spline = \
-    #         np.where(k < self.k_table_min[ell],
-    #             self.Pell_lowk_extrapolation[ell](k),
-    #             np.where(k > self.k_table_max[ell],
-    #                 self.Pell_highk_extrapolation[ell](k),
-    #                 self.Pell_spline[ell](k)))
-    #     return spline
-    #
-    # def eval_Pdw_spline(self, k):
-    #     r"""Evaluate the spline of the linear de-wiggled power spectrum.
-    #
-    #     Calls the spline object stored as class attribute for the linear
-    #     de-wiggled power spectrum on the input wavemodes :math:`k`. The called
-    #     interpolator results in a cubic spline or in a power-law extrapolation,
-    #     depending if the value of :math:`k` is within or outside the original
-    #     boundary spcified by the training table.
-    #
-    #     Parameters
-    #     ----------
-    #     k: numpy.ndarray
-    #         Values of the requested wavemodes :math:`k`.
-    #
-    #     Returns
-    #     -------
-    #     spline: numpy.ndarray
-    #         Interpolated linear de-wiggled power spectrum at the requested
-    #         wavemodes :math:`k`.
-    #     """
-    #     mask_low = k < self.k_table_min[0]
-    #     mask_high = k > self.k_table_max[0]
-    #     spline = np.hstack(
-    #         [self.Pdw_min *
-    #          (k[mask_low]/self.k_table_min[0])**self.neff_dw_min,
-    #          self.Pdw_spline(k[np.invert(mask_low) & np.invert(mask_high)]),
-    #          self.Pdw_max *
-    #          (k[mask_high]/self.k_table_max[0])**self.neff_dw_max]
-    #         )
-    #     return spline
 
     def PL(self, k, params, de_model=None):
         r"""Compute the linear power spectrum predictions.
@@ -3050,6 +2885,181 @@ class PTEmu:
 
         return cov
 
+    def _chi2_powerspectrum(self, obs_id, params, ell, de_model=None,
+                            binning=None, convolve_window=False, q_tr_lo=None,
+                            W_damping=None, chi2_decomposition=False,
+                            compute_chi2_decomposition=True,
+                            ell_for_recon=None):
+        ell_joint = np.unique(np.hstack([ell[oi] for oi in obs_id])).tolist()
+        bins_kmax = [np.unique(np.hstack([self.data[oi].bins_kmax[i]
+                                          for oi in obs_id \
+                                          if l in self.data[oi].ell]))
+                     for i,l in enumerate(ell_joint)]
+        chi2 = 0.0
+        if not chi2_decomposition:
+            convolve_obs_id = obs_id if convolve_window else None
+            Pell = self.Pell(bins_kmax, params, ell_joint,
+                             de_model=de_model, binning=binning,
+                             obs_id=convolve_obs_id, q_tr_lo=q_tr_lo,
+                             W_damping=W_damping, ell_for_recon=ell_for_recon)
+
+            for n,oi in enumerate(obs_id):
+                ids = [np.intersect1d(bins_kmax[i], self.data[oi].bins_kmax[i],
+                                      return_indices=True)[1]
+                       for i,l in enumerate(ell[oi])]
+                Pell_list = np.vstack(
+                    [Pell['ell{}'.format(l)][ids[i],n::len(obs_id)]
+                     for i,l in enumerate(ell[oi])])
+                diff = Pell_list - self.data[oi].signal_kmax[:,None]
+                chi2 += inner1d(diff.T,
+                                (self.data[oi].inverse_cov_kmax @ diff).T)
+        else:
+            oi = obs_id[0]
+            if compute_chi2_decomposition:
+                convolve_oi = oi if convolve_window else None
+                PX_ell_list = np.zeros([sum(self.data[oi].nbins),
+                                        len(self.diagrams_all)])
+                for i, X in enumerate(self.diagrams_all):
+                    PX_ell = self.PX_ell(self.data[oi].bins_kmax,
+                                         params, ell[oi], X,
+                                         binning=binning,
+                                         obs_id=convolve_oi,
+                                         de_model=de_model,
+                                         q_tr_lo=q_tr_lo,
+                                         W_damping=W_damping[oi],
+                                         ell_for_recon=ell_for_recon)
+                    PX_ell_list[:, i] = np.hstack([PX_ell[m] for m
+                                                   in PX_ell.keys()])
+
+                self.chi2_decomposition = {}
+                self.chi2_decomposition['DD'] = self.data[oi].SN_kmax
+                self.chi2_decomposition['XD'] = PX_ell_list.T \
+                    @ self.data[oi].inverse_cov_kmax \
+                    @ self.data[oi].signal_kmax
+                self.chi2_decomposition['XX'] = PX_ell_list.T \
+                    @ self.data[oi].inverse_cov_kmax @ PX_ell_list
+
+            self.update_bias_params(params)
+            self.splines_up_to_date = False
+            self.dw_spline_up_to_date = False
+
+            bX = self.get_bias_coeff_for_chi2_decomposition()
+            chi2 += (bX @ self.chi2_decomposition['XX'] @ bX -
+                     2*bX @ self.chi2_decomposition['XD'] +
+                     self.chi2_decomposition['DD'])
+
+        return chi2
+
+    def _chi2_bispectrum(self, obs_id, params, ell, de_model=None,
+                            binning=None, convolve_window=False, q_tr_lo=None,
+                            W_damping=None, chi2_decomposition=False,
+                            compute_chi2_decomposition=True,
+                            ell_for_recon=None):
+        obs_id = obs_id[0]
+        chi2 = 0.0
+        if not chi2_decomposition:
+            if binning[obs_id]:
+                tri_unique = self.Bisp.tri_eff_unique
+                if not binning[obs_id].get('effective', False) \
+                        and (tri_has_changed or binning_has_changed):
+                    self.Bisp.set_fiducial_cosmology(params)
+                    Pdw_eff = self.Pdw(tri_unique, self.Bisp.fiducial_cosmology,
+                                       de_model, ell_for_recon)
+                    self.Bisp.init_Pdw_eff(Pdw_eff)
+                    if self.Bisp.generate_discrete_kernels:
+                        # print('Recompute (binned) kernels!')
+                        Pdw = np.array([
+                            self.Pdw(self.Bisp.grid.kmu123[:,j],
+                                     self.Bisp.fiducial_cosmology,
+                                     de_model, ell_for_recon)
+                            for j in range(3)
+                        ]).T
+                        self.Bisp.init_Pdw(Pdw, ell[obs_id])
+                        self.Bisp.compute_kernels_shell_average(
+                            max(ell[obs_id]))
+                    else:
+                        # print('Load (binned) kernels!')
+                        self.Bisp.load_kernels_shell_average()
+            else:
+                tri_unique = self.Bisp.tri_unique
+
+            Pdw = self.Pdw(tri_unique, params, de_model=de_model,
+                           ell_for_recon=ell_for_recon)
+            if self.real_space:
+                neff = None
+            else:
+                neff = tri_unique * \
+                       self.Pdw_spline.derivative(n=1)(tri_unique)/Pdw
+            if binning and self.RSD_model == 'VDG_infty':
+                coeff = cnloB_mapping([self.params['avirB'],
+                                      self.params['sv']])
+                self.params['cnloB'] = \
+                    - (coeff[0]*self.params['avirB']**1.75 \
+                       + 0.5*self.params['sv']**1.75)
+            Bell = self.Bisp.Bell(Pdw, neff, self.params, ell[oi],
+                                  W_damping[oi])
+
+            if self.data[obs_id].cov_is_block_diagonal:
+                diff = {}
+                for i,l in enumerate(Bell.keys()):
+                    n1 = sum(self.data[obs_id].nbins[:i])
+                    n2 = sum(self.data[obs_id].nbins[:i+1])
+                    diff[l] = Bell[l] - self.data[obs_id].signal_kmax[n1:n2]
+                Ldiff = np.zeros(sum(self.data[obs_id].nbins))
+                for i,l1 in enumerate(Bell.keys()):
+                    n1 = sum(self.data[obs_id].nbins[:i])
+                    n2 = sum(self.data[obs_id].nbins[:i+1])
+                    for j,l2 in enumerate(list(Bell.keys())[i:]):
+                        ids_i = self.data[obs_id].tri_id_ell2_in_ell1[l1+l2]
+                        ids_j = self.data[obs_id].tri_id_ell1_in_ell2[l1+l2]
+                        Ldiff[n1:n2][ids_i] += \
+                            self.data[obs_id].cholesky_diag[l1+l2] * \
+                                diff[l2][ids_j]
+            else:
+                Bell_list = np.hstack([Bell[m] for m in Bell.keys()])
+                diff = Bell_list - self.data[oi].signal_kmax
+                Ldiff = self.data[oi].inverse_cov_kmax_cholesky @ diff
+            chi2 += np.sum(Ldiff**2)
+        else:
+            if compute_chi2_decomposition:
+                Pdw = self.Pdw(self.Bisp.tri_unique,
+                               params, de_model=de_model,
+                               ell_for_recon=ell_for_recon)
+                if self.real_space:
+                    neff = None
+                else:
+                    neff = self.Bisp.tri_unique * \
+                           self.Pdw_spline.derivative(n=1)(
+                               self.Bisp.tri_unique) / Pdw
+                BX_ell = self.Bisp.BX_ell(Pdw, neff, self.params,
+                                          ell=ell[obs_id],
+                                          W_damping=W_damping[obs_id])
+                BX_ell_list = np.zeros([sum(self.data[obs_id].nbins),
+                                        len(self.Bisp_diagrams_all)])
+                for i, X in enumerate(self.Bisp_diagrams_all):
+                    BX_ell_list[:, i] = np.hstack([BX_ell[m][X] for m
+                                                   in BX_ell.keys()])
+
+                self.Bisp_chi2_decomposition = {}
+                self.Bisp_chi2_decomposition['DD'] = \
+                    self.data[obs_id].SN_kmax
+                self.Bisp_chi2_decomposition['XD'] = BX_ell_list.T \
+                    @ self.data[obs_id].inverse_cov_kmax \
+                    @ self.data[obs_id].signal_kmax
+                self.Bisp_chi2_decomposition['XX'] = BX_ell_list.T \
+                    @ self.data[obs_id].inverse_cov_kmax @ BX_ell_list
+
+            self.update_bias_params(params)
+            self.splines_up_to_date = False
+            self.dw_spline_up_to_date = False
+
+            bX = self.get_bias_coeff_for_Bisp_chi2_decomposition()
+            chi2 += (bX @ self.Bisp_chi2_decomposition['XX'] @ bX -
+                     2*bX @ self.Bisp_chi2_decomposition['XD'] +
+                     self.Bisp_chi2_decomposition['DD'])
+
+        return chi2
+
     def chi2(self, obs_id, params, kmax, de_model=None, binning=None,
              convolve_window=False, q_tr_lo=None, W_damping=None,
              chi2_decomposition=False, ell_for_recon=None,
@@ -3120,15 +3130,6 @@ class PTEmu:
                 kmax_dict[oi] = kmax
             kmax = kmax_dict
 
-        if binning is None:
-            binning = {oi:None for oi in obs_id}
-        if not np.any([oi in binning for oi in obs_id]):
-            binning = {oi:binning for oi in obs_id}
-        else:
-            for oi in obs_id:
-                if oi not in binning:
-                    binning[oi] = None
-
         ell = {}
         for oi in obs_id:
             if (not self.data[oi].kmax_is_set or
@@ -3145,100 +3146,37 @@ class PTEmu:
                     self.Bisp.set_tri(self.data[oi].bins_kmax, ell[oi],
                                       self.data[oi].kfun, binning=binning[oi])
 
+        obs_id_stat = {}
+        for oi in obs_id:
+            if not self.data[oi].stat in obs_id_stat:
+                obs_id_stat[self.data[oi].stat] = [oi]
+            else:
+                obs_id_stat[self.data[oi].stat].append(oi)
+
+        if binning is None:
+            binning = {stat:None for stat in obs_id_stat}
+        if not np.any([stat in binning for stat in obs_id_stat]):
+            binning = {stat:binning for stat in obs_id_stat}
+        else:
+            for stat in obs_id_stat:
+                if stat not in binning:
+                    binning[stat] = None
+
         if W_damping is None:
             W_damping = {}
-            for oi in obs_id:
-                if self.data[oi].stat == 'powerspectrum':
-                    W_damping[oi] = self.W_kurt
-                elif self.data[oi].stat == 'bispectrum':
-                    W_damping[oi] = self.WB_kurt
+            for stat in obs_id_stat:
+                if self.RSD_model == 'VDG_infty':
+                    if stat == 'powerspectrum':
+                        W_damping[stat] = self.W_kurt
+                    elif stat == 'bispectrum':
+                        W_damping[stat] = self.WB_kurt
+                elif self.RSD_model == 'EFT':
+                    if stat == 'powerspectrum':
+                        W_damping[stat] = lambda k, mu: 1.0
+                    elif stat == 'bispectrum':
+                        W_damping[stat] = lambda tri, mu1, mu2, mu3: 1.0
 
-        if not chi2_decomposition:
-            chi2 = 0.0
-            for oi in obs_id:
-                if self.data[oi].stat == 'powerspectrum':
-                    if self.RSD_model == 'VDG_infty':
-                        if W_damping[oi] is None:
-                            W_damping[oi] = self.W_kurt
-                    convolve_oi = oi if convolve_window else None
-                    Pell = self.Pell(self.data[oi].bins_kmax, params, ell[oi],
-                                     de_model=de_model, binning=binning[oi],
-                                     obs_id=convolve_oi, q_tr_lo=q_tr_lo,
-                                     W_damping=W_damping[oi],
-                                     ell_for_recon=ell_for_recon)
-                    Pell_list = np.hstack([Pell[m] for m in Pell.keys()])
-
-                    diff = Pell_list - self.data[oi].signal_kmax
-                    chi2 += diff @ self.data[oi].inverse_cov_kmax @ diff.T
-                elif self.data[oi].stat == 'bispectrum':
-                    if self.RSD_model == 'VDG_infty':
-                        if W_damping[oi] is None:
-                            W_damping[oi] = self.WB_kurt
-
-                    if binning[oi]:
-                        tri_unique = self.Bisp.tri_eff_unique
-                        if not binning[oi].get('effective', False) \
-                                and (tri_has_changed or binning_has_changed):
-                            self.Bisp.set_fiducial_cosmology(params)
-                            Pdw_eff = self.Pdw(tri_unique, self.Bisp.fiducial_cosmology,
-                                               de_model, ell_for_recon)
-                            self.Bisp.init_Pdw_eff(Pdw_eff)
-                            if self.Bisp.generate_discrete_kernels:
-                                # print('Recompute (binned) kernels!')
-                                Pdw = np.array([
-                                    self.Pdw(self.Bisp.grid.kmu123[:,j],
-                                             self.Bisp.fiducial_cosmology,
-                                             de_model, ell_for_recon)
-                                    for j in range(3)
-                                ]).T
-                                self.Bisp.init_Pdw(Pdw, ell[oi])
-                                self.Bisp.compute_kernels_shell_average(
-                                    max(ell[oi]))
-                            else:
-                                # print('Load (binned) kernels!')
-                                self.Bisp.load_kernels_shell_average()
-                    else:
-                        tri_unique = self.Bisp.tri_unique
-
-                    Pdw = self.Pdw(tri_unique, params, de_model=de_model,
-                                   ell_for_recon=ell_for_recon)
-                    if self.real_space:
-                        neff = None
-                    else:
-                        neff = tri_unique * \
-                               self.Pdw_spline.derivative(n=1)(tri_unique)/Pdw
-                    if binning and self.RSD_model == 'VDG_infty':
-                        coeff = cnloB_mapping([self.params['avirB'],
-                                              self.params['sv']])
-                        self.params['cnloB'] = \
-                            - (coeff[0]*self.params['avirB']**1.75 \
-                               + 0.5*self.params['sv']**1.75)
-                    Bell = self.Bisp.Bell(Pdw, neff, self.params, ell[oi],
-                                          W_damping[oi])
-
-                    if self.data[oi].cov_is_block_diagonal:
-                        diff = {}
-                        for i,l in enumerate(Bell.keys()):
-                            n1 = sum(self.data[oi].nbins[:i])
-                            n2 = sum(self.data[oi].nbins[:i+1])
-                            diff[l] = Bell[l] - self.data[oi].signal_kmax[n1:n2]
-                        Ldiff = np.zeros(sum(self.data[oi].nbins))
-                        for i,l1 in enumerate(Bell.keys()):
-                            n1 = sum(self.data[oi].nbins[:i])
-                            n2 = sum(self.data[oi].nbins[:i+1])
-                            for j,l2 in enumerate(list(Bell.keys())[i:]):
-                                ids_i = self.data[oi].tri_id_ell2_in_ell1[l1+l2]
-                                ids_j = self.data[oi].tri_id_ell1_in_ell2[l1+l2]
-                                Ldiff[n1:n2][ids_i] += \
-                                    self.data[oi].cholesky_diag[l1+l2] * \
-                                        diff[l2][ids_j]
-                    else:
-                        Bell_list = np.hstack([Bell[m] for m in Bell.keys()])
-                        diff = Bell_list - self.data[oi].signal_kmax
-                        Ldiff = self.data[oi].inverse_cov_kmax_cholesky @ diff
-                    chi2 += np.sum(Ldiff**2)
-        else:
-            chi2 = 0.0
+        if chi2_decomposition:
             # check if cosmological + RSD parameters have changed, if so,
             # re-evaluate chi2 decomposition
             if de_model is None and self.use_Mpc:
@@ -3268,75 +3206,64 @@ class PTEmu:
                 or self.chi2_decomposition is None else False
             compute_Bisp_chi2_decomposition = True if params_changed \
                 or self.Bisp_chi2_decomposition is None else False
+        else:
+            compute_chi2_decomposition = None
+            compute_Bisp_chi2_decomposition = None
 
-            for oi in obs_id:
-                if self.data[oi].stat == 'powerspectrum':
-                    if compute_chi2_decomposition:
-                        convolve_oi = oi if convolve_window else None
-                        PX_ell_list = np.zeros([sum(self.data[oi].nbins),
-                                                len(self.diagrams_all)])
-                        for i, X in enumerate(self.diagrams_all):
-                            PX_ell = self.PX_ell(self.data[oi].bins_kmax,
-                                                 params, ell[oi], X,
-                                                 binning=binning,
-                                                 obs_id=convolve_oi,
-                                                 de_model=de_model,
-                                                 q_tr_lo=q_tr_lo,
-                                                 W_damping=W_damping[oi],
-                                                 ell_for_recon=ell_for_recon)
-                            PX_ell_list[:, i] = np.hstack([PX_ell[m] for m
-                                                           in PX_ell.keys()])
+        # TODO:
+        # - extend multi parameter sampling to chi2_decomposition
+        # - extend multi parameter sampling to bispectrum
 
-                        self.chi2_decomposition = {}
-                        self.chi2_decomposition['DD'] = self.data[oi].SN_kmax
-                        self.chi2_decomposition['XD'] = PX_ell_list.T \
-                            @ self.data[oi].inverse_cov_kmax \
-                            @ self.data[oi].signal_kmax
-                        self.chi2_decomposition['XX'] = PX_ell_list.T \
-                            @ self.data[oi].inverse_cov_kmax @ PX_ell_list
-                elif self.data[oi].stat == 'bispectrum':
-                    if compute_Bisp_chi2_decomposition:
-                        Pdw = self.Pdw(self.Bisp.tri_unique,
-                                       params, de_model=de_model,
-                                       ell_for_recon=ell_for_recon)
-                        if self.real_space:
-                            neff = None
-                        else:
-                            neff = self.Bisp.tri_unique * \
-                                   self.Pdw_spline.derivative(n=1)(
-                                       self.Bisp.tri_unique) / Pdw
-                        BX_ell = self.Bisp.BX_ell(Pdw, neff, self.params,
-                                                  ell=ell[oi],
-                                                  W_damping=W_damping[oi])
-                        BX_ell_list = np.zeros([sum(self.data[oi].nbins),
-                                                len(self.Bisp_diagrams_all)])
-                        for i, X in enumerate(self.Bisp_diagrams_all):
-                            BX_ell_list[:, i] = np.hstack([BX_ell[m][X] for m
-                                                           in BX_ell.keys()])
+        # sort params dictionary:
+        # - make sure that all redshifts appear corresponding to the redshifts
+        #   stored in the data objects for all given obs_ids
+        # - make sure that if they appear multiple times (=N) that they all
+        #   appear the same number of times
+        # - reorder the params arrays such that o1(1),o2(1),...,o1(2),o2(2),...,
+        #   o1(N),o2(N),...
 
-                        self.Bisp_chi2_decomposition = {}
-                        self.Bisp_chi2_decomposition['DD'] = \
-                            self.data[oi].SN_kmax
-                        self.Bisp_chi2_decomposition['XD'] = BX_ell_list.T \
-                            @ self.data[oi].inverse_cov_kmax \
-                            @ self.data[oi].signal_kmax
-                        self.Bisp_chi2_decomposition['XX'] = BX_ell_list.T \
-                            @ self.data[oi].inverse_cov_kmax @ BX_ell_list
+        # return multiple chi2
 
-            self.update_bias_params(params)
-            self.splines_up_to_date = False
-            self.dw_spline_up_to_date = False
-
-            for oi in obs_id:
-                if self.data[oi].stat == 'powerspectrum':
-                    bX = self.get_bias_coeff_for_chi2_decomposition()
-                    chi2 += (bX @ self.chi2_decomposition['XX'] @ bX -
-                             2*bX @ self.chi2_decomposition['XD'] +
-                             self.chi2_decomposition['DD'])
-                elif self.data[oi].stat == 'bispectrum':
-                    bX = self.get_bias_coeff_for_Bisp_chi2_decomposition()
-                    chi2 += (bX @ self.Bisp_chi2_decomposition['XX'] @ bX -
-                             2*bX @ self.Bisp_chi2_decomposition['XD'] +
-                             self.Bisp_chi2_decomposition['DD'])
+        chi2 = 0.0
+        for stat in obs_id_stat:
+            unique_z, counts = np.unique(params['z'], return_counts=True)
+            match_zeff = (unique_z == np.sort([self.data[oi].zeff
+                                          for oi in obs_id_stat[stat]]))
+            if not np.all(match_zeff) or len(set(counts)) != 1:
+                raise AssertionError(
+                    "The list of redshifts either does not match the redshifts"
+                    " of the data samples, or not all redshifts have the same"
+                    " number of occurrences.")
+            ids_sorting = np.argsort(params['z'])[
+                np.arange(len(params['z'])).reshape(
+                    len(obs_id_stat[stat]),counts[0]).flatten(order='F')]
+            params_eval = {}
+            for p in params:
+                params_eval[p] = np.atleast_1d(params[p])[ids_sorting]
+            if stat == 'powerspectrum':
+                chi2 += self._chi2_powerspectrum(
+                    obs_id_stat[stat], params_eval,
+                    {oi:ell[oi] for oi in obs_id_stat[stat]},
+                    de_model=de_model, binning=binning[stat],
+                    convolve_window=convolve_window,
+                    q_tr_lo=q_tr_lo, W_damping=W_damping[stat],
+                    chi2_decomposition=chi2_decomposition,
+                    compute_chi2_decomposition=compute_chi2_decomposition,
+                    ell_for_recon=ell_for_recon
+                )
+            elif stat == 'bispectrum':
+                chi2 += self._chi2_bispectrum(
+                    obs_id_stat[stat], params_eval,
+                    ell[obs_id_stat[stat][0]],
+                    de_model=de_model, binning=binning[stat],
+                    convolve_window=convolve_window,
+                    q_tr_lo=q_tr_lo, W_damping=W_damping,
+                    chi2_decomposition=chi2_decomposition,
+                    compute_chi2_decomposition=compute_Bisp_chi2_decomposition,
+                    ell_for_recon=ell_for_recon
+                )
+            else:
+                print('Warning! Unrecognised statistic - ignoring '
+                      'contribution to chi-square.')
 
         return chi2
