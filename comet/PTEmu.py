@@ -450,24 +450,12 @@ class PTEmu:
         else:
             self.data[obs_id].update(**kwargs)
 
-        obs_id_list = [oi for oi in self.data \
-                       if self.data[oi].mixing_matrix_exists]
-        obs_id_joint = [oi for oi in obs_id_list if '|' in oi]
-        obs_id_joint = next((oi for oi in obs_id_list if '|' in oi), None)
-        if obs_id_joint in self.data:
-            obs_id_list.remove(obs_id_joint)
-        # obs_id_list = sorted(obs_id_list)
-        obs_id_joint_new = reduce(lambda s1, s2: s1+'|'+s2, obs_id_list)
-        if obs_id_joint_new != obs_id_joint:
-            # W_stacked = np.ascontiguousarray(
-            #     np.hstack([self.data[oi].W_mixing_matrix
-            #                for oi in obs_id_list]))
+    def stack_mixing_matrices(self, obs_id_list, obs_id_stacked):
+        if np.all([self.data[oi].mixing_matrix_exists for oi in obs_id_list]):
             W_stacked = np.ascontiguousarray(
                 np.dstack([self.data[oi].W_mixing_matrix
                            for oi in obs_id_list]))
-            if obs_id_joint in self.data:
-                self.data.pop(obs_id_joint)
-            self.data[obs_id_joint_new] = MeasuredData(
+            self.data[obs_id_stacked] = MeasuredData(
                 stat='powerspectrum',
                 bins_mixing_matrix=self.data[obs_id_list[0]].bins_mixing_matrix,
                 W_mixing_matrix=W_stacked)
@@ -1598,11 +1586,11 @@ class PTEmu:
     @staticmethod
     @nb.njit(parallel=True)
     def _contract(W, a):
-        b = np.zeros((W.shape[0],W.shape[-1]))
-        for i in nb.prange(W.shape[-1]):
-            for j in nb.prange(W.shape[0]):
-                for n in nb.prange(W.shape[1]):
-                    b[j,i] += W[j,n,i]*a[n,i]
+        b = np.zeros((W.shape[0],a.shape[-1]))
+        for i in nb.prange(W.shape[0]):
+            for j in nb.prange(W.shape[1]):
+                for n in nb.prange(a.shape[-1]):
+                    b[i,n] += W[i,j,n%W.shape[-1]]*a[j,n]
         return b
 
     def Pell(self, k, params, ell, de_model=None, binning=None, obs_id=None,
@@ -1776,7 +1764,15 @@ class PTEmu:
                 Pell_dict['ell{}'.format(m)] = np.squeeze(Pell_model[ids, i])
         else:
             if isinstance(obs_id, list):
-                obs_id_use = reduce(lambda s1, s2: s1+'|'+s2, obs_id)
+                if len(obs_id) > 1:
+                    ordering = np.argsort([self.data[oi].zeff for oi in obs_id])
+                    obs_id_use = reduce(lambda s1, s2: s1+'|'+s2,
+                                        np.array(obs_id)[ordering])
+                    if not obs_id_use in self.data:
+                        self.stack_mixing_matrices(np.array(obs_id)[ordering],
+                                                   obs_id_use)
+                else:
+                    obs_id_use = obs_id[0]
             else:
                 obs_id_use = obs_id
             if self.data[obs_id_use].mixing_matrix_exists:
@@ -1792,7 +1788,7 @@ class PTEmu:
                     self.data[obs_id_use].bins_mixing_matrix_compressed,
                     Pell_list, axis=0)(
                         self.data[obs_id_use].bins_mixing_matrix[1])
-                if len(list(obs_id)) > 1 or spline.ndim > 2:
+                if isinstance(obs_id, list) and len(obs_id) > 1:
                     # nbin_kp = spline.shape[0]*spline.shape[1]
                     # spline = spline.flatten(order='F')
                     # Pell_convolved = np.add.reduceat(
@@ -1803,8 +1799,8 @@ class PTEmu:
                     Pell_convolved = self._contract(
                         self.data[obs_id_use].W_mixing_matrix, spline)
                 else:
-                    spline = spline.reshape(spline.shape[0]*spline.shape[1],
-                                            order='F')
+                    spline = spline.reshape((spline.shape[0]*spline.shape[1],) \
+                                            + spline.shape[2:], order='F')
                     Pell_convolved = self.data[obs_id_use].W_mixing_matrix \
                                      @ spline
                 nb = len(self.data[obs_id_use].bins_mixing_matrix[0])
@@ -3247,8 +3243,6 @@ class PTEmu:
         #   appear the same number of times
         # - reorder the params arrays such that o1(1),o2(1),...,o1(2),o2(2),...,
         #   o1(N),o2(N),...
-
-        # sort joint mixing matrix, so it matches the sorting of params_eval
 
         chi2 = 0.0
         for stat in obs_id_stat:
