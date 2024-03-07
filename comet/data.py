@@ -47,7 +47,7 @@ class MeasuredData:
                 self.stat = 'powerspectrum'
             elif 'stat' not in kwargs and self.bins.shape[1] == 3:
                 self.stat = 'bispectrum'
-            else:
+            elif 'stat' not in kwargs:
                 print('Warning! Type of statistic not recognised.')
                 self.stat = 'unknown'
         if 'signal' in kwargs:
@@ -149,7 +149,7 @@ class MeasuredData:
                 self.stat = 'powerspectrum'
             elif 'stat' not in kwargs and self.bins.shape[1] == 3:
                 self.stat = 'bispectrum'
-            else:
+            elif 'stat' not in kwargs:
                 print('Warning! Type of statistic not recognised.')
                 self.stat = 'unknown'
         if 'signal' in kwargs:
@@ -220,6 +220,7 @@ class MeasuredData:
         self.bins_mixing_matrix = None
         self.W_mixing_matrix = None
         self.kmax_is_set = False
+        self.mixing_matrix_exists = False
 
     def is_block_diagonal(self, arr, nblock):
         def is_diagonal(arr):

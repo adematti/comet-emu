@@ -1,12 +1,10 @@
 """Main PTEmu module."""
 
 import numpy as np
-import numba as nb
 from scipy.interpolate import UnivariateSpline, make_interp_spline
 from scipy.integrate import quad_vec
 from scipy.integrate import quad,dblquad
 from scipy.special import eval_legendre
-from numpy.core.umath_tests import inner1d
 from astropy.io import fits
 from functools import reduce
 import pickle
@@ -20,7 +18,6 @@ import os
 
 base_dir = os.path.join(os.path.dirname(__file__))
 
-nb.config.THREADING_LAYER = 'workqueue'
 
 
 class PTEmu:
@@ -450,11 +447,12 @@ class PTEmu:
         else:
             self.data[obs_id].update(**kwargs)
 
-    def stack_mixing_matrices(self, obs_id_list, obs_id_stacked):
+    def stack_mixing_matrices(self, obs_id_list, obs_id_stacked, nparams):
         if np.all([self.data[oi].mixing_matrix_exists for oi in obs_id_list]):
-            W_stacked = np.ascontiguousarray(
-                np.dstack([self.data[oi].W_mixing_matrix
-                           for oi in obs_id_list]))
+            W_stacked = np.stack([self.data[oi].W_mixing_matrix
+                          for oi in obs_id_list], axis=0)
+            ids = np.arange(nparams) % len(obs_id_list)
+            W_stacked = np.ascontiguousarray(W_stacked[ids])
             self.data[obs_id_stacked] = MeasuredData(
                 stat='powerspectrum',
                 bins_mixing_matrix=self.data[obs_id_list[0]].bins_mixing_matrix,
@@ -1768,9 +1766,13 @@ class PTEmu:
                     ordering = np.argsort([self.data[oi].zeff for oi in obs_id])
                     obs_id_use = reduce(lambda s1, s2: s1+'|'+s2,
                                         np.array(obs_id)[ordering])
-                    if not obs_id_use in self.data:
+                    nparams = len(next(iter(params.values())))
+                    if len(obs_id) < nparams:
+                        obs_id_use += ':{}'.format(nparams)
+                    if not obs_id_use in self.data or \
+                            not self.data[obs_id_use].mixing_matrix_exists:
                         self.stack_mixing_matrices(np.array(obs_id)[ordering],
-                                                   obs_id_use)
+                                                   obs_id_use, nparams)
                 else:
                     obs_id_use = obs_id[0]
             else:
@@ -1788,19 +1790,12 @@ class PTEmu:
                     self.data[obs_id_use].bins_mixing_matrix_compressed,
                     Pell_list, axis=0)(
                         self.data[obs_id_use].bins_mixing_matrix[1])
+                spline = spline.reshape((spline.shape[0]*spline.shape[1],) \
+                                        + spline.shape[2:], order='F')
                 if isinstance(obs_id, list) and len(obs_id) > 1:
-                    # nbin_kp = spline.shape[0]*spline.shape[1]
-                    # spline = spline.flatten(order='F')
-                    # Pell_convolved = np.add.reduceat(
-                    #     self.data[obs_id_use].W_mixing_matrix * spline,
-                    #     np.arange(0,len(spline),nbin_kp), axis=-1)
-                    spline = spline.reshape((spline.shape[0]*spline.shape[1],
-                                            spline.shape[-1]), order='F')
-                    Pell_convolved = self._contract(
-                        self.data[obs_id_use].W_mixing_matrix, spline)
+                    Pell_convolved = (self.data[obs_id_use].W_mixing_matrix \
+                                      @ spline.T[...,None]).squeeze().T
                 else:
-                    spline = spline.reshape((spline.shape[0]*spline.shape[1],) \
-                                            + spline.shape[2:], order='F')
                     Pell_convolved = self.data[obs_id_use].W_mixing_matrix \
                                      @ spline
                 nb = len(self.data[obs_id_use].bins_mixing_matrix[0])
@@ -2933,8 +2928,10 @@ class PTEmu:
                         [Pell['ell{}'.format(l)][ids[i],n::len(obs_id)]
                          for i,l in enumerate(ell[oi])])
                     diff = Pell_list - self.data[oi].signal_kmax[:,None]
-                chi2 += inner1d(diff.T,
-                                (self.data[oi].inverse_cov_kmax @ diff).T)
+                # chi2 += inner1d(diff.T,
+                #                 (self.data[oi].inverse_cov_kmax @ diff).T)
+                chi2 += np.einsum("ab,ab->b", diff,
+                                  self.data[oi].inverse_cov_kmax @ diff)
         else:
             oi = obs_id[0]
             if compute_chi2_decomposition:
@@ -3248,14 +3245,14 @@ class PTEmu:
         for stat in obs_id_stat:
             unique_z, counts = np.unique(params['z'], return_counts=True)
             match_zeff = (unique_z == np.sort([self.data[oi].zeff
-                                          for oi in obs_id_stat[stat]]))
+                                               for oi in obs_id_stat[stat]]))
             if not np.all(match_zeff) or len(set(counts)) != 1:
                 raise AssertionError(
                     "The list of redshifts either does not match the redshifts"
                     " of the data samples, or not all redshifts have the same"
                     " number of occurrences.")
             ids_sorting = np.argsort(params['z'])[
-                np.arange(len(params['z'])).reshape(
+                np.arange(len(np.atleast_1d(params['z']))).reshape(
                     len(obs_id_stat[stat]),counts[0]).flatten(order='F')]
             params_eval = {}
             for p in params:
