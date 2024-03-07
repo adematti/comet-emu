@@ -2,8 +2,7 @@
 
 import numpy as np
 from scipy.interpolate import UnivariateSpline, make_interp_spline
-from scipy.integrate import quad_vec
-from scipy.integrate import quad,dblquad
+from scipy.integrate import quad_vec, quad, dblquad
 from scipy.special import eval_legendre
 from astropy.io import fits
 from functools import reduce
@@ -1099,7 +1098,7 @@ class PTEmu:
         """
         self.eval_emulator(params, ell=[], de_model=de_model)
         self.PL_spline.build(self.k_table, self.Pk_lin, h=self.params['h'])
-        PL = np.squeeze(self.PL_spline.eval(k))
+        PL = np.squeeze(self.PL_spline.eval(np.atleast_1d(k)))
         return PL
 
     # TODO
@@ -1580,16 +1579,6 @@ class PTEmu:
                                       q_tr_lo, W_damping, ell_for_recon)
 
         return Pell_dict
-
-    @staticmethod
-    @nb.njit(parallel=True)
-    def _contract(W, a):
-        b = np.zeros((W.shape[0],a.shape[-1]))
-        for i in nb.prange(W.shape[0]):
-            for j in nb.prange(W.shape[1]):
-                for n in nb.prange(a.shape[-1]):
-                    b[i,n] += W[i,j,n%W.shape[-1]]*a[j,n]
-        return b
 
     def Pell(self, k, params, ell, de_model=None, binning=None, obs_id=None,
              q_tr_lo=None, W_damping=None, ell_for_recon=None):

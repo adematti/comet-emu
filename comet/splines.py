@@ -103,6 +103,8 @@ class Splines:
         return np.squeeze(y)
 
     def eval(self, x):
+        if not self.use_Mpc:
+            x = np.repeat(x[:,None],self.size_last,axis=-1)
         mask_less = x < self.x_min # -> nx
         mask_greater = x > self.x_max
         mask = ~mask_less & ~mask_greater
