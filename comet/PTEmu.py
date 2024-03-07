@@ -1097,7 +1097,8 @@ class PTEmu:
             input wavemodes :math:`k`.
         """
         self.eval_emulator(params, ell=[], de_model=de_model)
-        self.PL_spline.build(self.k_table, self.Pk_lin, h=self.params['h'])
+        h = None if self.use_Mpc else self.params['h']
+        self.PL_spline.build(self.k_table, self.Pk_lin, h=h)
         PL = np.squeeze(self.PL_spline.eval(np.atleast_1d(k)))
         return PL
 
@@ -1732,7 +1733,8 @@ class PTEmu:
                     not self.splines_up_to_date):
                 Pell = self.Pell_fid_ktable(params, ell=ell_for_recon,
                                             de_model=de_model)
-                self.Pell_spline.build(self.k_table, Pell, h=self.params['h'])
+                h = None if self.use_Mpc else self.params['h']
+                self.Pell_spline.build(self.k_table, Pell, h=h)
                 self.splines_up_to_date = True
 
             self.update_AP_params(params, de_model=de_model,
