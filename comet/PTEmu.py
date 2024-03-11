@@ -1009,8 +1009,10 @@ class PTEmu:
                                   'for parameter {}!'.format(p))
 
                 if self.RSD_model == 'VDG_infty':
+                    # self.params['sv'] = self.training['SHAPE'].transform_inv(
+                    #     self.emu['sv'].predict(params_shape)[0], 'sv')[:,0] # N
                     self.params['sv'] = self.training['SHAPE'].transform_inv(
-                        self.emu['sv'].predict(params_shape)[0], 'sv')[:,0] # N
+                        shape_all[:,1], 'sv').squeeze()
                     self.params['sv'] *= amplitude_scaling
                     if not self.use_Mpc:
                         self.params['sv'] *= self.params['h']
