@@ -308,17 +308,21 @@ class PTEmu:
             attributes. Defaults to **None**.
         """
         if data_type is None:
-            ell_train = [0, 2, 4] if not self.real_space else [0]
-            for dt in ['PL', 's12']:
-                self.emu[dt] = pickle.load(
-                    open('{}_{}.pickle'.format(fname_base, dt), "rb"))
-            if self.RSD_model == 'VDG_infty':
-                self.emu['sv'] = pickle.load(
-                    open('{}_{}.pickle'.format(fname_base, 'sv'), "rb"))
-            for ell in ell_train:
-                self.emu[ell] = pickle.load(
-                    open('{}_ratios_ell{}.pickle'.format(fname_base, ell),
-                         "rb"))
+            # ell_train = [0, 2, 4] if not self.real_space else [0]
+            # for dt in ['PL', 's12']:
+            #     self.emu[dt] = pickle.load(
+            #         open('{}_{}.pickle'.format(fname_base, dt), "rb"))
+            # if self.RSD_model == 'VDG_infty':
+            #     self.emu['sv'] = pickle.load(
+            #         open('{}_{}.pickle'.format(fname_base, 'sv'), "rb"))
+            # for ell in ell_train:
+            #     self.emu[ell] = pickle.load(
+            #         open('{}_ratios_ell{}.pickle'.format(fname_base, ell),
+            #              "rb"))
+            self.emu['shape'] = pickle.load(
+                open('{}_scikit_s12svPL.pickle'.format(fname_base), "rb"))
+            self.emu['ratios'] = pickle.load(
+                open('{}_scikit_ratios.pickle'.format(fname_base), "rb"))
         else:
             data_type = [data_type] if not isinstance(data_type, list) \
                 else data_type
@@ -963,10 +967,15 @@ class PTEmu:
                         self.emu[m].predict(params_all)[0], m).T # 1754 x N
         else:
             if self.Pk_lin is None or emu_params_updated:
+                shape_all = self.emu['shape'].predict(params_shape)
+                # sigma12 = self.training['SHAPE'].transform_inv(
+                #     self.emu['s12'].predict(params_shape)[0], 's12')[:,0] # N
+                # self.Pk_lin = self.training['SHAPE'].transform_inv(
+                #     self.emu['PL'].predict(params_shape)[0], 'PL').T # 106 x N
                 sigma12 = self.training['SHAPE'].transform_inv(
-                    self.emu['s12'].predict(params_shape)[0], 's12')[:,0] # N
+                    shape_all[:,0], 's12').squeeze()
                 self.Pk_lin = self.training['SHAPE'].transform_inv(
-                    self.emu['PL'].predict(params_shape)[0], 'PL').T # 106 x N
+                    shape_all[:,2:], 'PL').T
 
                 # compute growth factors corresponding to fiducial and target
                 # parameters + growth rate
@@ -1009,10 +1018,14 @@ class PTEmu:
             params_all = np.array([self.params[p] for p in self.params_list],
                                   dtype=object).T
 
-            for m in ell:
-                if self.Pk_ratios[m] is None or emu_params_updated:
-                    self.Pk_ratios[m] = self.training['FULL'].transform_inv(
-                        self.emu[m].predict(params_all)[0], m).T
+            # for m in ell:
+            #     if self.Pk_ratios[m] is None or emu_params_updated:
+            #         self.Pk_ratios[m] = self.training['FULL'].transform_inv(
+            #             self.emu[m].predict(params_all)[0], m).T
+            ratios_all = self.emu['ratios'].predict(params_all)
+            for i,m in enumerate(ell):
+                self.Pk_ratios[m] = self.training['FULL'].transform_inv(
+                    ratios_all[:,i*1754:(i+1)*1754], m).T
 
     def W_kurt(self, k, mu):
         r"""Large scale limit of the velocity difference generating function.
@@ -1797,7 +1810,7 @@ class PTEmu:
                         Pell_convolved = Pell_convolved.reshape(
                             (nb, len(ell_for_mixing_matrix),
                              Pell_convolved.shape[-1]), order='F')
-                        ell_ids = (np.array(ell)/2).astype(np.int)
+                        ell_ids = (np.array(ell)/2).astype(np.int64)
                         spline = make_interp_spline(
                             self.data[obs_id_use].bins_mixing_matrix[0],
                             Pell_convolved[:,ell_ids], axis=0)(k)
@@ -2919,9 +2932,7 @@ class PTEmu:
                         [Pell['ell{}'.format(l)][ids[i],n::len(obs_id)]
                          for i,l in enumerate(ell[oi])])
                     diff = Pell_list - self.data[oi].signal_kmax[:,None]
-                # chi2 += inner1d(diff.T,
-                #                 (self.data[oi].inverse_cov_kmax @ diff).T)
-                chi2 += np.einsum("ab,ab->b", diff,
+                chi2 += np.einsum("a...,a...", diff,
                                   self.data[oi].inverse_cov_kmax @ diff)
         else:
             oi = obs_id[0]
