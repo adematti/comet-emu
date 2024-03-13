@@ -492,21 +492,23 @@ class PTEmu:
             self.H_fid = HDm_fid[0]
             self.Dm_fid = HDm_fid[1]
         else:
-            Om0 = (params_fid['wc']+params_fid['wb'])/params_fid['h']**2
-            H0 = params_fid['h']*100.0
-            Ok0 = 0.0 if 'Ok' not in params_fid else params_fid['Ok']
+            Om0 = np.atleast_1d(
+                (params_fid['wc']+params_fid['wb'])/params_fid['h']**2)
+            H0 = np.atleast_1d(params_fid['h']*100.0)
+            Ok0 = np.array([0.0]) if 'Ok' not in params_fid \
+                else np.atleast_1d(params_fid['Ok'])
             if de_model == 'lambda':
-                w0 = -1.0
-                wa = 0.0
+                w0 = -np.ones_like(Om0)
+                wa = np.zeros_like(Om0)
             elif de_model == 'w0':
-                w0 = params_fid['w0']
-                wa = 0.0
+                w0 = np.atleast_1d(params_fid['w0'])
+                wa = np.zeros_like(Om0)
             elif de_model == 'w0wa':
-                w0 = params_fid['w0']
-                wa = params_fid['wa']
+                w0 = np.atleast_1d(params_fid['w0'])
+                wa = np.atleast_1d(params_fid['wa'])
             self.cosmo.update_cosmology(Om0, H0, Ok0=Ok0, de_model=de_model,
                                         w0=w0, wa=wa)
-            self.H_fid = self.cosmo.Hz(params_fid['z'])
+            self.H_fid = self.cosmo.Hz(np.atleast_1d(params_fid['z']))
             self.Dm_fid = self.cosmo.comoving_transverse_distance(
                 params_fid['z'])
             if not self.use_Mpc:
