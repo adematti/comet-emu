@@ -84,12 +84,12 @@ class Splines:
         y = np.stack([self.extrapolation_min(x,n) \
                       for n in range(self.size_last)],
                      axis=-1)
-        return np.atleast_2d(np.squeeze(y))
+        return y #np.atleast_2d(np.squeeze(y))
 
     def _eval_spline(self, x):
         y = np.stack([self.spline[n](x) for n in range(self.size_last)],
                      axis=-1)
-        return np.atleast_2d(np.squeeze(y))
+        return y #np.atleast_2d(np.squeeze(y))
 
     def _eval_extrapolation_max(self, x):
         y = np.stack([self.extrapolation_max(x,n) \
@@ -100,7 +100,7 @@ class Splines:
         #                      for n in range(self.size_last)],
         #                     axis=-1)
         #     y[(Ellipsis, *self.mask)] = ylin[(Ellipsis, *self.mask)]
-        return np.atleast_2d(np.squeeze(y))
+        return y #np.atleast_2d(np.squeeze(y))
 
     def eval(self, x):
         mask_less = x < self.x_min if self.use_Mpc \
