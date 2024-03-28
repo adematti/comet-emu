@@ -549,6 +549,7 @@ class PTEmu:
                     self.params[p] = np.atleast_1d(params[p])
                 self.params['As'] = np.zeros_like(self.params['wc'])
                 self.params['z'] = np.zeros_like(self.params['wc'])
+                self.params['h'] = np.zeros_like(self.params['wc'])
                 check_ranges(self.params_list)
             elif de_model is None and not self.use_Mpc:
                 emu_params_updated = np.any([params[p] != self.params[p] for p
@@ -2230,205 +2231,229 @@ class PTEmu:
                 self.grid = Grid(binning['kfun'], binning['dk'])
             else:
                 self.grid.update(binning['kfun'], binning['dk'])
-            if binning.get('do_rounding') is None:
-                self.grid.find_discrete_modes(k)
-                if binning.get('effective') is not None:
-                    use_effective_modes = binning['effective']
-                    if use_effective_modes:
-                        self.grid.compute_effective_modes(k)
-            else:
-                self.grid.find_discrete_modes(k, binning['do_rounding'],
-                                              binning['decimals'])
-                if binning.get('effective') is not None:
-                    use_effective_modes = binning['effective']
-                    if use_effective_modes:
-                        self.grid.compute_effective_modes(k,
-                            binning['do_rounding'], binning['decimals'])
+            self.grid.find_discrete_modes(k, **binning)
+            if binning.get('effective') is not None:
+                use_effective_modes = binning['effective']
+                if use_effective_modes:
+                    self.grid.compute_effective_modes(k, **binning)
 
         keff = self.grid.keff if use_effective_modes else k
 
-        def P2d(q, mu):
-            t = 0.0
-            for m in ell_for_recon:
-                t += self.PX_ell_spline[X][m](q).reshape(q.shape) \
-                     * eval_legendre(m, mu)
-            return t
-
         if self.RSD_model == 'EFT':
-
-            if binning is None or use_effective_modes:
-                def integrand(mu):
-                    mu2 = mu**2
-                    APfac = np.sqrt(mu2/self.params['q_lo']**2 +
-                                    (1.0 - mu2)/self.params['q_tr']**2)
-                    kp = np.outer(keff, APfac)
-                    mup = mu/self.params['q_lo']/APfac
-                    legendre = np.array([eval_legendre(l, mu) for l in ell])
-                    return np.einsum("ab,cb->acb", P2d(kp, mup), legendre)
-            else:
-                def  shell_average():
-                    mu2 = self.grid.mu**2
-                    APfac = np.sqrt(mu2/self.params['q_lo']**2 +
-                                    (1.0 - mu2)/self.params['q_tr']**2)
-                    kp = self.grid.k*APfac
-                    mup = self.grid.mu/self.params['q_lo']/APfac
-                    legendre = np.array([eval_legendre(l, self.grid.mu)
-                                         for l in ell])
-                    prod = P2d(kp, mup) * legendre
-                    avg = np.zeros([len(self.grid.nmodes)-1, len(ell)])
-                    for i in range(len(self.grid.nmodes)-1):
-                        n1 = self.grid.nmodes[i]
-                        n2 = self.grid.nmodes[i+1]
-                        avg[i] = np.average(prod[:,n1:n2], axis=1,
-                                            weights=self.grid.weights[n1:n2])
-                    return avg
-
+            W_damping = lambda k, mu: 1.0
         elif self.RSD_model == 'VDG_infty':
             if W_damping is None:
                 W_damping = self.W_kurt
-
-            if X in ['Pnoise_NP0', 'Pnoise_NP20', 'Pnoise_NP22']:
-                W_damping = lambda k,mu: 1.0
-
-            if binning is None or use_effective_modes:
-                def integrand(mu):
-                    mu2 = mu**2
-                    APfac = np.sqrt(mu2/self.params['q_lo']**2 +
-                                    (1.0 - mu2)/self.params['q_tr']**2)
-                    kp = np.outer(keff, APfac)
-                    mup = mu/self.params['q_lo']/APfac
-                    P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
-                    legendre = np.array([eval_legendre(l, mu) for l in ell])
-                    return np.einsum("ab,cb->acb", P2d_damped, legendre)
-            else:
-                def  shell_average():
-                    mu2 = self.grid.mu**2
-                    APfac = np.sqrt(mu2/self.params['q_lo']**2 +
-                                    (1.0 - mu2)/self.params['q_tr']**2)
-                    kp = self.grid.k*APfac
-                    mup = self.grid.mu/self.params['q_lo']/APfac
-                    legendre = np.array([eval_legendre(l, self.grid.mu)
-                                         for l in ell])
-                    prod = P2d(kp, mup) * W_damping(kp, mup) * legendre
-                    avg = np.zeros([len(self.grid.nmodes)-1, len(ell)])
-                    for i in range(len(self.grid.nmodes)-1):
-                        n1 = self.grid.nmodes[i]
-                        n2 = self.grid.nmodes[i+1]
-                        avg[i] = np.average(prod[:,n1:n2], axis=1,
-                                            weights=self.grid.weights[n1:n2])
-                    return avg
-
         else:
             raise ValueError('Unsupported RSD model.')
 
-        if obs_id is None:
-            PX_ell = np.zeros([self.nk, len(ell_for_recon)])
-            X_emu = X
-            if X_emu in self.diagrams_emulated:
-                for n, diagram in enumerate(self.diagrams_emulated):
-                    if diagram == X_emu:
-                        if n < 9:
-                            ids = [n*self.nk, (n+1)*self.nk]
-                        else:
-                            ids = [9*self.nk + (n-9)*self.nkloop,
-                                   9*self.nk + (n-8)*self.nkloop]
+        def P2d(q, mu):
+            t = np.einsum("...bcd,cbd->...bd",
+                          self.PX_ell_spline[X].eval_varx(q),
+                          eval_legendre.outer(np.array(ell_for_recon),mu))
+            return t # nk x nmu x N
 
+        def LOS_average_continuous():
+            mu = self.gl_x
+            mu2 = self.gl_x2
+            APfac = np.sqrt(
+                np.divide.outer(mu2, self.params['q_lo']**2) \
+                + np.divide.outer(1.0 - mu2, self.params['q_tr']**2))
+            kp = np.multiply.outer(keff, APfac)
+            mup = np.divide.outer(mu, self.params['q_lo'])/APfac
+            P2d_tot = P2d(kp, mup) * W_damping(kp, mup)
+            legendre = eval_legendre.outer(ell, mu)
+            return 0.5 * np.einsum("abc,db,b->adc", P2d_tot, legendre,
+                                   self.gl_weights) # nk x nell x N x nmu
+
+        def LOS_average_discrete():
+            APfac = np.sqrt(
+                np.divide.outer(self.grid.mu2, self.params['q_lo']**2) \
+                + np.divide.outer(1.0 - self.grid.mu2,
+                                  self.params['q_tr']**2))
+            kp = np.einsum("a,ab->ab", self.grid.k, APfac)
+            mup = np.divide.outer(self.grid.mu, self.params['q_lo'])/APfac
+            legendre = eval_legendre.outer(ell, self.grid.mu)
+            P2d_tot = P2d(kp, mup) * W_damping(kp, mup)
+            avg = np.add.reduceat(
+                np.einsum("ab,bc,b->bac", legendre, P2d_tot,
+                          self.grid.weights),
+                self.grid.nmodes[:-1], axis=0)
+            avg /= self.grid.weights_sum[:,None,None]
+            return avg
+
+        if obs_id is None:
+            params_updated = [params[p] != self.params[p] for p in
+                              params.keys()]
+            params_nonzero = [x for x in self.bias_params_list +
+                              self.RSD_params_list if np.any(
+                                  self.params[x] != 0)]
+
+            if np.any(params_updated) \
+                    or np.any([p not in params.keys() for p in params_nonzero]:
                 self.eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
-                if X_emu in ['Pctr_c0', 'Pctr_c2', 'Pctr_c4']:
-                    for i, m in enumerate(ell_eval_emu):
-                        PX_ell[self.nk - (ids[1]-ids[0]):, i] = \
-                            self.Pk_ratios[m][ids[0]:ids[1]]
-                else:
-                    for i, m in enumerate(ell_for_recon):
-                        if m != 6:
+
+            if not self.X_splines_up_to_date[X]:
+                PX_ell = np.zeros([self.nk, len(ell_for_recon), self.nparams])
+                X_emu = X
+                if X_emu in self.diagrams_emulated:
+                    for n, diagram in enumerate(self.diagrams_emulated):
+                        if diagram == X_emu:
+                            if n < 9:
+                                ids = [n*self.nk, (n+1)*self.nk]
+                            else:
+                                ids = [9*self.nk + (n-9)*self.nkloop,
+                                       9*self.nk + (n-8)*self.nkloop]
+                    if X_emu in ['Pctr_c0', 'Pctr_c2', 'Pctr_c4']:
+                        for i, m in enumerate(ell_eval_emu):
                             PX_ell[self.nk - (ids[1]-ids[0]):, i] = \
                                 self.Pk_ratios[m][ids[0]:ids[1]]
-                        else:
-                            PX_ell[:, i] = self.PX_ell6_novir_noAP(X_emu)
-                PX_ell[:,:len(ell_eval_emu)] = (PX_ell[:,:len(ell_eval_emu)].T \
-                                                * self.Pk_lin).T
-            else:
-                if X_emu == 'Pnoise_NP0':
-                    PX_ell[:, 0] = np.ones_like(self.k_table)
-                elif X_emu == 'Pnoise_NP20':
-                    PX_ell[:, 0] = self.k_table**2
-                elif X_emu == 'Pnoise_NP22' and len(ell_for_recon) > 1:
-                    PX_ell[:, 1] = self.k_table**2
-
-            for i, m in enumerate(ell_for_recon):
-                if self.use_Mpc:
-                    self.PX_ell_spline[X][m] = UnivariateSpline(self.k_table,
-                                                                PX_ell[:, i],
-                                                                k=3, s=0)
+                    else:
+                        for i, m in enumerate(ell_for_recon):
+                            if m != 6:
+                                PX_ell[self.nk - (ids[1]-ids[0]):, i] = \
+                                    self.Pk_ratios[m][ids[0]:ids[1]]
+                            else:
+                                PX_ell[:, i] = self.PX_ell6_novir_noAP(X_emu)
+                    PX_ell[:,:len(ell_eval_emu)] = np.moveaxis(np.multiply(
+                        PX_ell[:,:len(ell_eval_emu)], self.Pk_lin), 0, 1)
                 else:
-                    self.PX_ell_spline[X][m] = UnivariateSpline(
-                        self.k_table/self.params['h'],
-                        PX_ell[:, i]*self.params['h']**3,
-                        k=3, s=0)
+                    if X_emu == 'Pnoise_NP0':
+                        PX_ell[:, 0] = np.ones_like(self.k_table)
+                    elif X_emu == 'Pnoise_NP20':
+                        PX_ell[:, 0] = self.k_table**2
+                    elif X_emu == 'Pnoise_NP22' and len(ell_for_recon) > 1:
+                        PX_ell[:, 1] = self.k_table**2
 
-            self.X_splines_up_to_date[X] = True
+                h = None if self.use_Mpc else self.params['h']
+                self.PX_ell_spline[X].build(self.k_table, PX_ell, h=h)
+                self.X_splines_up_to_date[X] = True
 
             self.update_AP_params(params, de_model=de_model,
                                   q_tr_lo=q_tr_lo)
             q3 = self.params['q_tr']**2 * self.params['q_lo']
 
             if binning is None or use_effective_modes:
-                PX_ell_model = 0.5 * np.dot(integrand(self.gl_x),
-                                            self.gl_weights)
+                PX_ell_model = LOS_average_continuous()
             else:
-                PX_ell_model = shell_average()
-            PX_ell_model *= (2.0*np.array(ell)+1.0) / q3
+                PX_ell_model = LOS_average_discrete()
+            PX_ell_model *= np.divide.outer(2.0*np.array(ell)+1.0, q3)
 
             PX_ell_dict = {}
             for i, m in enumerate(ell):
                 ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
-                PX_ell_dict['ell{}'.format(m)] = PX_ell_model[ids, i]
+                PX_ell_dict['ell{}'.format(m)] = np.squeeze(
+                    PX_ell_model[ids, i])
         else:
-            mixing_matrix_exists = True
-            try:
-                self.data[obs_id].bins_mixing_matrix
-            except AttributeError:
-                mixing_matrix_exists = False
-            try:
-                self.data[obs_id].W_mixing_matrix
-            except AttributeError:
-                mixing_matrix_exists = False
-            if mixing_matrix_exists:
+            if isinstance(obs_id, list):
+                if len(obs_id) > 1:
+                    ordering = np.argsort([self.data[oi].zeff for oi in obs_id])
+                    obs_id_use = reduce(lambda s1, s2: s1+'|'+s2,
+                                        np.array(obs_id)[ordering])
+                    nparams = len(next(iter(params.values())))
+                    if len(obs_id) < nparams:
+                        obs_id_use += ':{}'.format(nparams)
+                    if not obs_id_use in self.data or \
+                            not self.data[obs_id_use].mixing_matrix_exists:
+                        self.stack_mixing_matrices(np.array(obs_id)[ordering],
+                                                   obs_id_use, nparams)
+                else:
+                    obs_id_use = obs_id[0]
+            else:
+                obs_id_use = obs_id
+            if self.data[obs_id_use].mixing_matrix_exists:
                 ell_for_mixing_matrix = [0,2,4] if not self.real_space else [0]
                 PX_ell_model = self.PX_ell(
-                    self.data[obs_id].bins_mixing_matrix_compressed,
+                    self.data[obs_id_use].bins_mixing_matrix_compressed,
                     params, ell_for_mixing_matrix, X, de_model,
-                    obs_id=None, q_tr_lo=q_tr_lo, W_damping=W_damping,
-                    ell_for_recon=ell_for_recon)
-                PX_ell_list = []
-                for l in ell_for_mixing_matrix:
-                    spline = UnivariateSpline(
-                        self.data[obs_id].bins_mixing_matrix_compressed,
-                        PX_ell_model['ell{}'.format(l)], k=3, s=0)
-                    PX_ell_list = np.hstack(
-                        [PX_ell_list,
-                         spline(self.data[obs_id].bins_mixing_matrix[1])])
-                PX_ell_convolved = np.dot(self.data[obs_id].W_mixing_matrix,
-                                          PX_ell_list)
-                nb = len(self.data[obs_id].bins_mixing_matrix[0])
+                    binning=None, obs_id=None, q_tr_lo=q_tr_lo,
+                    W_damping=W_damping, ell_for_recon=ell_for_recon)
+                PX_ell_list = np.stack([PX_ell_model[ell]
+                                        for ell in PX_ell_model],
+                                       axis=1)
+                spline = make_interp_spline(
+                    self.data[obs_id_use].bins_mixing_matrix_compressed,
+                    PX_ell_list, axis=0)(
+                        self.data[obs_id_use].bins_mixing_matrix[1])
+                spline = spline.reshape((spline.shape[0]*spline.shape[1],) \
+                                        + spline.shape[2:], order='F')
+                if isinstance(obs_id, list) and len(obs_id) > 1:
+                    PX_ell_convolved = (self.data[obs_id_use].W_mixing_matrix \
+                                        @ spline.T[...,None]).squeeze().T
+                else:
+                    PX_ell_convolved = self.data[obs_id_use].W_mixing_matrix \
+                                       @ spline
+                nb = len(self.data[obs_id_use].bins_mixing_matrix[0])
 
                 PX_ell_dict = {}
                 if k.size != np.intersect1d(
-                    k, self.data[obs_id].bins_mixing_matrix[0]).size:
+                    k, self.data[obs_id_use].bins_mixing_matrix[0]).size:
+                        PX_ell_convolved = PX_ell_convolved.reshape(
+                            (nb, len(ell_for_mixing_matrix),
+                             PX_ell_convolved.shape[-1]), order='F')
+                        ell_ids = (np.array(ell)/2).astype(np.int64)
+                        spline = make_interp_spline(
+                            self.data[obs_id_use].bins_mixing_matrix[0],
+                            PX_ell_convolved[:,ell_ids], axis=0)(k)
                         for i, m in enumerate(ell):
-                            spline = UnivariateSpline(
-                                self.data[obs_id].bins_mixing_matrix[0],
-                                PX_ell_convolved[int(m/2)*nb:(int(m/2)+1)*nb],
-                                k=3, s=0)
-                            PX_ell_dict['ell{}'.format(m)] = spline(k_list[i])
+                            ids = np.intersect1d(
+                                k, k_list[i], return_indices=True)[1]
+                            PX_ell_dict['ell{}'.format(m)] = np.squeeze(
+                                spline[ids,i])
                 else:
                     for i, m in enumerate(ell):
                         ids = np.intersect1d(
                             k_list[i],
-                            self.data[obs_id].bins_mixing_matrix[0],
+                            self.data[obs_id_use].bins_mixing_matrix[0],
                             return_indices=True)[1]
-                        PX_ell_dict['ell{}'.format(m)] = PX_ell_convolved[ids +
-                            int(m/2)*nb]
+                        PX_ell_dict['ell{}'.format(m)] = np.squeeze(
+                            PX_ell_convolved[ids + int(m/2)*nb])
+
+            # mixing_matrix_exists = True
+            # try:
+            #     self.data[obs_id].bins_mixing_matrix
+            # except AttributeError:
+            #     mixing_matrix_exists = False
+            # try:
+            #     self.data[obs_id].W_mixing_matrix
+            # except AttributeError:
+            #     mixing_matrix_exists = False
+            # if mixing_matrix_exists:
+            #     ell_for_mixing_matrix = [0,2,4] if not self.real_space else [0]
+            #     PX_ell_model = self.PX_ell(
+            #         self.data[obs_id].bins_mixing_matrix_compressed,
+            #         params, ell_for_mixing_matrix, X, de_model,
+            #         obs_id=None, q_tr_lo=q_tr_lo, W_damping=W_damping,
+            #         ell_for_recon=ell_for_recon)
+            #     PX_ell_list = []
+            #     for l in ell_for_mixing_matrix:
+            #         spline = UnivariateSpline(
+            #             self.data[obs_id].bins_mixing_matrix_compressed,
+            #             PX_ell_model['ell{}'.format(l)], k=3, s=0)
+            #         PX_ell_list = np.hstack(
+            #             [PX_ell_list,
+            #              spline(self.data[obs_id].bins_mixing_matrix[1])])
+            #     PX_ell_convolved = np.dot(self.data[obs_id].W_mixing_matrix,
+            #                               PX_ell_list)
+            #     nb = len(self.data[obs_id].bins_mixing_matrix[0])
+            #
+            #     PX_ell_dict = {}
+            #     if k.size != np.intersect1d(
+            #         k, self.data[obs_id].bins_mixing_matrix[0]).size:
+            #             for i, m in enumerate(ell):
+            #                 spline = UnivariateSpline(
+            #                     self.data[obs_id].bins_mixing_matrix[0],
+            #                     PX_ell_convolved[int(m/2)*nb:(int(m/2)+1)*nb],
+            #                     k=3, s=0)
+            #                 PX_ell_dict['ell{}'.format(m)] = spline(k_list[i])
+            #     else:
+            #         for i, m in enumerate(ell):
+            #             ids = np.intersect1d(
+            #                 k_list[i],
+            #                 self.data[obs_id].bins_mixing_matrix[0],
+            #                 return_indices=True)[1]
+            #             PX_ell_dict['ell{}'.format(m)] = PX_ell_convolved[ids +
+            #                 int(m/2)*nb]
             else:
                 print('Warning! Bins for mixing matrix and/or mixing matrix '
                       'itself not provided. Returning unconvolved power '
