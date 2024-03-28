@@ -194,7 +194,7 @@ class PTEmu:
         biases, noises, counterterms, and other nuisance parameters.
         """
         self.params = {p: np.array([0.0]) for p in self.params_list +
-                       self.bias_params_list +
+                       self.bias_params_list + self.RSD_params_list +
                        self.de_model_params_list['w0wa']}
         self.params['w0'] = np.array([-1.0])
         self.params['q_tr'] = np.array([1.0])
@@ -237,7 +237,6 @@ class PTEmu:
             min = hdul['PARAMS_FULL'].header['MIN:{}'.format(p)]
             max = hdul['PARAMS_FULL'].header['MAX:{}'.format(p)]
             self.params_ranges[p] = [min, max]
-        self.init_params_dict()
 
         self.training['SHAPE'] = Tables(self.params_shape_list)
         self.training['FULL'] = Tables(self.params_list)
@@ -249,8 +248,8 @@ class PTEmu:
 
         if self.RSD_model == 'VDG_infty':
             self.RSD_params_list += ['avir','avirB']
-            self.params['avir'] = 0.0
-            self.params['avirB'] = 0.0
+
+        self.init_params_dict()
 
         if self.RSD_model == 'EFT':
             self.Bisp_diagrams_all = ['B0L_b1b1b1', 'B0L_b1b1', 'B0L_b1',
@@ -544,16 +543,16 @@ class PTEmu:
 
         try:
             if de_model is None and self.use_Mpc:
-                emu_params_updated = any([params[p] != self.params[p] for p
-                                          in self.params_list])
+                emu_params_updated = np.any([params[p] != self.params[p] for p
+                                             in self.params_list])
                 for p in self.params_list:
                     self.params[p] = np.atleast_1d(params[p])
                 self.params['As'] = np.zeros_like(self.params['wc'])
                 self.params['z'] = np.zeros_like(self.params['wc'])
                 check_ranges(self.params_list)
             elif de_model is None and not self.use_Mpc:
-                emu_params_updated = any([params[p] != self.params[p] for p
-                                          in self.params_list+['h']])
+                emu_params_updated = np.any([params[p] != self.params[p] for p
+                                             in self.params_list+['h']])
                 for p in self.params_list+['h']:
                     self.params[p] = np.atleast_1d(params[p])
                 self.params['As'] = np.zeros_like(self.params['wc'])
@@ -950,23 +949,36 @@ class PTEmu:
             params_all = np.array([self.params[p] for p in self.params_list]).T
 
             if self.Pk_lin is None or emu_params_updated:
+                shape_all = self.emu['shape'].predict(params_shape)
+                # sigma12 = self.training['SHAPE'].transform_inv(
+                #     self.emu['s12'].predict(params_shape)[0], 's12')[:,0] # N
+                # self.Pk_lin = self.training['SHAPE'].transform_inv(
+                #     self.emu['PL'].predict(params_shape)[0], 'PL').T
                 sigma12 = self.training['SHAPE'].transform_inv(
-                    self.emu['s12'].predict(params_shape)[0], 's12')[:,0] # N
+                    shape_all[:,0], 's12').squeeze()
                 self.Pk_lin = self.training['SHAPE'].transform_inv(
-                    self.emu['PL'].predict(params_shape)[0], 'PL').T
+                    shape_all[:,2:], 'PL').T
                 self.Pk_lin *= (self.params['s12']/sigma12)**2 # 106 x N
 
                 if self.RSD_model == 'VDG_infty':
-                    self.params['sv'] = self.training['SHAPE'].transform_inv(
-                        self.emu['sv'].predict(params_shape)[0], 'sv')[:,0]
+                    # self.params['sv'] = self.training['SHAPE'].transform_inv(
+                    #     self.emu['sv'].predict(params_shape)[0], 'sv')[:,0]
+                    self.params['sv'] = np.atleast_1d(
+                        self.training['SHAPE'].transform_inv(
+                            shape_all[:,1], 'sv').squeeze())
                     self.params['sv'] *= self.params['s12']/sigma12
                     if not self.use_Mpc:
                         self.params['sv'] *= self.params['h']
 
-            for m in ell:
-                if self.Pk_ratios[m] is None or emu_params_updated:
-                    self.Pk_ratios[m] = self.training['FULL'].transform_inv(
-                        self.emu[m].predict(params_all)[0], m).T # 1754 x N
+            # for m in ell:
+            #     if self.Pk_ratios[m] is None or emu_params_updated:
+            #         self.Pk_ratios[m] = self.training['FULL'].transform_inv(
+            #             self.emu[m].predict(params_all)[0], m).T # 1754 x N
+
+            ratios_all = self.emu['ratios'].predict(params_all)
+            for i,m in enumerate(ell):
+                self.Pk_ratios[m] = self.training['FULL'].transform_inv(
+                    ratios_all[:,i*1754:(i+1)*1754], m).T
         else:
             if self.Pk_lin is None or emu_params_updated:
                 shape_all = self.emu['shape'].predict(params_shape)
@@ -3016,7 +3028,7 @@ class PTEmu:
             else:
                 neff = tri_unique * \
                        self.Pdw_spline.derivative(n=1)(tri_unique)/Pdw
-            if binning and self.RSD_model == 'VDG_infty':
+            if binning[obs_id] and self.RSD_model == 'VDG_infty':
                 coeff = cnloB_mapping([self.params['avirB'],
                                       self.params['sv']])
                 self.params['cnloB'] = \

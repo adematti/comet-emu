@@ -39,10 +39,10 @@ class Splines:
             self.extrapolation_min = lambda x,n: self.y_min[...,n] \
                 * np.divide.outer(x,self.x_min)**self.neff_min[...,n]
         else:
-            self.y_min *= self.h3
+            self.y_min = self.y_min*self.h3
             self.x_min = self.x_min/self.h
             self.extrapolation_min = lambda x,n: self.y_min[...,n] \
-                * np.power.outer(
+            * np.power.outer(
                     np.divide.outer(x,self.x_min[...,n]),self.neff_min[...,n])
 
         # high-k extrapolation
@@ -56,7 +56,7 @@ class Splines:
             self.extrapolation_max_plaw = lambda x,n: self.y_max[...,n] \
                 * np.divide.outer(x,self.x_max)**self.neff_max[...,n]
         else:
-            self.y_max *= self.h3
+            self.y_max = self.y_max*self.h3
             self.x_max = self.x_max/self.h
             self.extrapolation_max_plaw = lambda x,n: self.y_max[...,n] \
                 * np.power.outer(
@@ -81,18 +81,19 @@ class Splines:
         return y
 
     def _eval_extrapolation_min(self, x):
-        y = np.stack([self.extrapolation_min(x,n) \
+        y = np.stack([np.squeeze(self.extrapolation_min(x,n)) \
                       for n in range(self.size_last)],
                      axis=-1)
-        return y #np.atleast_2d(np.squeeze(y))
+        return np.atleast_2d(y)
 
     def _eval_spline(self, x):
-        y = np.stack([self.spline[n](x) for n in range(self.size_last)],
+        y = np.stack([np.squeeze(self.spline[n](x)) \
+                      for n in range(self.size_last)],
                      axis=-1)
-        return y #np.atleast_2d(np.squeeze(y))
+        return np.atleast_2d(y)
 
     def _eval_extrapolation_max(self, x):
-        y = np.stack([self.extrapolation_max(x,n) \
+        y = np.stack([np.squeeze(self.extrapolation_max(x,n)) \
                       for n in range(self.size_last)],
                      axis=-1)
         # if self.crossover_check:
@@ -100,11 +101,11 @@ class Splines:
         #                      for n in range(self.size_last)],
         #                     axis=-1)
         #     y[(Ellipsis, *self.mask)] = ylin[(Ellipsis, *self.mask)]
-        return y #np.atleast_2d(np.squeeze(y))
+        return np.atleast_2d(y)
 
     def eval(self, x):
         mask_less = x < self.x_min if self.use_Mpc \
-                    else x[:,None] < self.x_min # -> nx
+                    else x[:,None] < self.x_min # -> nx x N
         mask_greater = x > self.x_max if self.use_Mpc \
                        else x[:,None] > self.x_max
         mask = ~mask_less & ~mask_greater
