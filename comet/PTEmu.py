@@ -2092,47 +2092,47 @@ class PTEmu:
         s12ratio_sq = s12ratio**2
         f = self.params['f']
         if X == 'P0L_b1b1':
-            P6X = self.P6[:, 0]*s12ratio
+            P6X = self.P6[:, 0, None]*s12ratio
         elif X == 'PNL_b1':
             fvec = np.array([f*s12ratio, f*s12ratio_sq, f**2*s12ratio_sq,
                              f**3*s12ratio_sq])
-            P6X = np.dot(self.P6[:, [1, 6, 7, 8]], fvec)
+            P6X = self.P6[:, [1, 6, 7, 8]] @ fvec
         elif X == 'PNL_id':
             f2 = f**2
             fvec = np.array([f2*s12ratio, f2*s12ratio_sq, f*f2*s12ratio_sq,
                              f2**2*s12ratio_sq])
-            P6X = np.dot(self.P6[:, [2, 9, 10, 11]], fvec)
+            P6X = self.P6[:, [2, 9, 10, 11]] @ fvec
         elif X == 'P1L_b1b1':
-            fvec = np.array([1, f, f**2])
-            P6X = np.dot(self.P6[:, [3, 4, 5]], fvec)*s12ratio_sq
+            fvec = np.array([np.ones_like(f), f, f**2])
+            P6X = (self.P6[:, [3, 4, 5]] @ fvec)*s12ratio_sq
         elif X == 'P1L_b1b2':
-            fvec = np.array([1, f])
-            P6X = np.dot(self.P6[:, [12, 13]], fvec)*s12ratio_sq
+            fvec = np.array([np.ones_like(f), f])
+            P6X = (self.P6[:, [12, 13]] @ fvec)*s12ratio_sq
         elif X == 'P1L_b1g2':
-            fvec = np.array([1, f])
-            P6X = np.dot(self.P6[:, [14, 15]], fvec)*s12ratio_sq
+            fvec = np.array([np.ones_like(f), f])
+            P6X = (self.P6[:, [14, 15]] @ fvec)*s12ratio_sq
         elif X == 'P1L_b1g21':
-            P6X = self.P6[:, 16]*s12ratio_sq
+            P6X = self.P6[:, 16, None]*s12ratio_sq
         elif X == 'P1L_b2b2':
-            P6X = self.P6[:, 17]*s12ratio_sq
+            P6X = self.P6[:, 17, None]*s12ratio_sq
         elif X == 'P1L_b2g2':
-            P6X = self.P6[:, 18]*s12ratio_sq
+            P6X = self.P6[:, 18, None]*s12ratio_sq
         elif X == 'P1L_g2g2':
-            P6X = self.P6[:, 19]*s12ratio_sq
+            P6X = self.P6[:, 19, None]*s12ratio_sq
         elif X == 'P1L_b2':
             fvec = np.array([f, f**2])
-            P6X = np.dot(self.P6[:, [20, 21]], fvec)*s12ratio_sq
+            P6X = (self.P6[:, [20, 21]] @ fvec)*s12ratio_sq
         elif X == 'P1L_g2':
             fvec = np.array([f, f**2])
-            P6X = np.dot(self.P6[:, [22, 23]], fvec)*s12ratio_sq
+            P6X = (self.P6[:, [22, 23]] @ fvec)*s12ratio_sq
         elif X == 'P1L_g21':
-            P6X = f*self.P6[:, 24]*s12ratio_sq
+            P6X = self.P6[:, 24, None]*f*s12ratio_sq
         elif X == 'Pctr_b1b1cnlo':
-            P6X = f**4*self.P6[:, 25]*s12ratio
+            P6X = self.P6[:, 25, None]*f**4*s12ratio
         elif X == 'Pctr_b1cnlo':
-            P6X = f**5*self.P6[:, 26]*s12ratio
+            P6X = self.P6[:, 26, None]*f**5*s12ratio
         elif X == 'Pctr_cnlo':
-            P6X = f**6*self.P6[:, 27]*s12ratio
+            P6X = self.P6[:, 27, None]*f**6*s12ratio
         return P6X
 
     def PX_ell(self, k, params, ell, X, de_model=None, binning=None,
@@ -2290,7 +2290,7 @@ class PTEmu:
                                   self.params[x] != 0)]
 
             if np.any(params_updated) \
-                    or np.any([p not in params.keys() for p in params_nonzero]:
+                    or np.any([p not in params.keys() for p in params_nonzero]):
                 self.eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
 
             if not self.X_splines_up_to_date[X]:
@@ -2315,8 +2315,8 @@ class PTEmu:
                                     self.Pk_ratios[m][ids[0]:ids[1]]
                             else:
                                 PX_ell[:, i] = self.PX_ell6_novir_noAP(X_emu)
-                    PX_ell[:,:len(ell_eval_emu)] = np.moveaxis(np.multiply(
-                        PX_ell[:,:len(ell_eval_emu)], self.Pk_lin), 0, 1)
+                    PX_ell[:,:len(ell_eval_emu)] = np.einsum("abc,ac->abc",
+                        PX_ell[:,:len(ell_eval_emu)], self.Pk_lin)
                 else:
                     if X_emu == 'Pnoise_NP0':
                         PX_ell[:, 0] = np.ones_like(self.k_table)
@@ -2408,52 +2408,6 @@ class PTEmu:
                             return_indices=True)[1]
                         PX_ell_dict['ell{}'.format(m)] = np.squeeze(
                             PX_ell_convolved[ids + int(m/2)*nb])
-
-            # mixing_matrix_exists = True
-            # try:
-            #     self.data[obs_id].bins_mixing_matrix
-            # except AttributeError:
-            #     mixing_matrix_exists = False
-            # try:
-            #     self.data[obs_id].W_mixing_matrix
-            # except AttributeError:
-            #     mixing_matrix_exists = False
-            # if mixing_matrix_exists:
-            #     ell_for_mixing_matrix = [0,2,4] if not self.real_space else [0]
-            #     PX_ell_model = self.PX_ell(
-            #         self.data[obs_id].bins_mixing_matrix_compressed,
-            #         params, ell_for_mixing_matrix, X, de_model,
-            #         obs_id=None, q_tr_lo=q_tr_lo, W_damping=W_damping,
-            #         ell_for_recon=ell_for_recon)
-            #     PX_ell_list = []
-            #     for l in ell_for_mixing_matrix:
-            #         spline = UnivariateSpline(
-            #             self.data[obs_id].bins_mixing_matrix_compressed,
-            #             PX_ell_model['ell{}'.format(l)], k=3, s=0)
-            #         PX_ell_list = np.hstack(
-            #             [PX_ell_list,
-            #              spline(self.data[obs_id].bins_mixing_matrix[1])])
-            #     PX_ell_convolved = np.dot(self.data[obs_id].W_mixing_matrix,
-            #                               PX_ell_list)
-            #     nb = len(self.data[obs_id].bins_mixing_matrix[0])
-            #
-            #     PX_ell_dict = {}
-            #     if k.size != np.intersect1d(
-            #         k, self.data[obs_id].bins_mixing_matrix[0]).size:
-            #             for i, m in enumerate(ell):
-            #                 spline = UnivariateSpline(
-            #                     self.data[obs_id].bins_mixing_matrix[0],
-            #                     PX_ell_convolved[int(m/2)*nb:(int(m/2)+1)*nb],
-            #                     k=3, s=0)
-            #                 PX_ell_dict['ell{}'.format(m)] = spline(k_list[i])
-            #     else:
-            #         for i, m in enumerate(ell):
-            #             ids = np.intersect1d(
-            #                 k_list[i],
-            #                 self.data[obs_id].bins_mixing_matrix[0],
-            #                 return_indices=True)[1]
-            #             PX_ell_dict['ell{}'.format(m)] = PX_ell_convolved[ids +
-            #                 int(m/2)*nb]
             else:
                 print('Warning! Bins for mixing matrix and/or mixing matrix '
                       'itself not provided. Returning unconvolved power '
