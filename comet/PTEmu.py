@@ -125,24 +125,6 @@ class PTEmu:
         self.Pk_lin = None
         self.Pk_ratios = {0: None, 2: None, 4: None}
 
-        # self.Pell_spline = {}
-        # self.Pell_lowk_extrapolation = {}
-        # self.Pell_highk_extrapolation = {}
-        # self.Pell_min = {}
-        # self.Pell_max = {}
-        # self.neff_min = {}
-        # self.neff_max = {}
-        #
-        # self.PX_ell_spline = {X: {} for X in self.diagrams_all}
-        # self.PX_ell_min = {X: {} for X in self.diagrams_all}
-        # self.PX_ell_max = {X: {} for X in self.diagrams_all}
-        # self.X_neff_min = {X: {} for X in self.diagrams_all}
-        # self.X_neff_max = {X: {} for X in self.diagrams_all}
-        # self.PX_ell_list = {}
-        #
-        # self.k_table_min = {}
-        # self.k_table_max = {}
-
         self.gl_x, self.gl_weights = np.polynomial.legendre.leggauss(10)
         self.gl_x = 0.5 * self.gl_x + 0.5
         self.gl_x2 = self.gl_x**2
@@ -161,6 +143,7 @@ class PTEmu:
         self.emu_params_updated = False
 
         self.chi2_decomposition = None
+        self.chi2_decomposition_convolve_window = False
         self.Bisp_chi2_decomposition = None
 
         try:
@@ -183,7 +166,9 @@ class PTEmu:
         self.Pdw_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
         self.PX_ell_spline = {}
         for X in self.diagrams_all:
+            id_min = self.nk - self.nkloop if 'P1L' in X else 0
             self.PX_ell_spline[X] = Splines(use_Mpc=self.use_Mpc, ncol=4,
+                                            id_min=id_min,
                                             crossover_check=True)
 
     def init_params_dict(self):
@@ -362,8 +347,11 @@ class PTEmu:
             self.Pdw_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
             self.PX_ell_spline = {}
             for X in self.diagrams_all:
+                id_min = self.nk - self.nkloop if 'P1L' in X else 0
                 self.PX_ell_spline[X] = Splines(use_Mpc=self.use_Mpc, ncol=4,
+                                                id_min=id_min,
                                                 crossover_check=True)
+                self.X_splines_up_to_date[X] = False
             self.splines_up_to_date = False
             self.dw_spline_up_to_date = False
             self.Bisp.define_units(self.use_Mpc)
@@ -2319,11 +2307,11 @@ class PTEmu:
                         PX_ell[:,:len(ell_eval_emu)], self.Pk_lin)
                 else:
                     if X_emu == 'Pnoise_NP0':
-                        PX_ell[:, 0] = np.ones_like(self.k_table)
+                        PX_ell[:, 0] = np.ones_like(self.k_table)[:,None]
                     elif X_emu == 'Pnoise_NP20':
-                        PX_ell[:, 0] = self.k_table**2
+                        PX_ell[:, 0] = (self.k_table**2)[:,None]
                     elif X_emu == 'Pnoise_NP22' and len(ell_for_recon) > 1:
-                        PX_ell[:, 1] = self.k_table**2
+                        PX_ell[:, 1] = (self.k_table**2)[:,None]
 
                 h = None if self.use_Mpc else self.params['h']
                 self.PX_ell_spline[X].build(self.k_table, PX_ell, h=h)
@@ -2906,6 +2894,7 @@ class PTEmu:
                                           for oi in obs_id \
                                           if l in self.data[oi].ell]))
                      for i,l in enumerate(ell_joint)]
+        n_obs = len(obs_id)
         chi2 = 0.0
         if not chi2_decomposition:
             convolve_obs_id = obs_id if convolve_window else None
@@ -2925,45 +2914,77 @@ class PTEmu:
                     diff = Pell_list - self.data[oi].signal_kmax
                 else:
                     Pell_list = np.vstack(
-                        [Pell['ell{}'.format(l)][ids[i],n::len(obs_id)]
+                        [Pell['ell{}'.format(l)][ids[i],n::n_obs]
                          for i,l in enumerate(ell[oi])])
                     diff = Pell_list - self.data[oi].signal_kmax[:,None]
                 chi2 += np.einsum("a...,a...", diff,
                                   self.data[oi].inverse_cov_kmax @ diff)
         else:
-            oi = obs_id[0]
+            # oi = obs_id[0]
             if compute_chi2_decomposition:
-                convolve_oi = oi if convolve_window else None
-                PX_ell_list = np.zeros([sum(self.data[oi].nbins),
-                                        len(self.diagrams_all)])
-                for i, X in enumerate(self.diagrams_all):
-                    PX_ell = self.PX_ell(self.data[oi].bins_kmax,
-                                         params, ell[oi], X,
-                                         binning=binning,
-                                         obs_id=convolve_oi,
-                                         de_model=de_model,
-                                         q_tr_lo=q_tr_lo,
-                                         W_damping=W_damping[oi],
-                                         ell_for_recon=ell_for_recon)
-                    PX_ell_list[:, i] = np.hstack([PX_ell[m] for m
-                                                   in PX_ell.keys()])
+                convolve_obs_id = obs_id if convolve_window else None
+                PX_ell = {}
+                for X in self.diagrams_all:
+                    PX_ell[X] = self.PX_ell(bins_kmax, params, ell_joint, X,
+                                            binning=binning,
+                                            obs_id=convolve_obs_id,
+                                            de_model=de_model, q_tr_lo=q_tr_lo,
+                                            W_damping=W_damping,
+                                            ell_for_recon=ell_for_recon)
 
+                n_diagrams = len(self.diagrams_all)
+                nparams_poi = int(self.nparams/n_obs)
                 self.chi2_decomposition = {}
-                self.chi2_decomposition['DD'] = self.data[oi].SN_kmax
-                self.chi2_decomposition['XD'] = PX_ell_list.T \
-                    @ self.data[oi].inverse_cov_kmax \
-                    @ self.data[oi].signal_kmax
-                self.chi2_decomposition['XX'] = PX_ell_list.T \
-                    @ self.data[oi].inverse_cov_kmax @ PX_ell_list
+                self.chi2_decomposition['DD'] = 0.0
+                self.chi2_decomposition['XD'] = np.empty((n_diagrams,
+                                                          n_obs, nparams_poi))
+                self.chi2_decomposition['XX'] = np.empty((n_diagrams,
+                                                          n_diagrams,
+                                                          n_obs, nparams_poi))
+                for n,oi in enumerate(obs_id):
+                    ids = [np.intersect1d(bins_kmax[i],
+                                          self.data[oi].bins_kmax[i],
+                                          return_indices=True)[1]
+                           for i,l in enumerate(ell[oi])]
+                    if PX_ell['P0L_b1b1']['ell{}'.format(ell[oi][0])].ndim == 1:
+                        # ndiag x nk x nell -> ndiag x (ids x nell)
+                        PX_ell_list = np.vstack([
+                            np.hstack([
+                                PX_ell[X]['ell{}'.format(l)][ids[i]]
+                                for i,l in enumerate(ell[oi])
+                            ]) for X in self.diagrams_all
+                        ])
+                    else:
+                        # ndiag x nk X nell x N -> ndiag x (ids x nell) x N
+                        PX_ell_list = np.stack([
+                            np.vstack([
+                                PX_ell[X]['ell{}'.format(l)][ids[i],
+                                                             n::n_obs]
+                                for i,l in enumerate(ell[oi])
+                            ]) for X in self.diagrams_all
+                        ])
+                    self.chi2_decomposition['DD'] += self.data[oi].SN_kmax
+                    self.chi2_decomposition['XD'][:,n] = \
+                        np.einsum("ab...,b->a...", PX_ell_list,
+                                  self.data[oi].inverse_cov_kmax \
+                                      @ self.data[oi].signal_kmax)
+                    self.chi2_decomposition['XX'][:,:,n] = \
+                        np.einsum("ab...,bc,dc...->ad...", PX_ell_list,
+                                  self.data[oi].inverse_cov_kmax,
+                                  PX_ell_list)
 
             self.update_bias_params(params)
             self.splines_up_to_date = False
             self.dw_spline_up_to_date = False
 
             bX = self.get_bias_coeff_for_chi2_decomposition()
-            chi2 += (bX @ self.chi2_decomposition['XX'] @ bX -
-                     2*bX @ self.chi2_decomposition['XD'] +
-                     self.chi2_decomposition['DD'])
+            for n in range(n_obs):
+                chi2 += np.einsum("ac,abc,bc->c", bX[:,n::n_obs],
+                                  self.chi2_decomposition['XX'][:,:,n],
+                                  bX[:,n::n_obs])
+                chi2 -= 2*np.einsum("ab,ab->b", bX[:,n::n_obs],
+                                    self.chi2_decomposition['XD'][:,n])
+            chi2 += self.chi2_decomposition['DD']
 
         return chi2
 
@@ -3216,8 +3237,12 @@ class PTEmu:
                 self.chi2_decomposition = None
                 self.X_binning = binning
 
+            if self.chi2_decomposition_convolve_window != convolve_window:
+                self.chi2_decomposition = None
+                self.chi2_decomposition_convolve_window = convolve_window
+
             params_changed = True if \
-                any(params[p] != self.params[p] for p in check_params) \
+                np.any([params[p] != self.params[p] for p in check_params]) \
                 else False
             compute_chi2_decomposition = True if params_changed \
                 or self.chi2_decomposition is None else False

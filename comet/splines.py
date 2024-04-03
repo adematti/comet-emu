@@ -7,9 +7,9 @@ class Splines:
     r"""Class for handling splined objects within Comet.
     """
 
-    def __init__(self, use_Mpc, ncol=0, crossover_check=False):
+    def __init__(self, use_Mpc, ncol=0, id_min=0, crossover_check=False):
         self.use_Mpc = use_Mpc
-        self.id_min = 0
+        self.id_min = id_min
         self.id_max = -1
         self.ncol = ncol
         self.crossover_check = crossover_check
@@ -30,11 +30,18 @@ class Splines:
                            for n in range(self.size_last)]
 
         # low-k extrapolation
-        dly_min = np.log10(np.abs(y[self.id_min+2]/y[self.id_min]))
-        dlx_min = np.log10(np.abs(x[self.id_min+2]/x[self.id_min]))
-        self.neff_min = dly_min/dlx_min
         self.y_min = y[self.id_min]
         self.x_min = np.atleast_1d(x[self.id_min])
+        ids_nonzero = self.y_min != 0
+        dly_min = np.empty_like(self.y_min)
+        dly_min[ids_nonzero] = np.log10(
+            np.abs(y[self.id_min+2][ids_nonzero]/self.y_min[ids_nonzero]))
+        dly_min[~ids_nonzero] = 0.0
+        # dly_min = np.where(self.y_min != 0,
+        #                    np.log10(np.abs(y[self.id_min+2]/self.y_min)),
+        #                    0.0)
+        dlx_min = np.log10(np.abs(x[self.id_min+2]/x[self.id_min]))
+        self.neff_min = dly_min/dlx_min
         if self.use_Mpc:
             self.extrapolation_min = lambda x,n: self.y_min[...,n] \
                 * np.divide.outer(x,self.x_min)**self.neff_min[...,n]
@@ -46,12 +53,20 @@ class Splines:
                     np.divide.outer(x,self.x_min[...,n]),self.neff_min[...,n])
 
         # high-k extrapolation
-        dy_max = np.abs(y[self.id_max]/y[self.id_max-2])
+        self.y_max = y[self.id_max]
+        self.x_max = np.atleast_1d(x[self.id_max])
+        ids_nonzero = y[self.id_max-2] != 0
+        dy_max = np.empty_like(self.y_max)
+        dy_max[ids_nonzero] = np.abs(
+            self.y_max[ids_nonzero]/y[self.id_max-2][ids_nonzero])
+        dy_max[~ids_nonzero] = 1.0
+        # dy_max = np.where(y[self.id_max-2] != 0,
+        #                   np.abs(self.y_max/y[self.id_max-2]),
+        #                   1.0)
         dly_max = np.log10(dy_max)
         dlx_max = np.log10(np.abs(x[self.id_max]/x[self.id_max-2]))
         self.neff_max = dly_max/dlx_max
-        self.y_max = y[self.id_max]
-        self.x_max = np.atleast_1d(x[self.id_max])
+        self.neff_max[np.isnan(self.neff_max)] = 0.0
         if self.use_Mpc:
             self.extrapolation_max_plaw = lambda x,n: self.y_max[...,n] \
                 * np.divide.outer(x,self.x_max)**self.neff_max[...,n]
