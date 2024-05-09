@@ -337,7 +337,6 @@ def run_chain(emu, fname_base, n_live=400, sampling_efficiency=0.8,
     
     def loglike(cube):
 
-        q_tr_loo=[q_perp,q_para]
         params=assign_params(cube)
 
         params_AM=['bGam3','cnlo','c0','c2','c4','NP0','NP20']
