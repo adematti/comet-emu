@@ -2889,6 +2889,14 @@ class PTEmu:
 
         
     def arrayfactors_marg(self,ctr2_shot):
+        r"""Compute the correct factors to add to the template for the analytical marginalization..
+
+        Return a matrix (array of array) where every array correspond to a redshift bin and all the the components to the relative PX_ell template.
+
+        Parameters
+        ----------
+        ctr2_shot: array of strings like ctr2_shot=['P1L_b1g21','P1L_g21','Pctr_b1b1cnlo','Pctr_b1cnlo','Pctr_cnlo','Pctr_c0', 'Pctr_c2', 'Pctr_c4','Pnoise_NP0','Pnoise_NP20','Pnoise_NP22']
+        """
         hfactor = np.array(self.params['h'])
         b1=np.array(self.params['b1'])
         b1sq=np.array(self.params['b1'])**2
@@ -2921,6 +2929,16 @@ class PTEmu:
                             W_damping=None, chi2_decomposition=False,
                             compute_chi2_decomposition=True,
                             ell_for_recon=None):
+        r"""Compute the analytical  marginalization.
+
+        Return a matrix (array of array) where every array correspond to a redshift bin and all the the components to the relative PX_ell template.
+
+        Parameters
+        ----------
+        params_tomarg: array of parameters to marginalize analytically over like params_tomarg=['c0','c2',..]
+        Gpriors : dictionary, mu and sigma for gaussian priors for analytical marginalization.
+        """
+        
         ell_joint = np.unique(np.hstack([ell[oi] for oi in obs_id])).tolist()
         bins_kmax = [np.unique(np.hstack([self.data[oi].bins_kmax[i]
                                           for oi in obs_id \
@@ -2929,12 +2947,11 @@ class PTEmu:
         n_obs = len(obs_id)
         
         ctr2_shot = [value for key in params_tomarg if key in self.diagrams_tomarg for value in self.diagrams_tomarg[key]]
-        print(ctr2_shot)
+
         lista=self.diagrams_all
         ####FOR CHI2 DEC
         Removing_templ={}
         for index, value in enumerate(self.diagrams_all):
-                #print(index,value)
             Removing_templ[value]=index
         
         z=np.array([Removing_templ[a] for a in ctr2_shot])
@@ -2972,18 +2989,16 @@ class PTEmu:
                     tot=()
                     if 'Pctr_b1b1cnlo' in ctr2_shot:
                         index=ctr2_shot.index('Pctr_b1b1cnlo'),ctr2_shot.index('Pctr_b1cnlo')
-                        #PX_ell_list2[ctr2_shot.index('Pctr_cnlo'),:]=np.sum(PX_ell_list2[index,:],axis=0)
-                        #PX_ell_list2=np.delete(PX_ell_list2,index[0:2],axis=0)
                         tot+=index
                         PX_ell_list2[ctr2_shot.index('Pctr_cnlo'),:]=PX_ell_list2[ ctr2_shot.index('Pctr_b1b1cnlo')]+PX_ell_list2[ctr2_shot.index('Pctr_cnlo'),:]+PX_ell_list2[ctr2_shot.index('Pctr_b1cnlo'),:]
                     if 'P1L_b1g21' in ctr2_shot:
                         index2=ctr2_shot.index('P1L_b1g21'),ctr2_shot.index('P1L_g21')
-                        #PX_ell_list2[ctr2_shot.index('P1L_b1g21'),:]=np.sum(PX_ell_list2[index2,:],axis=0)
+
                         PX_ell_list2[ctr2_shot.index('P1L_b1g21'),:]=PX_ell_list2[ ctr2_shot.index('P1L_b1g21')]+PX_ell_list2[ctr2_shot.index('P1L_g21'),:]
-                        #PX_ell_list2=np.delete(PX_ell_list2,index[1],axis=0)
+
                         tot+=(index2,)
                     
-                    #tot=ctr2_shot.index('P1L_g21')#ctr2_shot.index('Pctr_b1b1cnlo'),ctr2_shot.index('Pctr_b1cnlo'),
+
                     PX_ell_list2=np.delete(PX_ell_list2,tot,axis=0)
                     Aij=(np.einsum('ri, ij, mj-> rm', PX_ell_list2,self.data[oi].inverse_cov_kmax,PX_ell_list2))+ np.diag(1/sigma**2)
                     invA=np.linalg.inv(Aij)
@@ -2997,37 +3012,27 @@ class PTEmu:
                         [Pell['ell{}'.format(l)][ids[i],n::n_obs]
                             for i,l in enumerate(ell[oi])])
                     diff = Pell_list - self.data[oi].signal_kmax[:,None]
-                    #print(Pell_list)
-                    #print(diff.shape)
+
                     PX_ell_list2 = np.stack([np.vstack([PX_ell[X]['ell{}'.format(l)][ids[i],n::n_obs] for i,l in enumerate(ell[oi])]) for X in ctr2_shot])
                     PX_ell_list2=PX_ell_list2[:,:,0]/(self.arrayfactors_marg(ctr2_shot)[n])[:,np.newaxis]
-                    #PX_ell_list2=PX_ell_list2
                     tot=()
                     if 'Pctr_b1b1cnlo' in ctr2_shot:
                         index=ctr2_shot.index('Pctr_b1b1cnlo'),ctr2_shot.index('Pctr_b1cnlo')
-                        #PX_ell_list2[ctr2_shot.index('Pctr_cnlo'),:]=np.sum(PX_ell_list2[index,:],axis=0)
-                        #PX_ell_list2=np.delete(PX_ell_list2,index[0:2],axis=0)
                         tot+=index
                         PX_ell_list2[ctr2_shot.index('Pctr_cnlo'),:]=PX_ell_list2[ ctr2_shot.index('Pctr_b1b1cnlo')]+PX_ell_list2[ctr2_shot.index('Pctr_cnlo'),:]+PX_ell_list2[ctr2_shot.index('Pctr_b1cnlo'),:]
                     if 'P1L_b1g21' in ctr2_shot:
                         index2=ctr2_shot.index('P1L_g21')
-                        #PX_ell_list2[ctr2_shot.index('P1L_b1g21'),:]=np.sum(PX_ell_list2[index2,:],axis=0)
-                        #PX_ell_list2=np.delete(PX_ell_list2,index[1],axis=0)
                         tot+=(index2,)
-                        #tot=np.append(tot,ctr2_shot.index('P1L_g21'))
                         PX_ell_list2[ctr2_shot.index('P1L_b1g21'),:]=PX_ell_list2[ctr2_shot.index('P1L_b1g21')]+PX_ell_list2[ctr2_shot.index('P1L_g21'),:]
                     
-                    #PX_ell_list2[ctr2_shot.index('Pnoise_NP0'),:]=PX_ell_list2[ ctr2_shot.index('Pnoise_NP0')]#-1/self.nbar
-                    #tot=ctr2_shot.index('Pctr_b1b1cnlo'),ctr2_shot.index('Pctr_b1cnlo'),ctr2_shot.index('P1L_g21')
-                    #print(tot)
-                    #tot=ctr2_shot.index('Pctr_b1b1cnlo'),ctr2_shot.index('Pctr_b1cnlo'),ctr2_shot.index('P1L_g21')#
+
                     PX_ell_list2=np.delete(PX_ell_list2,tot,axis=0)
                     Aij=(np.einsum('ri, ij, mj-> rm', PX_ell_list2,self.data[oi].inverse_cov_kmax,PX_ell_list2))+ np.diag(1/sigma**2)
                     invA=np.linalg.inv(Aij)
                     logDetA=np.log(np.linalg.det(Aij))
                     Bi=(PX_ell_list2 @ self.data[oi].inverse_cov_kmax @ diff)[:,0]+(mui/(sigma**2))
 
-                    #BxA2=np.einsum('ik,ij,jm',Bi,invA,Bi)
+
                     BxA2=np.einsum('i,ij,j',Bi,invA,Bi)
                     C0=0.5*np.einsum('i...,ij,j...',diff,self.data[oi].inverse_cov_kmax,diff)+0.5*np.einsum('i,i',mui**2,sigma**2)
 
