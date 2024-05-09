@@ -2936,7 +2936,7 @@ class PTEmu:
         Parameters
         ----------
         params_tomarg: array of parameters to marginalize analytically over like params_tomarg=['c0','c2',..]
-        Gpriors : dictionary, mu and sigma for gaussian priors for analytical marginalization.
+        Gpriors : dictionary, mu and sigma for gaussian priors for analytical marginalization, they should be given in the same order as the parameter.
         """
         
         ell_joint = np.unique(np.hstack([ell[oi] for oi in obs_id])).tolist()
