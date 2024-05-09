@@ -8,16 +8,12 @@ from comet import comet
 import pymultinest 
 import configparser
 import json
-#from comet import PTEmu
-import emcee
 import cProfile
 import re
 
 
 
-#fiducial_values={}
-#fiducial_values = {'z':[1.0,1.2,1.4,1.65],'h':[0.67,0.67,0.67,0.67], 'wc':[0.121203,0.121203,0.121203,0.121203] ,'wb':[0.0219961,0.0219961,0.0219961,0.0219961] ,'ns':[0.96,0.96,0.96,0.96] ,'As':[2.1,2.1,2.1,2.1], 'b1':2.02, 'b2':0., 'g2':0., 'g21':0.,\
-#'bG2':0,'bGam3':0,'c0':0., 'c2':0., 'c4':0., 'cnlo':0., 'avir':0., 'NP0':0., 'NP20':0., 'NP22':0.}
+
 
 fiducial_values = {'z':1.0,'h':0.67, 'wc':0.121203, 'wb':0.0219961,'w0':-1.0, 'wa':0.0, 'ns':0.96, 'As':2.1, 'b1':2.02, 'b2':0., 'g2':0., 'g21':0.,\
                   'bG2':0,'bGam3':0,'c0':0., 'c2':0., 'c4':0., 'cnlo':0., 'avir':0., 'NP0':0., 'NP20':0., 'NP22':0.}
@@ -206,13 +202,14 @@ with open('{}.ranges'.format(fname_chain), "w") as franges:
 '''
 params_fid_comet = {par: np.repeat(cosmo_fid[par], 4) for par in ['h', 'wc', 'wb', 'ns', 'As']}
 params_fid_comet['z']=[1.0, 1.2, 1.4, 1.65]
+
 print('oleeee',params_fid_comet)
 def init_emu():
 
     emu = comet(model=model, use_Mpc=False)
 
     emu.define_fiducial_cosmology(params_fid=params_fid_comet)
-    emu.define_nbar(nbar=nbar)#define_nbar(nbar=nbar)
+    emu.define_nbar(nbar=nbar)
 
     data = np.loadtxt(fname_data)
 
@@ -223,7 +220,6 @@ def init_emu():
 
     if discretized:
         kvec = np.arange(2*np.pi/l_box, n_fft*2*np.pi/l_box+2*np.pi/l_box, 2*np.pi/l_box)
-        #kvec = np.arange(4*np.pi/l_box, n_fft*4*np.pi/l_box+4*np.pi/l_box, 4*np.pi/l_box)
 
     else:
         kvec = data[:,0]
@@ -258,7 +254,6 @@ def init_emu():
     hexavec4=data4[:,5]
     
     signal4 = np.asarray([monovec4, quadvec4, hexavec4]).T
-    #signal = np.asarray([monovec, quadvec]).T
     emu.change_bias_basis('AssBauGre')
     emu.define_data_set('Pk',zeff=1.0, bins=kvec, signal=signal,cov=cov)
 
@@ -309,45 +304,14 @@ def run_chain(emu, fname_base, n_live=400, sampling_efficiency=0.8,
                     n += 1
                 else:
                     params[p] = fiducial_values[p]
-        #print('La lista di parametrius',params)
-                #print(p,n)
-        #print(n)
+
         params['z']=[1.0,1.2,1.4,1.65]
-        #params['h']=cube[13]
-        #cProfile.run('re.compile("foo|bar")')
+
         return params
     
-    
-    #print('supermiao',params_sampling_new)
+
     n_params = len(params22)
 
-    #Two ways of defining the priors and they both works
-    '''
-    def prior(cube):
-        n=0
-        #print(params22)
-        for p in params22:   
-            #print(n)
-            try:
-                priorType=priors[p][2]
-            except:
-                #print('As no prior type is defined, we are assuming Uniform prior on' + p)
-                priorType='uniform'
-
-            if priorType=='uniform':
-                #print(n,'Uniform prior on' + p)
-                cube[n] = priors[p][0] + (priors[p][1] - priors[p][0])*cube[n]
-                n+=1
-
-            elif priorType=='gaussian':
-                #print(n,'Gaussian prior on' + p)
-                cube[n] = priors[p][0] + priors[p][1]*ndtri(cube[n]) 
-                n+=1
-                #cube[n]=norm(priors[p][0], priors[p][1]).ppf(cube[n])
-            #n+=1
-            #print(p,n)
-        return cube
-        '''
 
     def prior(cube):
         for n in range(n_params):
@@ -366,38 +330,25 @@ def run_chain(emu, fname_base, n_live=400, sampling_efficiency=0.8,
             elif priorType=='gaussian':
                 #print('Gaussian prior on' + p)
                 cube[n] = priors[p][0] + priors[p][1]*ndtri(cube[n]) 
-                #cube[n]=norm(priors[p][0], priors[p][1]).ppf(cube[n])
-        #cProfile.run('re.compile("foo|bar")')
-            #print(priorType)
-            #cube[12]=priors['h'][0] + priors['h'][1]*ndtri(cube[12]) 
+
         return cube
 
         
     
     def loglike(cube):
-        q_para = [1.0,1.0,1.0,1.0]
-        q_perp = [1.0,1.0,1.0,1.0]
-        #q_para=1.0
-        #q_perp=1.0
+
         q_tr_loo=[q_perp,q_para]
         params=assign_params(cube)
-        #print(params)
-        
+
+        params_AM=['bGam3','cnlo','c0','c2','c4','NP0','NP20']
         Gpriors1={}
-        #Gpriors1['Pk2']={'mu':[0,0,0],'sigma':[500,500,500]}
         Gpriors1['Pk']={'mu':[0,0,0,0,0,1,0],'sigma':[5,500,500,500,500,1,10]}
         Gpriors1['Pk2']={'mu':[0,0,0,0,0,1,0],'sigma':[5,500,500,500,500,1,10]}
         Gpriors1['Pk3']={'mu':[0,0,0,0,0,1,0],'sigma':[5,500,500,500,500,1,10]}
         Gpriors1['Pk4']={'mu':[0,0,0,0,0,1,0],'sigma':[5,500,500,500,500,1,10]}
-        #ctr3_shot=['P1L_b1g21','P1L_g21','Pctr_c0', 'Pctr_c2', 'Pctr_c4','Pnoise_NP0']
-        #ctr3_shot=['P1L_b1g21','P1L_g21','Pctr_b1b1cnlo','Pctr_b1cnlo','Pctr_cnlo','Pctr_c0', 'Pctr_c2', 'Pctr_c4','Pnoise_NP0','Pnoise_NP20']
-        #ctr3_shot=['P1L_b1g21','P1L_g21','Pctr_b1b1cnlo','Pctr_b1cnlo','Pctr_cnlo','Pctr_c0', 'Pctr_c2', 'Pctr_c4','Pnoise_NP0','Pnoise_NP20','Pnoise_NP22']
-        #
-        params_AM=['bGam3','cnlo','c0','c2','c4','NP0','NP20']
+        
         chi2=emu.chi2(['Pk','Pk2','Pk3','Pk4'], params, {'Pk':0.3, 'Pk2':0.3, 'Pk3':0.3,'Pk4':0.3}, de_model='lambda',chi2_decomposition=False,binning = binning,convolve_window=convolve_window,Analytical_Marg=True,params_tomarg=params_AM,Gpriors=Gpriors1)
-        #chi2=emu.chi2('Pk', params, 0.2, de_model='lambda',chi2_decomposition=False,binning = binning,convolve_window=convolve_window,Analytical_Marg=True,q_tr_lo=q_tr_loo,ctr2_shot=ctr3_shot,Gpriors=Gpriors1)
 
-        #cProfile.run('re.compile("foo|bar")')
 
         return chi2
     
