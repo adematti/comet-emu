@@ -2920,7 +2920,6 @@ class PTEmu:
                 chi2 += np.einsum("a...,a...", diff,
                                   self.data[oi].inverse_cov_kmax @ diff)
         else:
-            # oi = obs_id[0]
             if compute_chi2_decomposition:
                 convolve_obs_id = obs_id if convolve_window else None
                 PX_ell = {}
@@ -3253,7 +3252,6 @@ class PTEmu:
             compute_Bisp_chi2_decomposition = None
 
         # TODO:
-        # - extend multi parameter sampling to chi2_decomposition
         # - extend multi parameter sampling to bispectrum
 
         # sort params dictionary:

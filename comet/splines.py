@@ -37,9 +37,6 @@ class Splines:
         dly_min[ids_nonzero] = np.log10(
             np.abs(y[self.id_min+2][ids_nonzero]/self.y_min[ids_nonzero]))
         dly_min[~ids_nonzero] = 0.0
-        # dly_min = np.where(self.y_min != 0,
-        #                    np.log10(np.abs(y[self.id_min+2]/self.y_min)),
-        #                    0.0)
         dlx_min = np.log10(np.abs(x[self.id_min+2]/x[self.id_min]))
         self.neff_min = dly_min/dlx_min
         if self.use_Mpc:
@@ -60,9 +57,6 @@ class Splines:
         dy_max[ids_nonzero] = np.abs(
             self.y_max[ids_nonzero]/y[self.id_max-2][ids_nonzero])
         dy_max[~ids_nonzero] = 1.0
-        # dy_max = np.where(y[self.id_max-2] != 0,
-        #                   np.abs(self.y_max/y[self.id_max-2]),
-        #                   1.0)
         dly_max = np.log10(dy_max)
         dlx_max = np.log10(np.abs(x[self.id_max]/x[self.id_max-2]))
         self.neff_max = dly_max/dlx_max
