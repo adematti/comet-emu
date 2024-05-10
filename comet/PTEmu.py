@@ -1096,6 +1096,14 @@ class PTEmu:
         t = 1.0 + lsq*self.params['avirB']**2
         return 1.0/np.sqrt(t**3) * np.exp(-lsq*self.params['sv']**2/t)
 
+    def W_obs_syst(self, k, mu):
+        if np.all(self.params['sigma_z'] == 0.0):
+            t = 1.0
+        else:
+            sigma_r = self.cosmo.light_speed/self.H_fid * self.params['sigma_z']
+            t = np.exp(-(k * mu * sigma_r)**2)
+        return t * (1.0 - self.params['f_out'])**2
+
     def PL(self, k, params, de_model=None):
         r"""Compute the linear power spectrum predictions.
 
@@ -1354,7 +1362,7 @@ class PTEmu:
         return Pell
 
     # TODO
-    def Pell_quad(self, k, params, ell, de_model=None, binning=None,
+    def _Pell_quad(self, k, params, ell, de_model=None, binning=None,
                   obs_id=None, q_tr_lo=None, W_damping=None,
                   ell_for_recon=None):
         r"""Compute the power spectrum multipoles.
@@ -1715,10 +1723,11 @@ class PTEmu:
         keff = self.grid.keff if use_effective_modes else k
 
         if self.RSD_model == 'EFT':
-            W_damping = lambda k, mu: 1.0
+            W_damping = self.W_obs_syst
         elif self.RSD_model == 'VDG_infty':
             if W_damping is None:
-                W_damping = self.W_kurt
+                W_damping = lambda k, mu: self.W_kurt(k,mu) \
+                                          * self.W_obs_syst(k, mu)
         else:
             raise ValueError('Unsupported RSD model.')
 
@@ -1732,12 +1741,6 @@ class PTEmu:
                 + self.params['NP22']*eval_legendre(2,mu))
             return t/self.nbar # nk x nmu x N
 
-        def damping_zerr(q, mu):
-            sigma_r = \
-                self.cosmo.light_speed / self.H_fid * self.params['sigma_z']
-            t = np.exp(-(q * mu * sigma_r)**2)
-            return t
-
         def LOS_average_continuous():
             mu = self.gl_x
             mu2 = self.gl_x2
@@ -1746,9 +1749,7 @@ class PTEmu:
                 + np.divide.outer(1.0 - mu2, self.params['q_tr']**2))
             kp = np.multiply.outer(keff, APfac)
             mup = np.divide.outer(mu, self.params['q_lo'])/APfac
-            P2d_tot = P2d(kp, mup) * W_damping(kp, mup) \
-                * damping_zerr(kp, mup) * (1.0 - self.params['f_out'])**2 \
-                + P2d_stoch(kp, mup)
+            P2d_tot = P2d(kp, mup) * W_damping(kp, mup) + P2d_stoch(kp, mup)
             legendre = eval_legendre.outer(ell, mu)
             return 0.5 * np.einsum("abc,db,b->adc", P2d_tot, legendre,
                                    self.gl_weights) # nk x nell x N x nmu
@@ -1761,9 +1762,7 @@ class PTEmu:
             kp = np.einsum("a,ab->ab", self.grid.k, APfac)
             mup = np.divide.outer(self.grid.mu, self.params['q_lo'])/APfac
             legendre = eval_legendre.outer(ell, self.grid.mu)
-            P2d_tot = P2d(kp, mup) * W_damping(kp, mup) \
-                * damping_zerr(kp, mup) * (1.0 - self.params['f_out'])**2 \
-                + P2d_stoch(kp, mup)
+            P2d_tot = P2d(kp, mup) * W_damping(kp, mup) + P2d_stoch(kp, mup)
             avg = np.add.reduceat(
                 np.einsum("ab,bc,b->bac", legendre, P2d_tot,
                           self.grid.weights),
@@ -1874,8 +1873,9 @@ class PTEmu:
         return Pell_dict
 
     # TODO
-    def Pell_fixed_cosmo_boost(self, k, params, ell, de_model=None,
-                               binning=None, obs_id=None, q_tr_lo=None, W_damping=None, ell_for_recon=None):
+    def _Pell_fixed_cosmo_boost(self, k, params, ell, de_model=None,
+                                binning=None, obs_id=None, q_tr_lo=None,
+                                W_damping=None, ell_for_recon=None):
         r"""Compute the power spectrum multipoles (fast for fixed cosmology).
 
         Main method to compute the galaxy power spectrum multipoles.
@@ -2010,7 +2010,7 @@ class PTEmu:
         return Pell_dict
 
     # TODO
-    def PX(self, k, mu, params, X, de_model=None):
+    def _PX(self, k, mu, params, X, de_model=None):
         r"""Compute the individual contribution X to the galaxy power spectrum.
 
         Returns the individual anisotropic contribution X to the galaxy power
@@ -2261,10 +2261,11 @@ class PTEmu:
         keff = self.grid.keff if use_effective_modes else k
 
         if self.RSD_model == 'EFT':
-            W_damping = lambda k, mu: 1.0
+            W_damping = self.W_obs_syst
         elif self.RSD_model == 'VDG_infty':
             if W_damping is None:
-                W_damping = self.W_kurt
+                W_damping = lambda k, mu: self.W_kurt(k, mu) \
+                                          * self.W_obs_syst(k, mu)
         else:
             raise ValueError('Unsupported RSD model.')
 
@@ -2274,12 +2275,6 @@ class PTEmu:
                           eval_legendre.outer(np.array(ell_for_recon),mu))
             return t # nk x nmu x N
 
-        def damping_zerr(q, mu):
-            sigma_r = \
-                self.cosmo.light_speed / self.H_fid * self.params['sigma_z']
-            t = np.exp(-(q * mu * sigma_r)**2)
-            return t
-
         def LOS_average_continuous():
             mu = self.gl_x
             mu2 = self.gl_x2
@@ -2288,8 +2283,7 @@ class PTEmu:
                 + np.divide.outer(1.0 - mu2, self.params['q_tr']**2))
             kp = np.multiply.outer(keff, APfac)
             mup = np.divide.outer(mu, self.params['q_lo'])/APfac
-            P2d_tot = P2d(kp, mup) * W_damping(kp, mup) \
-                * damping_zerr(kp, mup) * (1.0 - self.params['f_out'])**2
+            P2d_tot = P2d(kp, mup) * W_damping(kp, mup)
             legendre = eval_legendre.outer(ell, mu)
             return 0.5 * np.einsum("abc,db,b->adc", P2d_tot, legendre,
                                    self.gl_weights) # nk x nell x N x nmu
@@ -2302,8 +2296,7 @@ class PTEmu:
             kp = np.einsum("a,ab->ab", self.grid.k, APfac)
             mup = np.divide.outer(self.grid.mu, self.params['q_lo'])/APfac
             legendre = eval_legendre.outer(ell, self.grid.mu)
-            P2d_tot = P2d(kp, mup) * W_damping(kp, mup) \
-                * damping_zerr(kp, mup) * (1.0 - self.params['f_out'])**2
+            P2d_tot = P2d(kp, mup) * W_damping(kp, mup)
             avg = np.add.reduceat(
                 np.einsum("ab,bc,b->bac", legendre, P2d_tot,
                           self.grid.weights),
