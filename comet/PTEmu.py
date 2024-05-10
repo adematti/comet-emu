@@ -97,6 +97,9 @@ class PTEmu:
             'lambda': ['h', 'As', 'Ok', 'z'],
             'w0': ['h', 'As', 'Ok', 'w0', 'z'],
             'w0wa': ['h', 'As', 'Ok', 'w0', 'wa', 'z']}
+        self.obs_syst_params_list = ['sigma_z', 'f_out']
+
+
         self.cnloB_type = 'EggLeeSco'
 
         self.n_diagrams = 19
@@ -180,7 +183,8 @@ class PTEmu:
         """
         self.params = {p: np.array([0.0]) for p in self.params_list +
                        self.bias_params_list + self.RSD_params_list +
-                       self.de_model_params_list['w0wa']}
+                       self.de_model_params_list['w0wa'] +
+                       self.obs_syst_params_list}
         self.params['w0'] = np.array([-1.0])
         self.params['q_tr'] = np.array([1.0])
         self.params['q_lo'] = np.array([1.0])
@@ -578,21 +582,26 @@ class PTEmu:
             self.chi2_decomposition = None
             self.Bisp_chi2_decomposition = None
 
-        RSD_params_updated = np.any([params[p] != self.params[p] for p
-                                     in list(set(params) \
-                                          & set(self.RSD_params_list))])
+        RSD_params_updated = \
+            np.any([params[p] != self.params[p] for p
+                    in list(set(params) & set(self.RSD_params_list)) +
+                    list(set(params) & set(self.obs_syst_params_list))])
         if RSD_params_updated:
             self.chi2_decomposition = None
             self.Bisp_chi2_decomposition = None
 
-        self.update_bias_params(params, include_RSD_params=True)
+        self.update_bias_params(params, include_RSD_params=True,
+                                include_obs_syst_params=True)
 
         return emu_params_updated
 
-    def update_bias_params(self, params, include_RSD_params=False):
+    def update_bias_params(self, params, include_RSD_params=False,
+                           include_obs_syst_params=False):
         params_list = self.bias_params_list.copy()
         if include_RSD_params:
             params_list += self.RSD_params_list
+        if include_obs_syst_params:
+            params_list += self.obs_syst_params_list
 
         for p in params_list:
             if p in params.keys():
@@ -1087,6 +1096,14 @@ class PTEmu:
         t = 1.0 + lsq*self.params['avirB']**2
         return 1.0/np.sqrt(t**3) * np.exp(-lsq*self.params['sv']**2/t)
 
+    def W_obs_syst(self, k, mu):
+        if np.all(self.params['sigma_z'] == 0.0):
+            t = 1.0
+        else:
+            sigma_r = self.cosmo.light_speed/self.H_fid * self.params['sigma_z']
+            t = np.exp(-(k * mu * sigma_r)**2)
+        return t * (1.0 - self.params['f_out'])**2
+
     def PL(self, k, params, de_model=None):
         r"""Compute the linear power spectrum predictions.
 
@@ -1345,7 +1362,7 @@ class PTEmu:
         return Pell
 
     # TODO
-    def Pell_quad(self, k, params, ell, de_model=None, binning=None,
+    def _Pell_quad(self, k, params, ell, de_model=None, binning=None,
                   obs_id=None, q_tr_lo=None, W_damping=None,
                   ell_for_recon=None):
         r"""Compute the power spectrum multipoles.
@@ -1449,6 +1466,12 @@ class PTEmu:
                 + self.params['NP22']*eval_legendre(2,mu))
             return t/self.nbar
 
+        def damping_zerr(q, mu):
+            sigma_r = \
+                self.cosmo.light_speed / self.H_fid * self.params['sigma_z']
+            t = np.exp(-(q * mu * sigma_r)**2)
+            return t
+
         if self.RSD_model == 'EFT':
 
             if binning is None or use_effective_modes:
@@ -1458,7 +1481,8 @@ class PTEmu:
                                     (1.0 - mu2)/self.params['q_tr']**2)
                     kp = keff*APfac
                     mup = mu/self.params['q_lo']/APfac
-                    P2d_tot = P2d(kp, mup) + P2d_stoch(kp, mup)
+                    P2d_tot = P2d(kp, mup) * damping_zerr(kp, mup) \
+                        * (1.0 - self.params['f_out'])**2 + P2d_stoch(kp, mup)
                     return np.outer(P2d_tot, eval_legendre(ell, mu))
             else:
                 def shell_average():
@@ -1469,7 +1493,9 @@ class PTEmu:
                     mup = self.grid.mu/self.params['q_lo']/APfac
                     legendre = np.array([eval_legendre(l, self.grid.mu)
                                          for l in ell])
-                    prod = (P2d(kp, mup) + P2d_stoch(kp, mup)) * legendre
+                    prod = (P2d(kp, mup) * damping_zerr(kp, mup)
+                            * (1.0 - self.params['f_out'])**2
+                            + P2d_stoch(kp, mup)) * legendre
                     avg = np.zeros([len(self.grid.nmodes)-1, len(ell)])
                     for i in range(len(self.grid.nmodes)-1):
                         n1 = self.grid.nmodes[i]
@@ -1490,7 +1516,8 @@ class PTEmu:
                     kp = keff*APfac
                     mup = mu/self.params['q_lo']/APfac
                     P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
-                    P2d_tot = P2d_damped + P2d_stoch(kp, mup)
+                    P2d_tot = P2d_damped * damping_zerr(kp, mup) \
+                        * (1.0 - self.params['f_out'])**2 + P2d_stoch(kp, mup)
                     return np.outer(P2d_tot, eval_legendre(ell, mu))
             else:
                 def  shell_average():
@@ -1502,7 +1529,9 @@ class PTEmu:
                     legendre = np.array([eval_legendre(l, self.grid.mu)
                                          for l in ell])
                     P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
-                    prod = (P2d_damped + P2d_stoch(kp, mup)) * legendre
+                    prod = (P2d_damped * damping_zerr(kp, mup)
+                            * (1.0 - self.params['f_out'])**2
+                            + P2d_stoch(kp, mup)) * legendre
                     avg = np.zeros([len(self.grid.nmodes)-1, len(ell)])
                     for i in range(len(self.grid.nmodes)-1):
                         n1 = self.grid.nmodes[i]
@@ -1518,7 +1547,8 @@ class PTEmu:
             params_updated = [params[p] != self.params[p] for p in
                               params.keys()]
             params_nonzero = [x for x in self.bias_params_list +
-                              self.RSD_params_list if self.params[x] != 0]
+                              self.RSD_params_list +
+                              self.obs_syst_params_list if self.params[x] != 0]
 
             if (any(params_updated) or
                     any(p not in params.keys() for p in params_nonzero) or
@@ -1693,10 +1723,11 @@ class PTEmu:
         keff = self.grid.keff if use_effective_modes else k
 
         if self.RSD_model == 'EFT':
-            W_damping = lambda k, mu: 1.0
+            W_damping = self.W_obs_syst
         elif self.RSD_model == 'VDG_infty':
             if W_damping is None:
-                W_damping = self.W_kurt
+                W_damping = lambda k, mu: self.W_kurt(k,mu) \
+                                          * self.W_obs_syst(k, mu)
         else:
             raise ValueError('Unsupported RSD model.')
 
@@ -1731,8 +1762,7 @@ class PTEmu:
             kp = np.einsum("a,ab->ab", self.grid.k, APfac)
             mup = np.divide.outer(self.grid.mu, self.params['q_lo'])/APfac
             legendre = eval_legendre.outer(ell, self.grid.mu)
-            P2d_tot = P2d(kp, mup) * W_damping(kp, mup) \
-                      + P2d_stoch(kp, mup)
+            P2d_tot = P2d(kp, mup) * W_damping(kp, mup) + P2d_stoch(kp, mup)
             avg = np.add.reduceat(
                 np.einsum("ab,bc,b->bac", legendre, P2d_tot,
                           self.grid.weights),
@@ -1744,8 +1774,8 @@ class PTEmu:
             params_updated = [params[p] != self.params[p] for p in
                               params.keys()]
             params_nonzero = [x for x in self.bias_params_list +
-                              self.RSD_params_list if np.any(
-                                  self.params[x] != 0)]
+                              self.RSD_params_list + self.obs_syst_params_list
+                              if np.any(self.params[x] != 0)]
 
             if (np.any(params_updated) or
                     np.any([p not in params.keys() for p in params_nonzero]) or
@@ -1843,8 +1873,9 @@ class PTEmu:
         return Pell_dict
 
     # TODO
-    def Pell_fixed_cosmo_boost(self, k, params, ell, de_model=None,
-                               binning=None, obs_id=None, q_tr_lo=None, W_damping=None, ell_for_recon=None):
+    def _Pell_fixed_cosmo_boost(self, k, params, ell, de_model=None,
+                                binning=None, obs_id=None, q_tr_lo=None,
+                                W_damping=None, ell_for_recon=None):
         r"""Compute the power spectrum multipoles (fast for fixed cosmology).
 
         Main method to compute the galaxy power spectrum multipoles.
@@ -1922,17 +1953,19 @@ class PTEmu:
             k_list = [k]*len(ell)
 
         if de_model is None and self.use_Mpc:
-            check_params = self.params_list + self.RSD_params_list
+            check_params = (self.params_list + self.RSD_params_list +
+                            self.obs_syst_params_list)
         elif de_model is None and not self.use_Mpc:
-            check_params = self.params_list + ['h'] + self.RSD_params_list
+            check_params = (self.params_list + ['h'] + self.RSD_params_list +
+                            self.obs_syst_params_list)
         else:
             check_params = self.params_shape_list \
                            + self.de_model_params_list[de_model] \
-                           + self.RSD_params_list
+                           + self.RSD_params_list + self.obs_syst_params_list
             if 'Ok' not in params:
                 check_params.remove('Ok')
 
-        for p in self.RSD_params_list:
+        for p in self.RSD_params_list+self.obs_syst_params_list:
             if p not in params:
                 check_params.remove(p)
 
@@ -1977,7 +2010,7 @@ class PTEmu:
         return Pell_dict
 
     # TODO
-    def PX(self, k, mu, params, X, de_model=None):
+    def _PX(self, k, mu, params, X, de_model=None):
         r"""Compute the individual contribution X to the galaxy power spectrum.
 
         Returns the individual anisotropic contribution X to the galaxy power
@@ -2228,10 +2261,11 @@ class PTEmu:
         keff = self.grid.keff if use_effective_modes else k
 
         if self.RSD_model == 'EFT':
-            W_damping = lambda k, mu: 1.0
+            W_damping = self.W_obs_syst
         elif self.RSD_model == 'VDG_infty':
             if W_damping is None:
-                W_damping = self.W_kurt
+                W_damping = lambda k, mu: self.W_kurt(k, mu) \
+                                          * self.W_obs_syst(k, mu)
         else:
             raise ValueError('Unsupported RSD model.')
 
@@ -2274,8 +2308,8 @@ class PTEmu:
             params_updated = [params[p] != self.params[p] for p in
                               params.keys()]
             params_nonzero = [x for x in self.bias_params_list +
-                              self.RSD_params_list if np.any(
-                                  self.params[x] != 0)]
+                              self.RSD_params_list + self.obs_syst_params_list
+                              if np.any(self.params[x] != 0)]
 
             if np.any(params_updated) \
                     or np.any([p not in params.keys() for p in params_nonzero]):
@@ -3217,18 +3251,19 @@ class PTEmu:
             # check if cosmological + RSD parameters have changed, if so,
             # re-evaluate chi2 decomposition
             if de_model is None and self.use_Mpc:
-                check_params = self.params_list + self.RSD_params_list
+                check_params = (self.params_list + self.RSD_params_list +
+                                self.obs_syst_params_list)
             elif de_model is None and not self.use_Mpc:
                 check_params = self.params_list + ['h'] + \
-                               self.RSD_params_list
+                               self.RSD_params_list + self.obs_syst_params_list
             else:
-                check_params = self.params_shape_list \
-                               + self.de_model_params_list[de_model] \
-                               + self.RSD_params_list
+                check_params = self.params_shape_list + \
+                               self.de_model_params_list[de_model] + \
+                               self.RSD_params_list + self.obs_syst_params_list
                 if 'Ok' not in params:
                     check_params.remove('Ok')
 
-            for p in self.RSD_params_list:
+            for p in self.RSD_params_list + self.obs_syst_params_list:
                 if p not in params:
                     check_params.remove(p)
 
