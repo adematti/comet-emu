@@ -114,10 +114,17 @@ class PTEmu:
                              'P1L_g21', 'Pnoise_NP0', 'Pnoise_NP20',
                              'Pnoise_NP22']
 
+        self.diagrams_tomarg = {'cnlo':['Pctr_b1b1cnlo','Pctr_b1cnlo',
+                                        'Pctr_cnlo'],
+                                'bGam3':['P1L_b1g21','P1L_g21'], # needed?
+                                'g21':['P1L_b1g21','P1L_g21'],
+                                'c0':['Pctr_c0'],'c2':['Pctr_c2'],
+                                'c4':['Pctr_c4'], 'NP0':['Pnoise_NP0'],
+                                'NP20':['Pnoise_NP20'], 'NP22':['Pnoise_NP22']}
+
         self.use_Mpc = use_Mpc
         self.nbar = 1.0  # in units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
-        self.diagrams_tomarg={}
-        self.diagrams_tomarg={'cnlo':['Pctr_b1b1cnlo','Pctr_b1cnlo','Pctr_cnlo'],'bGam3':['P1L_b1g21','P1L_g21'],'g21':['P1L_b1g21','P1L_g21'],'c0':['Pctr_c0'],'c2':['Pctr_c2'],'c4':['Pctr_c4'],'NP0':['Pnoise_NP0'],'NP20':['Pnoise_NP20'],'NP22':['Pnoise_NP22']}
+
         self.training = {}
 
         self.emu = {}
@@ -168,7 +175,7 @@ class PTEmu:
         self.PX_ell_spline = {}
         for X in self.diagrams_all:
             id_min = self.nk - self.nkloop if 'P1L' in X else 0
-            self.PX_ell_spline[X] = Splines(use_Mpc=self.use_Mpc, ncol=4,
+            self.PX_ell_spline[X] = Splines(use_Mpc=self.use_Mpc, ncol=(1,4),
                                             id_min=id_min,
                                             crossover_check=True)
 
@@ -349,7 +356,7 @@ class PTEmu:
             self.PX_ell_spline = {}
             for X in self.diagrams_all:
                 id_min = self.nk - self.nkloop if 'P1L' in X else 0
-                self.PX_ell_spline[X] = Splines(use_Mpc=self.use_Mpc, ncol=4,
+                self.PX_ell_spline[X] = Splines(use_Mpc=self.use_Mpc,ncol=(1,4),
                                                 id_min=id_min,
                                                 crossover_check=True)
                 self.X_splines_up_to_date[X] = False
@@ -575,7 +582,7 @@ class PTEmu:
             self.splines_up_to_date = False
             self.dw_spline_up_to_date = False
             self.X_splines_up_to_date = {X: False for X
-                                         in self.diagrams_all}
+                                         in self.X_splines_up_to_date}
             self.chi2_decomposition = None
             self.Bisp_chi2_decomposition = None
 
@@ -1729,7 +1736,7 @@ class PTEmu:
                 np.divide.outer(self.grid.mu2, self.params['q_lo']**2) \
                 + np.divide.outer(1.0 - self.grid.mu2,
                                   self.params['q_tr']**2))
-            kp = np.einsum("a,ab->ab", self.grid.k, APfac)
+            kp = self.grid.k[:,None] * APfac
             mup = np.divide.outer(self.grid.mu, self.params['q_lo'])/APfac
             legendre = eval_legendre.outer(ell, self.grid.mu)
             P2d_tot = P2d(kp, mup) * W_damping(kp, mup) \
@@ -1813,19 +1820,19 @@ class PTEmu:
 
                 Pell_dict = {}
                 if k.size != np.intersect1d(
-                    k, self.data[obs_id_use].bins_mixing_matrix[0]).size:
-                        Pell_convolved = Pell_convolved.reshape(
-                            (nb, len(ell_for_mixing_matrix),
-                             Pell_convolved.shape[-1]), order='F')
-                        ell_ids = (np.array(ell)/2).astype(np.int64)
-                        spline = make_interp_spline(
-                            self.data[obs_id_use].bins_mixing_matrix[0],
-                            Pell_convolved[:,ell_ids], axis=0)(k)
-                        for i, m in enumerate(ell):
-                            ids = np.intersect1d(
-                                k, k_list[i], return_indices=True)[1]
-                            Pell_dict['ell{}'.format(m)] = np.squeeze(
-                                spline[ids,i])
+                        k, self.data[obs_id_use].bins_mixing_matrix[0]).size:
+                    Pell_convolved = Pell_convolved.reshape(
+                        (nb, len(ell_for_mixing_matrix),
+                         Pell_convolved.shape[-1]), order='F')
+                    ell_ids = (np.array(ell)/2).astype(np.int64)
+                    spline = make_interp_spline(
+                        self.data[obs_id_use].bins_mixing_matrix[0],
+                        Pell_convolved[:,ell_ids], axis=0)(k)
+                    for i, m in enumerate(ell):
+                        ids = np.intersect1d(
+                            k, k_list[i], return_indices=True)[1]
+                        Pell_dict['ell{}'.format(m)] = np.squeeze(
+                            spline[ids,i])
                 else:
                     for i, m in enumerate(ell):
                         ids = np.intersect1d(
@@ -2124,7 +2131,7 @@ class PTEmu:
             P6X = self.P6[:, 27, None]*f**6*s12ratio
         return P6X
 
-    def PX_ell(self, k, params, ell, X, de_model=None, binning=None,
+    def PX_ell(self, k, params, ell, X_list, de_model=None, binning=None,
                obs_id=None, q_tr_lo=None, W_damping=None, ell_for_recon=None):
         r"""Get the individual contribution to the power spectrum multipoles.
 
@@ -2139,7 +2146,7 @@ class PTEmu:
             is passed, it has to match the size of `ell`, and in that case
             each wavemode refer to a given multipole.
         params: dict
-            Dictionary containing the list of total model parameters which are
+            Dictionary containing the li_st of total model parameters which are
             internally used by the emulator. The keyword/value pairs of the
             dictionary specify the names and the values of the parameters,
             respectively.
@@ -2228,6 +2235,23 @@ class PTEmu:
 
         keff = self.grid.keff if use_effective_modes else k
 
+        X_list = [X_list] if not isinstance(X_list, list) else X_list
+        X0L_list = [t for t in X_list if not 'P1L' in t]
+        X1L_list = [t for t in X_list if 'P1L' in t]
+        X_grouped_list = [t for t in [X0L_list,X1L_list] if len(t) > 0]
+        X_grouped_list_flat = [t for tt in X_grouped_list for t in tt]
+        _,_,ordering = np.intersect1d(X_list, X_grouped_list_flat,
+                                      return_indices=True)
+        nXNL = np.insert(np.cumsum([len(t) for t in X_grouped_list]),0,0)
+        for XNL_list in X_grouped_list:
+            XNL = '|'.join(XNL_list)
+            id_min = self.nk - self.nkloop if 'P1L' in XNL else 0
+            if not XNL in self.PX_ell_spline:
+                self.PX_ell_spline[XNL] = Splines(
+                    use_Mpc=self.use_Mpc, ncol=(len(XNL_list),4),
+                    id_min=id_min, crossover_check=True)
+                self.X_splines_up_to_date[XNL] = False
+
         if self.RSD_model == 'EFT':
             W_damping = lambda k, mu: 1.0
         elif self.RSD_model == 'VDG_infty':
@@ -2236,13 +2260,13 @@ class PTEmu:
         else:
             raise ValueError('Unsupported RSD model.')
 
-        def P2d(q, mu):
-            t = np.einsum("...bcd,cbd->...bd",
-                          self.PX_ell_spline[X].eval_varx(q),
+        def P2d(XNL, q, mu):
+            t = np.einsum("...bacd,cbd->...abd",
+                          self.PX_ell_spline[XNL].eval_varx(q),
                           eval_legendre.outer(np.array(ell_for_recon),mu))
-            return t # nk x nmu x N
+            return t # nk x nXNL x nmu x N
 
-        def LOS_average_continuous():
+        def LOS_average_continuous(XNL):
             mu = self.gl_x
             mu2 = self.gl_x2
             APfac = np.sqrt(
@@ -2250,26 +2274,26 @@ class PTEmu:
                 + np.divide.outer(1.0 - mu2, self.params['q_tr']**2))
             kp = np.multiply.outer(keff, APfac)
             mup = np.divide.outer(mu, self.params['q_lo'])/APfac
-            P2d_tot = P2d(kp, mup) * W_damping(kp, mup)
+            P2d_tot = P2d(XNL, kp, mup) * W_damping(kp, mup)[:,None,...]
             legendre = eval_legendre.outer(ell, mu)
-            return 0.5 * np.einsum("abc,db,b->adc", P2d_tot, legendre,
-                                   self.gl_weights) # nk x nell x N x nmu
+            return 0.5 * np.einsum("aebc,db,b->adec", P2d_tot, legendre,
+                                   self.gl_weights) # nk x nell x nXNL x N
 
-        def LOS_average_discrete():
+        def LOS_average_discrete(XNL):
             APfac = np.sqrt(
                 np.divide.outer(self.grid.mu2, self.params['q_lo']**2) \
                 + np.divide.outer(1.0 - self.grid.mu2,
                                   self.params['q_tr']**2))
-            kp = np.einsum("a,ab->ab", self.grid.k, APfac)
+            kp = self.grid.k[:,None] * APfac
             mup = np.divide.outer(self.grid.mu, self.params['q_lo'])/APfac
             legendre = eval_legendre.outer(ell, self.grid.mu)
-            P2d_tot = P2d(kp, mup) * W_damping(kp, mup)
+            P2d_tot = P2d(XNL, kp, mup) * W_damping(kp, mup)
             avg = np.add.reduceat(
-                np.einsum("ab,bc,b->bac", legendre, P2d_tot,
+                np.einsum("ab,dbc,b->badc", legendre, P2d_tot,
                           self.grid.weights),
                 self.grid.nmodes[:-1], axis=0)
-            avg /= self.grid.weights_sum[:,None,None]
-            return avg
+            avg /= self.grid.weights_sum[:,None,None,None]
+            return avg # nk x nell x nXNL x N
 
         if obs_id is None:
             params_updated = [params[p] != self.params[p] for p in
@@ -2282,51 +2306,68 @@ class PTEmu:
                     or np.any([p not in params.keys() for p in params_nonzero]):
                 self.eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
 
-            if not self.X_splines_up_to_date[X]:
-                PX_ell = np.zeros([self.nk, len(ell_for_recon), self.nparams])
-                X_emu = X
-                if X_emu in self.diagrams_emulated:
-                    for n, diagram in enumerate(self.diagrams_emulated):
-                        if diagram == X_emu:
-                            if n < 9:
-                                ids = [n*self.nk, (n+1)*self.nk]
+            for XNL_list in X_grouped_list:
+                XNL = '|'.join(XNL_list)
+                if not self.X_splines_up_to_date[XNL]:
+                    PXNL_ell = np.zeros([self.nk, len(XNL_list),
+                                         len(ell_for_recon), self.nparams])
+                    for nx, X_emu in enumerate(XNL_list):
+                        if X_emu in self.diagrams_emulated:
+                            for n, diagram in enumerate(self.diagrams_emulated):
+                                if diagram == X_emu:
+                                    if n < 9:
+                                        ids = [n*self.nk, (n+1)*self.nk]
+                                    else:
+                                        ids = [9*self.nk + (n-9)*self.nkloop,
+                                               9*self.nk + (n-8)*self.nkloop]
+                            if X_emu in ['Pctr_c0', 'Pctr_c2', 'Pctr_c4']:
+                                for i, m in enumerate(ell_eval_emu):
+                                    PXNL_ell[self.nk-(ids[1]-ids[0]):,nx,i] = \
+                                        self.Pk_ratios[m][ids[0]:ids[1]]
                             else:
-                                ids = [9*self.nk + (n-9)*self.nkloop,
-                                       9*self.nk + (n-8)*self.nkloop]
-                    if X_emu in ['Pctr_c0', 'Pctr_c2', 'Pctr_c4']:
-                        for i, m in enumerate(ell_eval_emu):
-                            PX_ell[self.nk - (ids[1]-ids[0]):, i] = \
-                                self.Pk_ratios[m][ids[0]:ids[1]]
-                    else:
-                        for i, m in enumerate(ell_for_recon):
-                            if m != 6:
-                                PX_ell[self.nk - (ids[1]-ids[0]):, i] = \
-                                    self.Pk_ratios[m][ids[0]:ids[1]]
-                            else:
-                                PX_ell[:, i] = self.PX_ell6_novir_noAP(X_emu)
-                    PX_ell[:,:len(ell_eval_emu)] = np.einsum("abc,ac->abc",
-                        PX_ell[:,:len(ell_eval_emu)], self.Pk_lin)
-                else:
-                    if X_emu == 'Pnoise_NP0':
-                        PX_ell[:, 0] = np.ones_like(self.k_table)[:,None]
-                    elif X_emu == 'Pnoise_NP20':
-                        PX_ell[:, 0] = (self.k_table**2)[:,None]
-                    elif X_emu == 'Pnoise_NP22' and len(ell_for_recon) > 1:
-                        PX_ell[:, 1] = (self.k_table**2)[:,None]
+                                for i, m in enumerate(ell_for_recon):
+                                    if m != 6:
+                                        PXNL_ell[self.nk-(ids[1]-ids[0]):,
+                                               nx,i] = \
+                                            self.Pk_ratios[m][ids[0]:ids[1]]
+                                    else:
+                                        PXNL_ell[:, nx, i] = \
+                                            self.PX_ell6_novir_noAP(X_emu)
+                            PXNL_ell[:, nx, :len(ell_eval_emu)] = \
+                                np.einsum("abc,ac->abc",
+                                    PXNL_ell[:, nx, :len(ell_eval_emu)],
+                                    self.Pk_lin)
+                        else:
+                            if X_emu == 'Pnoise_NP0':
+                                PXNL_ell[:, nx, 0] = \
+                                    np.ones_like(self.k_table)[:,None]
+                            elif X_emu == 'Pnoise_NP20':
+                                PXNL_ell[:, nx, 0] = (self.k_table**2)[:,None]
+                            elif X_emu == 'Pnoise_NP22' \
+                                    and len(ell_for_recon) > 1:
+                                PXNL_ell[:, nx, 1] = (self.k_table**2)[:,None]
 
-                h = None if self.use_Mpc else self.params['h']
-                self.PX_ell_spline[X].build(self.k_table, PX_ell, h=h)
-                self.X_splines_up_to_date[X] = True
+                    h = None if self.use_Mpc else self.params['h']
+                    self.PX_ell_spline[XNL].build(self.k_table, PXNL_ell, h=h)
+                    self.X_splines_up_to_date[XNL] = True
 
             self.update_AP_params(params, de_model=de_model,
                                   q_tr_lo=q_tr_lo)
             q3 = self.params['q_tr']**2 * self.params['q_lo']
 
-            if binning is None or use_effective_modes:
-                PX_ell_model = LOS_average_continuous()
-            else:
-                PX_ell_model = LOS_average_discrete()
-            PX_ell_model *= np.divide.outer(2.0*np.array(ell)+1.0, q3)
+            PX_ell_model = np.empty((len(keff), len(ell), len(X_list),
+                                     self.nparams))
+            for i, XNL_list in enumerate(X_grouped_list):
+                XNL = '|'.join(XNL_list)
+                n1 = nXNL[i]
+                n2 = nXNL[i+1]
+                if binning is None or use_effective_modes:
+                    PX_ell_model[:,:,n1:n2] = LOS_average_continuous(XNL)
+                else:
+                    PX_ell_model[:,:,n1:n2] = LOS_average_discrete(XNL)
+            PX_ell_model = PX_ell_model[:,:,ordering,:]
+            norm = np.divide.outer(2.0*np.array(ell)+1.0, q3)
+            PX_ell_model *= norm[None,:,None,:]
 
             PX_ell_dict = {}
             for i, m in enumerate(ell):
@@ -2354,19 +2395,20 @@ class PTEmu:
                 ell_for_mixing_matrix = [0,2,4] if not self.real_space else [0]
                 PX_ell_model = self.PX_ell(
                     self.data[obs_id_use].bins_mixing_matrix_compressed,
-                    params, ell_for_mixing_matrix, X, de_model,
+                    params, ell_for_mixing_matrix, X_list, de_model,
                     binning=None, obs_id=None, q_tr_lo=q_tr_lo,
                     W_damping=W_damping, ell_for_recon=ell_for_recon)
                 PX_ell_list = np.stack([PX_ell_model[ell]
                                         for ell in PX_ell_model],
-                                       axis=1)
+                                       axis=1) # nk x nell x (nX) x (N)
                 spline = make_interp_spline(
                     self.data[obs_id_use].bins_mixing_matrix_compressed,
                     PX_ell_list, axis=0)(
                         self.data[obs_id_use].bins_mixing_matrix[1])
                 spline = spline.reshape((spline.shape[0]*spline.shape[1],) \
                                         + spline.shape[2:], order='F')
-                if isinstance(obs_id, list) and len(obs_id) > 1:
+                if (isinstance(obs_id, list) and len(obs_id) > 1) \
+                        or len(X_list) > 1:
                     PX_ell_convolved = (self.data[obs_id_use].W_mixing_matrix \
                                         @ spline.T[...,None]).squeeze().T
                 else:
@@ -2376,19 +2418,19 @@ class PTEmu:
 
                 PX_ell_dict = {}
                 if k.size != np.intersect1d(
-                    k, self.data[obs_id_use].bins_mixing_matrix[0]).size:
-                        PX_ell_convolved = PX_ell_convolved.reshape(
-                            (nb, len(ell_for_mixing_matrix),
-                             PX_ell_convolved.shape[-1]), order='F')
-                        ell_ids = (np.array(ell)/2).astype(np.int64)
-                        spline = make_interp_spline(
-                            self.data[obs_id_use].bins_mixing_matrix[0],
-                            PX_ell_convolved[:,ell_ids], axis=0)(k)
-                        for i, m in enumerate(ell):
-                            ids = np.intersect1d(
-                                k, k_list[i], return_indices=True)[1]
-                            PX_ell_dict['ell{}'.format(m)] = np.squeeze(
-                                spline[ids,i])
+                        k, self.data[obs_id_use].bins_mixing_matrix[0]).size:
+                    PX_ell_convolved = PX_ell_convolved.reshape(
+                        (nb, len(ell_for_mixing_matrix),
+                         PX_ell_convolved.shape[-1]), order='F')
+                    ell_ids = (np.array(ell)/2).astype(np.int64)
+                    spline = make_interp_spline(
+                        self.data[obs_id_use].bins_mixing_matrix[0],
+                        PX_ell_convolved[:,ell_ids], axis=0)(k)
+                    for i, m in enumerate(ell):
+                        ids = np.intersect1d(
+                            k, k_list[i], return_indices=True)[1]
+                        PX_ell_dict['ell{}'.format(m)] = np.squeeze(
+                            spline[ids,i])
                 else:
                     for i, m in enumerate(ell):
                         ids = np.intersect1d(
@@ -2401,8 +2443,8 @@ class PTEmu:
                 print('Warning! Bins for mixing matrix and/or mixing matrix '
                       'itself not provided. Returning unconvolved power '
                       'spectrum.')
-                PX_ell_dict = self.PX_ell(k, params, ell, X, de_model, binning,
-                                          None, q_tr_lo, W_damping,
+                PX_ell_dict = self.PX_ell(k, params, ell, X_list, de_model,
+                                          binning, None, q_tr_lo, W_damping,
                                           ell_for_recon)
 
         return PX_ell_dict
@@ -2885,17 +2927,19 @@ class PTEmu:
 
         return cov
 
-
-
-        
     def arrayfactors_marg(self,ctr2_shot):
-        r"""Compute the correct factors to add to the template for the analytical marginalization..
+        r"""Compute the correct factors to add to the template for the
+        analytical marginalization..
 
-        Return a matrix (array of array) where every array correspond to a redshift bin and all the the components to the relative PX_ell template.
+        Return a matrix (array of array) where every array correspond to a
+        redshift bin and all the the components to the relative PX_ell template.
 
         Parameters
         ----------
-        ctr2_shot: array of strings like ctr2_shot=['P1L_b1g21','P1L_g21','Pctr_b1b1cnlo','Pctr_b1cnlo','Pctr_cnlo','Pctr_c0', 'Pctr_c2', 'Pctr_c4','Pnoise_NP0','Pnoise_NP20','Pnoise_NP22']
+        ctr2_shot: array of strings like
+        ctr2_shot=['P1L_b1g21','P1L_g21','Pctr_b1b1cnlo','Pctr_b1cnlo',
+                   'Pctr_cnlo','Pctr_c0', 'Pctr_c2',
+                   'Pctr_c4','Pnoise_NP0','Pnoise_NP20','Pnoise_NP22']
         """
         hfactor = np.array(self.params['h'])
         b1=np.array(self.params['b1'])
@@ -2923,7 +2967,7 @@ class PTEmu:
             a.append(values)
 
         return np.array(a)
-    
+
     def _chi2_powerspectrum_marginalized(self, obs_id, params, ell,params_tomarg=None, Gpriors=None,de_model=None,
                             binning=None, convolve_window=False, q_tr_lo=None,
                             W_damping=None, chi2_decomposition=False,
@@ -2938,14 +2982,15 @@ class PTEmu:
         params_tomarg: array of parameters to marginalize analytically over like params_tomarg=['c0','c2',..]
         Gpriors : dictionary, mu and sigma for gaussian priors for analytical marginalization, they should be given in the same order as the parameter.
         """
-        
+
         ell_joint = np.unique(np.hstack([ell[oi] for oi in obs_id])).tolist()
         bins_kmax = [np.unique(np.hstack([self.data[oi].bins_kmax[i]
                                           for oi in obs_id \
                                           if l in self.data[oi].ell]))
                      for i,l in enumerate(ell_joint)]
         n_obs = len(obs_id)
-        
+
+        # begin new
         ctr2_shot = [value for key in params_tomarg if key in self.diagrams_tomarg for value in self.diagrams_tomarg[key]]
 
         lista=self.diagrams_all
@@ -2953,10 +2998,12 @@ class PTEmu:
         Removing_templ={}
         for index, value in enumerate(self.diagrams_all):
             Removing_templ[value]=index
-        
+
         z=np.array([Removing_templ[a] for a in ctr2_shot])
-        
+
         lista = [ele for ele in lista if ele not in ctr2_shot]
+        # end new
+
         chi2 = 0.0
         if not chi2_decomposition:
             convolve_obs_id = obs_id if convolve_window else None
@@ -2984,7 +3031,7 @@ class PTEmu:
                         [Pell['ell{}'.format(l)][ids[i]]
                             for i,l in enumerate(ell[oi])])
                     diff = Pell_list - self.data[oi].signal_kmax
-                    
+
                     PX_ell_list2= np.vstack([np.hstack([PX_ell[X]['ell{}'.format(l)][ids[i]] for i,l in enumerate(ell[oi])]) for X in ctr2_shot])/(self.arrayfactors_marg(ctr2_shot)[n])[:,np.newaxis]
                     tot=()
                     if 'Pctr_b1b1cnlo' in ctr2_shot:
@@ -2997,7 +3044,7 @@ class PTEmu:
                         PX_ell_list2[ctr2_shot.index('P1L_b1g21'),:]=PX_ell_list2[ ctr2_shot.index('P1L_b1g21')]+PX_ell_list2[ctr2_shot.index('P1L_g21'),:]
 
                         tot+=(index2,)
-                    
+
 
                     PX_ell_list2=np.delete(PX_ell_list2,tot,axis=0)
                     Aij=(np.einsum('ri, ij, mj-> rm', PX_ell_list2,self.data[oi].inverse_cov_kmax,PX_ell_list2))+ np.diag(1/sigma**2)
@@ -3024,7 +3071,7 @@ class PTEmu:
                         index2=ctr2_shot.index('P1L_g21')
                         tot+=(index2,)
                         PX_ell_list2[ctr2_shot.index('P1L_b1g21'),:]=PX_ell_list2[ctr2_shot.index('P1L_b1g21')]+PX_ell_list2[ctr2_shot.index('P1L_g21'),:]
-                    
+
 
                     PX_ell_list2=np.delete(PX_ell_list2,tot,axis=0)
                     Aij=(np.einsum('ri, ij, mj-> rm', PX_ell_list2,self.data[oi].inverse_cov_kmax,PX_ell_list2))+ np.diag(1/sigma**2)
@@ -3037,7 +3084,7 @@ class PTEmu:
                     C0=0.5*np.einsum('i...,ij,j...',diff,self.data[oi].inverse_cov_kmax,diff)+0.5*np.einsum('i,i',mui**2,sigma**2)
 
                 chi2 += (0.5*BxA2-C0-0.5*logDetA)
-                
+
         #TO DO IMPLEMENT AM FOR CHI2DEC
         else:
             # oi = obs_id[0]
@@ -3126,7 +3173,7 @@ class PTEmu:
                              de_model=de_model, binning=binning,
                              obs_id=convolve_obs_id, q_tr_lo=q_tr_lo,
                              W_damping=W_damping, ell_for_recon=ell_for_recon)
-            
+
             for n,oi in enumerate(obs_id):
                 ids = [np.intersect1d(bins_kmax[i], self.data[oi].bins_kmax[i],
                                       return_indices=True)[1]
@@ -3322,14 +3369,9 @@ class PTEmu:
 
         return chi2
 
-
-
-
-
-
-
-    def chi2(self, obs_id, params, kmax ,params_tomarg=None,Gpriors=None, de_model=None, binning=None,Analytical_Marg=False,
+    def chi2(self, obs_id, params, kmax, de_model=None, binning=None,
              convolve_window=False, q_tr_lo=None, W_damping=None,
+             params_tomarg=None, Gpriors=None, Analytical_Marg=False,
              chi2_decomposition=False, ell_for_recon=None,
              cnloB_mapping=lambda x: [0.5]):
         r"""Compute the :math:`\chi^2 for the given configurations`.
