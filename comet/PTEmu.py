@@ -901,6 +901,26 @@ class PTEmu:
 
         return params_comb
 
+    def get_bias_coeff_for_AM(self, diagrams_tomarg):
+        b1 = self.params['b1']
+        b1sq = b1**2
+        h = 1.0 if self.use_Mpc else self.params['h']
+        h2 = h**2
+        h4 = h**4
+        bias = {}
+        bias['Pctr_b1b1cnlo'] = b1sq/h4
+        bias['Pctr_b1cnlo'] = b1/h4
+        bias['Pctr_b1cnlo'] = 1.0/h4
+        bias['P1L_b1g21'] = b1
+        bias['P1L_g21'] = np.ones_like(b1)
+        bias['Pctr_c0'] = 1.0/h2
+        bias['Pctr_c2'] = 1.0/h2
+        bias['Pctr_c4'] = 1.0/h2
+        bias['Pnoise_NP0'] = 1.0/(h*h2*self.nbar)
+        bias['Pnoise_NP20'] = 1.0/(h*h4*self.nbar)
+        bias['Pnoise_NP22'] = 1.0/(h*h4*self.nbar)
+        return np.array([bias[x] for x in diagrams_tomarg]).squeeze()
+
     def eval_emulator(self, params, ell, de_model=None):
         r"""Evaluate the emulators for the different terms.
 
@@ -2968,7 +2988,8 @@ class PTEmu:
 
         return np.array(a)
 
-    def _chi2_powerspectrum_marginalized(self, obs_id, params, ell,params_tomarg=None, Gpriors=None,de_model=None,
+    def _chi2_powerspectrum_marginalized(self, obs_id, params,
+                            ell,params_tomarg=None, Gpriors=None,de_model=None,
                             binning=None, convolve_window=False, q_tr_lo=None,
                             W_damping=None, chi2_decomposition=False,
                             compute_chi2_decomposition=True,
@@ -2990,18 +3011,23 @@ class PTEmu:
                      for i,l in enumerate(ell_joint)]
         n_obs = len(obs_id)
 
+        if params_tomarg is not None and len(params_tomarg) > 0:
+            chi2_decomposition = False
+
         # begin new
-        ctr2_shot = [value for key in params_tomarg if key in self.diagrams_tomarg for value in self.diagrams_tomarg[key]]
+        diagrams_tomarg = [value for key in params_tomarg \
+                           if key in self.diagrams_tomarg \
+                           for value in self.diagrams_tomarg[key]]
 
-        lista=self.diagrams_all
-        ####FOR CHI2 DEC
-        Removing_templ={}
-        for index, value in enumerate(self.diagrams_all):
-            Removing_templ[value]=index
-
-        z=np.array([Removing_templ[a] for a in ctr2_shot])
-
-        lista = [ele for ele in lista if ele not in ctr2_shot]
+        # lista=self.diagrams_all
+        # ####FOR CHI2 DEC
+        # Removing_templ={}
+        # for index, value in enumerate(self.diagrams_all):
+        #     Removing_templ[value]=index
+        #
+        # z=np.array([Removing_templ[a] for a in ctr2_shot])
+        #
+        # lista = [ele for ele in lista if ele not in ctr2_shot]
         # end new
 
         chi2 = 0.0
@@ -3011,80 +3037,71 @@ class PTEmu:
                              de_model=de_model, binning=binning,
                              obs_id=convolve_obs_id, q_tr_lo=q_tr_lo,
                              W_damping=W_damping, ell_for_recon=ell_for_recon)
-            PX_ell = {}
-            for X in self.diagrams_all:
-                PX_ell[X] = self.PX_ell(bins_kmax, params, ell_joint, X,
-                                        binning=binning,
-                                        obs_id=convolve_obs_id,
-                                        de_model=de_model, q_tr_lo=q_tr_lo,
-                                        W_damping=W_damping,
-                                        ell_for_recon=ell_for_recon)
+
+            PX_ell = self.PX_ell(bins_kmax, params, ell_joint,
+                                 diagrams_tomarg, binning=binning,
+                                 obs_id=convolve_obs_id, de_model=de_model, q_tr_lo=q_tr_lo, W_damping=W_damping,
+                                 ell_for_recon=ell_for_recon)
+            bX = self.get_bias_coeff_for_AM(diagrams_tomarg)
 
             for n,oi in enumerate(obs_id):
                 ids = [np.intersect1d(bins_kmax[i], self.data[oi].bins_kmax[i],
                                         return_indices=True)[1]
                         for i,l in enumerate(ell[oi])]
+
                 mui=np.array(Gpriors[oi]['mu'])
                 sigma=np.array(Gpriors[oi]['sigma'])
-                if Pell['ell{}'.format(ell[oi][0])].ndim == 1:
+                if Pell['ell{}'.format(ell[oi][0])].ndim == 1: # N = 1
                     Pell_list = np.hstack(
                         [Pell['ell{}'.format(l)][ids[i]]
                             for i,l in enumerate(ell[oi])])
                     diff = Pell_list - self.data[oi].signal_kmax
-
-                    PX_ell_list2= np.vstack([np.hstack([PX_ell[X]['ell{}'.format(l)][ids[i]] for i,l in enumerate(ell[oi])]) for X in ctr2_shot])/(self.arrayfactors_marg(ctr2_shot)[n])[:,np.newaxis]
-                    tot=()
-                    if 'Pctr_b1b1cnlo' in ctr2_shot:
-                        index=ctr2_shot.index('Pctr_b1b1cnlo'),ctr2_shot.index('Pctr_b1cnlo')
-                        tot+=index
-                        PX_ell_list2[ctr2_shot.index('Pctr_cnlo'),:]=PX_ell_list2[ ctr2_shot.index('Pctr_b1b1cnlo')]+PX_ell_list2[ctr2_shot.index('Pctr_cnlo'),:]+PX_ell_list2[ctr2_shot.index('Pctr_b1cnlo'),:]
-                    if 'P1L_b1g21' in ctr2_shot:
-                        index2=ctr2_shot.index('P1L_b1g21'),ctr2_shot.index('P1L_g21')
-
-                        PX_ell_list2[ctr2_shot.index('P1L_b1g21'),:]=PX_ell_list2[ ctr2_shot.index('P1L_b1g21')]+PX_ell_list2[ctr2_shot.index('P1L_g21'),:]
-
-                        tot+=(index2,)
-
-
-                    PX_ell_list2=np.delete(PX_ell_list2,tot,axis=0)
-                    Aij=(np.einsum('ri, ij, mj-> rm', PX_ell_list2,self.data[oi].inverse_cov_kmax,PX_ell_list2))+ np.diag(1/sigma**2)
-                    invA=np.linalg.inv(Aij)
-                    logDetA=np.log(np.linalg.det(Aij))
-                    Bi=(PX_ell_list2 @ self.data[oi].inverse_cov_kmax @ diff) + mui/sigma**2
-                    C0=0.5*np.einsum('i,ij,j',diff,self.data[oi].inverse_cov_kmax,diff)+0.5*np.einsum('i,i',mui**2,sigma**2)
-                    BxA2=np.einsum('...i,ij,j...',Bi,invA,Bi)
-
+                    if len(diagrams_tomarg) > 1:
+                        PX_ell_list = np.vstack(
+                            [PX_ell['ell{}'.format(l)][ids[i]]
+                             for i,l in enumerate(ell[oi])])
+                    else:
+                        PX_ell_list = np.hstack(
+                            [PX_ell['ell{}'.format(l)][ids[i]]
+                             for i,l in enumerate(ell[oi])])[:,None]
+                    PX_ell_list *= bX
                 else:
                     Pell_list = np.vstack(
                         [Pell['ell{}'.format(l)][ids[i],n::n_obs]
                             for i,l in enumerate(ell[oi])])
                     diff = Pell_list - self.data[oi].signal_kmax[:,None]
+                    PX_ell_list = np.vstack(
+                        [PX_ell[X]['ell{}'.format(l)][ids[i],...,n::n_obs]
+                         for i,l in enumerate(ell[oi])])
+                    PX_ell_list *= bX[...,n::n_obs]
+                # join diagrams
+                if 'g21' in params_tomarg:
+                    ids_to_join = diagrams_tomarg.index('P1L_g21')
+                    ids_to_keep = np.delete(np.arange(len(diagrams_tomarg)),
+                                            ids_to_join)
+                    PX_ell_list = np.add.reduceat(PX_ell_list, ids_to_keep,
+                                                  axis=1)
+                if 'cnlo' in params_tomarg:
+                    ids_to_join = [diagrams_tomarg.index(x) for x \
+                                   in ['Pctr_b1cnlo','Pctr_cnlo']]
+                    ids_to_keep = np.delete(np.arange(len(diagrams_tomarg)),
+                                            ids_to_join)
+                    PX_ell_list = np.add.reduceat(PX_ell_list, ids_to_keep,
+                                                  axis=1)
 
-                    PX_ell_list2 = np.stack([np.vstack([PX_ell[X]['ell{}'.format(l)][ids[i],n::n_obs] for i,l in enumerate(ell[oi])]) for X in ctr2_shot])
-                    PX_ell_list2=PX_ell_list2[:,:,0]/(self.arrayfactors_marg(ctr2_shot)[n])[:,np.newaxis]
-                    tot=()
-                    if 'Pctr_b1b1cnlo' in ctr2_shot:
-                        index=ctr2_shot.index('Pctr_b1b1cnlo'),ctr2_shot.index('Pctr_b1cnlo')
-                        tot+=index
-                        PX_ell_list2[ctr2_shot.index('Pctr_cnlo'),:]=PX_ell_list2[ ctr2_shot.index('Pctr_b1b1cnlo')]+PX_ell_list2[ctr2_shot.index('Pctr_cnlo'),:]+PX_ell_list2[ctr2_shot.index('Pctr_b1cnlo'),:]
-                    if 'P1L_b1g21' in ctr2_shot:
-                        index2=ctr2_shot.index('P1L_g21')
-                        tot+=(index2,)
-                        PX_ell_list2[ctr2_shot.index('P1L_b1g21'),:]=PX_ell_list2[ctr2_shot.index('P1L_b1g21')]+PX_ell_list2[ctr2_shot.index('P1L_g21'),:]
+                Cinv_diff = self.data[oi].inverse_cov_kmax @ diff
+                Aij = np.einsum("mi...,mj...->ij...", PX_ell_list,
+                                np.tensordot(self.data[oi].inverse_cov_kmax,
+                                             PX_ell_list, axes=1))
+                Aij += np.diag(1.0/sigma**2)[(...,)+(np.newaxis,)*(Aij.ndim-2)]
+                Aij_inv = np.linalg.inv(Aij.T).T
+                Bi = -np.einsum("mi...,m...->i...", PX_ell_list, Cinv_diff)
+                Bi += (mui/sigma**2)[(...,)+(np.newaxis,)*(Bi.ndim-1)]
+                C = np.einsum("a...,a...", diff, Cinv_diff) \
+                    + np.log(np.linalg.det(Aij.T))
+                C += np.sum((mui/sigma)**2)
 
-
-                    PX_ell_list2=np.delete(PX_ell_list2,tot,axis=0)
-                    Aij=(np.einsum('ri, ij, mj-> rm', PX_ell_list2,self.data[oi].inverse_cov_kmax,PX_ell_list2))+ np.diag(1/sigma**2)
-                    invA=np.linalg.inv(Aij)
-                    logDetA=np.log(np.linalg.det(Aij))
-                    Bi=(PX_ell_list2 @ self.data[oi].inverse_cov_kmax @ diff)[:,0]+(mui/(sigma**2))
-
-
-                    BxA2=np.einsum('i,ij,j',Bi,invA,Bi)
-                    C0=0.5*np.einsum('i...,ij,j...',diff,self.data[oi].inverse_cov_kmax,diff)+0.5*np.einsum('i,i',mui**2,sigma**2)
-
-                chi2 += (0.5*BxA2-C0-0.5*logDetA)
-
+                chi2 += C - np.einsum("a...,ab...,b...", Bi, Aij_inv, Bi)
         #TO DO IMPLEMENT AM FOR CHI2DEC
         else:
             # oi = obs_id[0]
