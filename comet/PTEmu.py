@@ -114,7 +114,7 @@ class PTEmu:
                              'P1L_g21', 'Pnoise_NP0', 'Pnoise_NP20',
                              'Pnoise_NP22']
 
-        self.diagrams_tomarg = {'cnlo':['Pctr_b1b1cnlo','Pctr_b1cnlo',
+        self.diagrams_to_marg = {'cnlo':['Pctr_b1b1cnlo','Pctr_b1cnlo',
                                         'Pctr_cnlo'],
                                 'bGam3':['P1L_b1g21','P1L_g21'], # needed?
                                 'g21':['P1L_b1g21','P1L_g21'],
@@ -901,7 +901,7 @@ class PTEmu:
 
         return params_comb
 
-    def get_bias_coeff_for_AM(self, diagrams_tomarg):
+    def get_bias_coeff_for_AM(self, diagrams_to_marg):
         b1 = self.params['b1']
         b1sq = b1**2
         h = 1.0 if self.use_Mpc else self.params['h']
@@ -919,7 +919,7 @@ class PTEmu:
         bias['Pnoise_NP0'] = 1.0/(h*h2*self.nbar)
         bias['Pnoise_NP20'] = 1.0/(h*h4*self.nbar)
         bias['Pnoise_NP22'] = 1.0/(h*h4*self.nbar)
-        return np.array([bias[x] for x in diagrams_tomarg]).squeeze()
+        return np.array([bias[x] for x in diagrams_to_marg]).squeeze()
 
     def eval_emulator(self, params, ell, de_model=None):
         r"""Evaluate the emulators for the different terms.
@@ -2947,52 +2947,53 @@ class PTEmu:
 
         return cov
 
-    def arrayfactors_marg(self,ctr2_shot):
-        r"""Compute the correct factors to add to the template for the
-        analytical marginalization..
-
-        Return a matrix (array of array) where every array correspond to a
-        redshift bin and all the the components to the relative PX_ell template.
-
-        Parameters
-        ----------
-        ctr2_shot: array of strings like
-        ctr2_shot=['P1L_b1g21','P1L_g21','Pctr_b1b1cnlo','Pctr_b1cnlo',
-                   'Pctr_cnlo','Pctr_c0', 'Pctr_c2',
-                   'Pctr_c4','Pnoise_NP0','Pnoise_NP20','Pnoise_NP22']
-        """
-        hfactor = np.array(self.params['h'])
-        b1=np.array(self.params['b1'])
-        b1sq=np.array(self.params['b1'])**2
-        if self.use_Mpc:
-            hfactor=hfactor/np.array(self.params['h'])
-        Nbar = self.nbar
-        a = []
-
-        for n in range(len(hfactor)):
-            factor = {}
-            factor['Pctr_b1b1cnlo'] = (hfactor[n] ** 4)/b1sq[n]
-            factor['Pctr_b1cnlo'] = (hfactor[n] ** 4)/b1[n]
-            factor['Pctr_cnlo'] = (hfactor[n] ** 4)
-            factor['P1L_g21'] = 1
-            factor['P1L_b1g21'] = 1/b1[n]
-            factor['Pctr_c0'] = (hfactor[n] ** 2)
-            factor['Pctr_c2'] = (hfactor[n] ** 2)
-            factor['Pctr_c4'] = (hfactor[n] ** 2)
-            factor['Pnoise_NP0'] = (hfactor[n] ** 3) * Nbar[n]
-            factor['Pnoise_NP20'] = (hfactor[n] ** 5) * Nbar[n]
-            factor['Pnoise_NP22'] = (hfactor[n] ** 5) * Nbar[n]
-
-            values = [factor[m] for m in ctr2_shot]
-            a.append(values)
-
-        return np.array(a)
+    # def arrayfactors_marg(self,ctr2_shot):
+    #     r"""Compute the correct factors to add to the template for the
+    #     analytical marginalization..
+    #
+    #     Return a matrix (array of array) where every array correspond to a
+    #     redshift bin and all the the components to the relative PX_ell template.
+    #
+    #     Parameters
+    #     ----------
+    #     ctr2_shot: array of strings like
+    #     ctr2_shot=['P1L_b1g21','P1L_g21','Pctr_b1b1cnlo','Pctr_b1cnlo',
+    #                'Pctr_cnlo','Pctr_c0', 'Pctr_c2',
+    #                'Pctr_c4','Pnoise_NP0','Pnoise_NP20','Pnoise_NP22']
+    #     """
+    #     hfactor = np.array(self.params['h'])
+    #     b1=np.array(self.params['b1'])
+    #     b1sq=np.array(self.params['b1'])**2
+    #     if self.use_Mpc:
+    #         hfactor=hfactor/np.array(self.params['h'])
+    #     Nbar = self.nbar
+    #     a = []
+    #
+    #     for n in range(len(hfactor)):
+    #         factor = {}
+    #         factor['Pctr_b1b1cnlo'] = (hfactor[n] ** 4)/b1sq[n]
+    #         factor['Pctr_b1cnlo'] = (hfactor[n] ** 4)/b1[n]
+    #         factor['Pctr_cnlo'] = (hfactor[n] ** 4)
+    #         factor['P1L_g21'] = 1
+    #         factor['P1L_b1g21'] = 1/b1[n]
+    #         factor['Pctr_c0'] = (hfactor[n] ** 2)
+    #         factor['Pctr_c2'] = (hfactor[n] ** 2)
+    #         factor['Pctr_c4'] = (hfactor[n] ** 2)
+    #         factor['Pnoise_NP0'] = (hfactor[n] ** 3) * Nbar[n]
+    #         factor['Pnoise_NP20'] = (hfactor[n] ** 5) * Nbar[n]
+    #         factor['Pnoise_NP22'] = (hfactor[n] ** 5) * Nbar[n]
+    #
+    #         values = [factor[m] for m in ctr2_shot]
+    #         a.append(values)
+    #
+    #     return np.array(a)
 
     def _chi2_powerspectrum_marginalized(self, obs_id, params,
-                            ell,params_tomarg=None, Gpriors=None,de_model=None,
-                            binning=None, convolve_window=False, q_tr_lo=None,
+                            ell, de_model=None, binning=None,
+                            convolve_window=False, q_tr_lo=None,
                             W_damping=None, chi2_decomposition=False,
                             compute_chi2_decomposition=True,
+                            params_to_marg=None, priors_for_marg=None,
                             ell_for_recon=None):
         r"""Compute the analytical  marginalization.
 
@@ -3000,7 +3001,7 @@ class PTEmu:
 
         Parameters
         ----------
-        params_tomarg: array of parameters to marginalize analytically over like params_tomarg=['c0','c2',..]
+        params_to_marg: array of parameters to marginalize analytically over like params_to_marg=['c0','c2',..]
         Gpriors : dictionary, mu and sigma for gaussian priors for analytical marginalization, they should be given in the same order as the parameter.
         """
 
@@ -3011,13 +3012,12 @@ class PTEmu:
                      for i,l in enumerate(ell_joint)]
         n_obs = len(obs_id)
 
-        if params_tomarg is not None and len(params_tomarg) > 0:
+        if params_to_marg is not None and len(params_to_marg) > 0:
             chi2_decomposition = False
 
-        # begin new
-        diagrams_tomarg = [value for key in params_tomarg \
-                           if key in self.diagrams_tomarg \
-                           for value in self.diagrams_tomarg[key]]
+        diagrams_to_marg = [value for key in params_to_marg \
+                           if key in self.diagrams_to_marg \
+                           for value in self.diagrams_to_marg[key]]
 
         # lista=self.diagrams_all
         # ####FOR CHI2 DEC
@@ -3028,7 +3028,6 @@ class PTEmu:
         # z=np.array([Removing_templ[a] for a in ctr2_shot])
         #
         # lista = [ele for ele in lista if ele not in ctr2_shot]
-        # end new
 
         chi2 = 0.0
         if not chi2_decomposition:
@@ -3039,24 +3038,26 @@ class PTEmu:
                              W_damping=W_damping, ell_for_recon=ell_for_recon)
 
             PX_ell = self.PX_ell(bins_kmax, params, ell_joint,
-                                 diagrams_tomarg, binning=binning,
-                                 obs_id=convolve_obs_id, de_model=de_model, q_tr_lo=q_tr_lo, W_damping=W_damping,
+                                 diagrams_to_marg, binning=binning,
+                                 obs_id=convolve_obs_id, de_model=de_model,
+                                 q_tr_lo=q_tr_lo, W_damping=W_damping,
                                  ell_for_recon=ell_for_recon)
-            bX = self.get_bias_coeff_for_AM(diagrams_tomarg)
+            bX = self.get_bias_coeff_for_AM(diagrams_to_marg)
 
             for n,oi in enumerate(obs_id):
                 ids = [np.intersect1d(bins_kmax[i], self.data[oi].bins_kmax[i],
-                                        return_indices=True)[1]
-                        for i,l in enumerate(ell[oi])]
+                                      return_indices=True)[1]
+                       for i,l in enumerate(ell[oi])]
 
-                mui=np.array(Gpriors[oi]['mu'])
-                sigma=np.array(Gpriors[oi]['sigma'])
+                mu = np.array(priors_for_marg[oi]['mu'])
+                sigma = np.array(priors_for_marg[oi]['sigma'])
+
                 if Pell['ell{}'.format(ell[oi][0])].ndim == 1: # N = 1
                     Pell_list = np.hstack(
                         [Pell['ell{}'.format(l)][ids[i]]
                             for i,l in enumerate(ell[oi])])
                     diff = Pell_list - self.data[oi].signal_kmax
-                    if len(diagrams_tomarg) > 1:
+                    if len(diagrams_to_marg) > 1:
                         PX_ell_list = np.vstack(
                             [PX_ell['ell{}'.format(l)][ids[i]]
                              for i,l in enumerate(ell[oi])])
@@ -3071,22 +3072,22 @@ class PTEmu:
                             for i,l in enumerate(ell[oi])])
                     diff = Pell_list - self.data[oi].signal_kmax[:,None]
                     PX_ell_list = np.vstack(
-                        [PX_ell[X]['ell{}'.format(l)][ids[i],...,n::n_obs]
+                        [PX_ell['ell{}'.format(l)][ids[i],...,n::n_obs]
                          for i,l in enumerate(ell[oi])])
                     PX_ell_list *= bX[...,n::n_obs]
-                # join diagrams
-                if 'g21' in params_tomarg:
-                    ids_to_join = diagrams_tomarg.index('P1L_g21')
-                    ids_to_keep = np.delete(np.arange(len(diagrams_tomarg)),
-                                            ids_to_join)
-                    PX_ell_list = np.add.reduceat(PX_ell_list, ids_to_keep,
+
+                if 'g21' in params_to_marg:
+                    col_to_join = diagrams_to_marg.index('P1L_g21')
+                    col_to_keep = np.delete(np.arange(len(diagrams_to_marg)),
+                                            col_to_join)
+                    PX_ell_list = np.add.reduceat(PX_ell_list, col_to_keep,
                                                   axis=1)
-                if 'cnlo' in params_tomarg:
-                    ids_to_join = [diagrams_tomarg.index(x) for x \
+                if 'cnlo' in params_to_marg:
+                    col_to_join = [diagrams_to_marg.index(x) for x \
                                    in ['Pctr_b1cnlo','Pctr_cnlo']]
-                    ids_to_keep = np.delete(np.arange(len(diagrams_tomarg)),
-                                            ids_to_join)
-                    PX_ell_list = np.add.reduceat(PX_ell_list, ids_to_keep,
+                    col_to_keep = np.delete(np.arange(len(diagrams_to_marg)),
+                                            col_to_join)
+                    PX_ell_list = np.add.reduceat(PX_ell_list, col_to_keep,
                                                   axis=1)
 
                 Cinv_diff = self.data[oi].inverse_cov_kmax @ diff
@@ -3096,10 +3097,10 @@ class PTEmu:
                 Aij += np.diag(1.0/sigma**2)[(...,)+(np.newaxis,)*(Aij.ndim-2)]
                 Aij_inv = np.linalg.inv(Aij.T).T
                 Bi = -np.einsum("mi...,m...->i...", PX_ell_list, Cinv_diff)
-                Bi += (mui/sigma**2)[(...,)+(np.newaxis,)*(Bi.ndim-1)]
+                Bi += (mu/sigma**2)[(...,)+(np.newaxis,)*(Bi.ndim-1)]
                 C = np.einsum("a...,a...", diff, Cinv_diff) \
                     + np.log(np.linalg.det(Aij.T))
-                C += np.sum((mui/sigma)**2)
+                C += np.sum((mu/sigma)**2)
 
                 chi2 += C - np.einsum("a...,ab...,b...", Bi, Aij_inv, Bi)
         #TO DO IMPLEMENT AM FOR CHI2DEC
@@ -3176,6 +3177,7 @@ class PTEmu:
                             binning=None, convolve_window=False, q_tr_lo=None,
                             W_damping=None, chi2_decomposition=False,
                             compute_chi2_decomposition=True,
+                            params_to_marg=None, G_priors_marg
                             ell_for_recon=None):
         ell_joint = np.unique(np.hstack([ell[oi] for oi in obs_id])).tolist()
         bins_kmax = [np.unique(np.hstack([self.data[oi].bins_kmax[i]
@@ -3277,10 +3279,10 @@ class PTEmu:
         return chi2
 
     def _chi2_bispectrum(self, obs_id, params, ell, de_model=None,
-                            binning=None, convolve_window=False, q_tr_lo=None,
-                            W_damping=None, chi2_decomposition=False,
-                            compute_chi2_decomposition=True,
-                            ell_for_recon=None):
+                         binning=None, convolve_window=False, q_tr_lo=None,
+                         W_damping=None, chi2_decomposition=False,
+                         compute_chi2_decomposition=True,
+                         ell_for_recon=None, cnloB_mapping=lambda x: [0.5]):
         obs_id = obs_id[0]
         chi2 = 0.0
         if not chi2_decomposition:
@@ -3320,8 +3322,8 @@ class PTEmu:
                 coeff = cnloB_mapping([self.params['avirB'],
                                       self.params['sv']])
                 self.params['cnloB'] = \
-                    - (coeff[0]*self.params['avirB']**1.75 \
-                       + 0.5*self.params['sv']**1.75)
+                    - (coeff[0]*self.params['avirB']**self.Bisp.pow_ctr \
+                       + 0.5*self.params['sv']**self.Bisp.pow_ctr)
             Bell = self.Bisp.Bell(Pdw, neff, self.params, ell[oi],
                                   W_damping[oi])
 
@@ -3388,8 +3390,8 @@ class PTEmu:
 
     def chi2(self, obs_id, params, kmax, de_model=None, binning=None,
              convolve_window=False, q_tr_lo=None, W_damping=None,
-             params_tomarg=None, Gpriors=None, Analytical_Marg=False,
-             chi2_decomposition=False, ell_for_recon=None,
+             chi2_decomposition=False, params_to_marg=None,
+             priors_for_marg=None, ell_for_recon=None,
              cnloB_mapping=lambda x: [0.5]):
         r"""Compute the :math:`\chi^2 for the given configurations`.
 
@@ -3541,8 +3543,25 @@ class PTEmu:
             compute_chi2_decomposition = None
             compute_Bisp_chi2_decomposition = None
 
+        do_analytic_marginalisation = True
+        if params_to_marg is None or priors_for_marg is None:
+            do_analytic_marginalisation = False
+
+        if do_analytic_marginalisation:
+            if obs_id[0] not in priors_for_marg:
+                temp = {}
+                for oi in obs_id:
+                    temp[oi] = priors_for_marg
+                priors_for_marg = temp
+
+        if not np.any([stat in binning for stat in obs_id_stat]):
+            binning = {stat:binning for stat in obs_id_stat}
+        else:
+            for stat in obs_id_stat:
+                if stat not in binning:
+                    binning[stat] = None
+
         # TODO:
-        # - extend multi parameter sampling to chi2_decomposition
         # - extend multi parameter sampling to bispectrum
 
         # sort params dictionary:
@@ -3570,10 +3589,23 @@ class PTEmu:
             for p in params:
                 params_eval[p] = np.atleast_1d(params[p])[ids_sorting]
             if stat == 'powerspectrum':
-                if Analytical_Marg==True:
+                if do_analytic_marginalisation:
                     chi2 += self._chi2_powerspectrum_marginalized(
                         obs_id_stat[stat], params_eval,
-                        {oi:ell[oi] for oi in obs_id_stat[stat]},params_tomarg,Gpriors,
+                        {oi:ell[oi] for oi in obs_id_stat[stat]},
+                        de_model=de_model, binning=binning[stat],
+                        convolve_window=convolve_window,
+                        q_tr_lo=q_tr_lo, W_damping=W_damping[stat],
+                        chi2_decomposition=chi2_decomposition,
+                        compute_chi2_decomposition=compute_chi2_decomposition,
+                        params_to_marg=params_to_marg,
+                        priors_for_marg=priors_for_marg,
+                        ell_for_recon=ell_for_recon
+                    )
+                else:
+                    chi2 += self._chi2_powerspectrum(
+                        obs_id_stat[stat], params_eval,
+                        {oi:ell[oi] for oi in obs_id_stat[stat]},
                         de_model=de_model, binning=binning[stat],
                         convolve_window=convolve_window,
                         q_tr_lo=q_tr_lo, W_damping=W_damping[stat],
@@ -3581,17 +3613,6 @@ class PTEmu:
                         compute_chi2_decomposition=compute_chi2_decomposition,
                         ell_for_recon=ell_for_recon
                     )
-                else:
-                    chi2 += self._chi2_powerspectrum(
-                    obs_id_stat[stat], params_eval,
-                    {oi:ell[oi] for oi in obs_id_stat[stat]},
-                    de_model=de_model, binning=binning[stat],
-                    convolve_window=convolve_window,
-                    q_tr_lo=q_tr_lo, W_damping=W_damping[stat],
-                    chi2_decomposition=chi2_decomposition,
-                    compute_chi2_decomposition=compute_chi2_decomposition,
-                    ell_for_recon=ell_for_recon)
-
             elif stat == 'bispectrum':
                 chi2 += self._chi2_bispectrum(
                     obs_id_stat[stat], params_eval,
@@ -3601,7 +3622,7 @@ class PTEmu:
                     q_tr_lo=q_tr_lo, W_damping=W_damping,
                     chi2_decomposition=chi2_decomposition,
                     compute_chi2_decomposition=compute_Bisp_chi2_decomposition,
-                    ell_for_recon=ell_for_recon
+                    ell_for_recon=ell_for_recon, cnloB_mapping=cnloB_mapping
                 )
             else:
                 print('Warning! Unrecognised statistic - ignoring '
