@@ -2266,8 +2266,7 @@ class PTEmu:
         X_grouped_list_flat = [t for tt in X_grouped_list for t in tt]
         col_for_damping = [X0L_list.index(x) for x \
                            in X0L_list if not 'Pnoise' in x]
-        _,_,ordering = np.intersect1d(X_list, X_grouped_list_flat,
-                                      return_indices=True)
+        ordering = [X_grouped_list_flat.index(x) for x in X_list]
         nXNL = np.insert(np.cumsum([len(t) for t in X_grouped_list]),0,0)
         for XNL_list in X_grouped_list:
             XNL = '|'.join(XNL_list)
@@ -3019,8 +3018,8 @@ class PTEmu:
                      for i,l in enumerate(ell_joint)]
         n_obs = len(obs_id)
 
+        do_analytic_marginalisation = {oi:False for oi in obs_id}
         if AM_priors is not None:
-            do_analytic_marginalisation = {}
             params_to_marg = {}
             diagrams_to_marg = {}
             for oi in obs_id:
@@ -3035,8 +3034,6 @@ class PTEmu:
                     do_analytic_marginalisation[oi] = False
             diagrams_to_marg_all = list(set([d for oi in obs_id for d \
                                              in diagrams_to_marg[oi]]))
-            #diagrams_to_marg_all = diagrams_to_marg[obs_id[0]]
-            print(diagrams_to_marg_all,diagrams_to_marg[obs_id[0]] )
 
         if any(do_analytic_marginalisation.values()):
             chi2_decomposition = False
@@ -3083,9 +3080,8 @@ class PTEmu:
                                 [PX_ell['ell{}'.format(l)][ids[i]]
                                  for i,l in enumerate(ell[oi])])
                             PX_ell_list *= bX
-                            _, col_marg, _ = np.intersect1d(
-                                diagrams_to_marg_all, diagrams_to_marg[oi],
-                                return_indices=True)
+                            col_marg = [diagrams_to_marg_all.index(d) for d \
+                                        in diagrams_to_marg[oi]]
                             PX_ell_list = PX_ell_list[:,col_marg]
                         else:
                             PX_ell_list = np.hstack(
@@ -3102,9 +3098,8 @@ class PTEmu:
                             [PX_ell['ell{}'.format(l)][ids[i],...,n::n_obs]
                              for i,l in enumerate(ell[oi])])
                         PX_ell_list *= bX[...,n::n_obs]
-                        _, col_marg, _ = np.intersect1d(diagrams_to_marg_all,
-                                                        diagrams_to_marg[oi],
-                                                        return_indices=True)
+                        col_marg = [diagrams_to_marg_all.index(d) for d \
+                                    in diagrams_to_marg[oi]]
                         PX_ell_list = PX_ell_list[:,col_marg]
 
                 Cinv_diff = self.data[oi].inverse_cov_kmax @ diff
