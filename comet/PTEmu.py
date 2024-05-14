@@ -192,6 +192,7 @@ class PTEmu:
         self.params['w0'] = np.array([-1.0])
         self.params['q_tr'] = np.array([1.0])
         self.params['q_lo'] = np.array([1.0])
+        self.nparams = 1
 
     def load_emulator_data(self, fname):
         r"""Load tables of the emulator.
@@ -577,6 +578,10 @@ class PTEmu:
         except KeyError:
             print('Not all required parameter values have been defined.')
 
+        if len(self.params['wc']) != self.nparams:
+            self.nparams = len(self.params['wc'])
+            emu_params_updated = True
+
         if emu_params_updated:
             self.Pk_ratios = {0: None, 2: None, 4: None}
             self.splines_up_to_date = False
@@ -910,7 +915,7 @@ class PTEmu:
         bias = {}
         bias['Pctr_b1b1cnlo'] = b1sq/h4
         bias['Pctr_b1cnlo'] = b1/h4
-        bias['Pctr_b1cnlo'] = 1.0/h4
+        bias['Pctr_cnlo'] = 1.0/h4
         bias['P1L_b1g21'] = b1
         bias['P1L_g21'] = np.ones_like(b1)
         bias['Pctr_c0'] = 1.0/h2
@@ -960,7 +965,6 @@ class PTEmu:
         emu_params_updated = self.update_params(params, de_model=de_model)
         params_shape = np.array(
             [self.params[p] for p in self.params_shape_list]).T
-        self.nparams = len(self.params['wc'])
 
         if de_model is None:
             params_all = np.array([self.params[p] for p in self.params_list]).T
@@ -2988,12 +2992,11 @@ class PTEmu:
     #
     #     return np.array(a)
 
-    def _chi2_powerspectrum_marginalized(self, obs_id, params,
+    def _chi2_powerspectrum(self, obs_id, params,
                             ell, de_model=None, binning=None,
                             convolve_window=False, q_tr_lo=None,
                             W_damping=None, chi2_decomposition=False,
-                            compute_chi2_decomposition=True,
-                            params_to_marg=None, priors_for_marg=None,
+                            compute_chi2_decomposition=True, AM_priors=None,
                             ell_for_recon=None):
         r"""Compute the analytical  marginalization.
 
@@ -3012,12 +3015,25 @@ class PTEmu:
                      for i,l in enumerate(ell_joint)]
         n_obs = len(obs_id)
 
-        if params_to_marg is not None and len(params_to_marg) > 0:
-            chi2_decomposition = False
+        if AM_priors is not None:
+            do_analytic_marginalisation = {}
+            params_to_marg = {}
+            diagrams_to_marg = {}
+            for oi in obs_id:
+                params_to_marg[oi] = [p for p in AM_priors[oi] \
+                                      if p in self.diagrams_to_marg]
+                diagrams_to_marg[oi] = [value for key in params_to_marg[oi] \
+                                        if key in self.diagrams_to_marg \
+                                        for value in self.diagrams_to_marg[key]]
+                if len(params_to_marg[oi]) > 0:
+                    do_analytic_marginalisation[oi] = True
+                else:
+                    do_analytic_marginalisation[oi] = False
+            diagrams_to_marg_all = list(set([d for oi in obs_id for d \
+                                             in diagrams_to_marg[oi]]))
 
-        diagrams_to_marg = [value for key in params_to_marg \
-                           if key in self.diagrams_to_marg \
-                           for value in self.diagrams_to_marg[key]]
+        if any(do_analytic_marginalisation.values()):
+            chi2_decomposition = False
 
         # lista=self.diagrams_all
         # ####FOR CHI2 DEC
@@ -3037,72 +3053,102 @@ class PTEmu:
                              obs_id=convolve_obs_id, q_tr_lo=q_tr_lo,
                              W_damping=W_damping, ell_for_recon=ell_for_recon)
 
-            PX_ell = self.PX_ell(bins_kmax, params, ell_joint,
-                                 diagrams_to_marg, binning=binning,
-                                 obs_id=convolve_obs_id, de_model=de_model,
-                                 q_tr_lo=q_tr_lo, W_damping=W_damping,
-                                 ell_for_recon=ell_for_recon)
-            bX = self.get_bias_coeff_for_AM(diagrams_to_marg)
+            if any(do_analytic_marginalisation.values()):
+                PX_ell = self.PX_ell(bins_kmax, params, ell_joint,
+                                     diagrams_to_marg_all, binning=binning,
+                                     obs_id=convolve_obs_id, de_model=de_model,
+                                     q_tr_lo=q_tr_lo, W_damping=W_damping,
+                                     ell_for_recon=ell_for_recon)
+                bX = self.get_bias_coeff_for_AM(diagrams_to_marg_all)
 
             for n,oi in enumerate(obs_id):
                 ids = [np.intersect1d(bins_kmax[i], self.data[oi].bins_kmax[i],
                                       return_indices=True)[1]
                        for i,l in enumerate(ell[oi])]
 
-                mu = np.array(priors_for_marg[oi]['mu'])
-                sigma = np.array(priors_for_marg[oi]['sigma'])
-
                 if Pell['ell{}'.format(ell[oi][0])].ndim == 1: # N = 1
                     Pell_list = np.hstack(
                         [Pell['ell{}'.format(l)][ids[i]]
                             for i,l in enumerate(ell[oi])])
                     diff = Pell_list - self.data[oi].signal_kmax
-                    if len(diagrams_to_marg) > 1:
-                        PX_ell_list = np.vstack(
-                            [PX_ell['ell{}'.format(l)][ids[i]]
-                             for i,l in enumerate(ell[oi])])
-                    else:
-                        PX_ell_list = np.hstack(
-                            [PX_ell['ell{}'.format(l)][ids[i]]
-                             for i,l in enumerate(ell[oi])])[:,None]
-                    PX_ell_list *= bX
+                    if do_analytic_marginalisation[oi]:
+                        if len(diagrams_to_marg_all) > 1:
+                            PX_ell_list = np.vstack(
+                                [PX_ell['ell{}'.format(l)][ids[i]]
+                                 for i,l in enumerate(ell[oi])])
+                            PX_ell_list *= bX
+                            _, col_marg, _ = np.intersect1d(
+                                diagrams_to_marg_all, diagrams_to_marg[oi],
+                                return_indices=True)
+                            PX_ell_list = PX_ell_list[:,col_marg]
+                        else:
+                            PX_ell_list = np.hstack(
+                                [PX_ell['ell{}'.format(l)][ids[i]]
+                                 for i,l in enumerate(ell[oi])])[:,None]
+                            PX_ell_list *= bX
                 else:
                     Pell_list = np.vstack(
                         [Pell['ell{}'.format(l)][ids[i],n::n_obs]
                             for i,l in enumerate(ell[oi])])
                     diff = Pell_list - self.data[oi].signal_kmax[:,None]
-                    PX_ell_list = np.vstack(
-                        [PX_ell['ell{}'.format(l)][ids[i],...,n::n_obs]
-                         for i,l in enumerate(ell[oi])])
-                    PX_ell_list *= bX[...,n::n_obs]
-
-                if 'g21' in params_to_marg:
-                    col_to_join = diagrams_to_marg.index('P1L_g21')
-                    col_to_keep = np.delete(np.arange(len(diagrams_to_marg)),
-                                            col_to_join)
-                    PX_ell_list = np.add.reduceat(PX_ell_list, col_to_keep,
-                                                  axis=1)
-                if 'cnlo' in params_to_marg:
-                    col_to_join = [diagrams_to_marg.index(x) for x \
-                                   in ['Pctr_b1cnlo','Pctr_cnlo']]
-                    col_to_keep = np.delete(np.arange(len(diagrams_to_marg)),
-                                            col_to_join)
-                    PX_ell_list = np.add.reduceat(PX_ell_list, col_to_keep,
-                                                  axis=1)
+                    if do_analytic_marginalisation[oi]:
+                        PX_ell_list = np.vstack(
+                            [PX_ell['ell{}'.format(l)][ids[i],...,n::n_obs]
+                             for i,l in enumerate(ell[oi])])
+                        PX_ell_list *= bX[...,n::n_obs]
+                        _, col_marg, _ = np.intersect1d(diagrams_to_marg_all,
+                                                        diagrams_to_marg[oi],
+                                                        return_indices=True)
+                        PX_ell_list = PX_ell_list[:,col_marg]
 
                 Cinv_diff = self.data[oi].inverse_cov_kmax @ diff
-                Aij = np.einsum("mi...,mj...->ij...", PX_ell_list,
-                                np.tensordot(self.data[oi].inverse_cov_kmax,
-                                             PX_ell_list, axes=1))
-                Aij += np.diag(1.0/sigma**2)[(...,)+(np.newaxis,)*(Aij.ndim-2)]
-                Aij_inv = np.linalg.inv(Aij.T).T
-                Bi = -np.einsum("mi...,m...->i...", PX_ell_list, Cinv_diff)
-                Bi += (mu/sigma**2)[(...,)+(np.newaxis,)*(Bi.ndim-1)]
-                C = np.einsum("a...,a...", diff, Cinv_diff) \
-                    + np.log(np.linalg.det(Aij.T))
-                C += np.sum((mu/sigma)**2)
+                chi2 += np.einsum("a...,a...", diff, Cinv_diff)
 
-                chi2 += C - np.einsum("a...,ab...,b...", Bi, Aij_inv, Bi)
+                if do_analytic_marginalisation[oi]:
+                    if 'g21' in params_to_marg[oi]:
+                        col_to_join = diagrams_to_marg[oi].index('P1L_g21')
+                        col_to_keep = np.delete(
+                            np.arange(len(diagrams_to_marg[oi])), col_to_join)
+                        PX_ell_list = np.add.reduceat(PX_ell_list, col_to_keep,
+                                                      axis=1)
+                        diagrams_to_marg[oi].remove('P1L_g21')
+                    if 'cnlo' in params_to_marg[oi]:
+                        col_to_join = [diagrams_to_marg[oi].index(x) for x \
+                                       in ['Pctr_b1cnlo','Pctr_cnlo']]
+                        col_to_keep = np.delete(
+                            np.arange(len(diagrams_to_marg[oi])), col_to_join)
+                        PX_ell_list = np.add.reduceat(PX_ell_list, col_to_keep,
+                                                      axis=1)
+                    mu = np.array([AM_priors[oi][p][0] for p \
+                                   in params_to_marg[oi]])
+                    sigma = np.array([AM_priors[oi][p][1] for p \
+                                   in params_to_marg[oi]])
+                    if len(params_to_marg[oi]) > 1:
+                        Aij = np.einsum(
+                            "mi...,mj...->ij...", PX_ell_list,
+                            np.tensordot(self.data[oi].inverse_cov_kmax,
+                                         PX_ell_list, axes=1)
+                        )
+                        Aij += np.diag(
+                            1.0/sigma**2)[(...,)+(np.newaxis,)*(Aij.ndim-2)]
+                        Aij_inv = np.linalg.inv(Aij.T).T
+                        Bi = -np.einsum("mi...,m...->i...", PX_ell_list,
+                                        Cinv_diff)
+                        Bi += (mu/sigma**2)[(...,)+(np.newaxis,)*(Bi.ndim-1)]
+                        C = np.log(np.linalg.det(Aij.T)) + np.sum((mu/sigma)**2)
+                        chi2 += C - np.einsum("a...,ab...,b...", Bi,
+                                              Aij_inv, Bi)
+                    else:
+                        A = np.einsum(
+                            "m...,m...", PX_ell_list,
+                             self.data[oi].inverse_cov_kmax @ PX_ell_list
+                        )
+                        A += 1.0/sigma**2
+                        A_inv = 1.0/A
+                        B = -np.einsum("m...,m...", PX_ell_list, Cinv_diff)
+                        B += mu/sigma**2
+                        C = np.log(A) + (mu/sigma)**2
+                        chi2 += C - B**2/A
         #TO DO IMPLEMENT AM FOR CHI2DEC
         else:
             # oi = obs_id[0]
@@ -3173,110 +3219,110 @@ class PTEmu:
 
         return chi2
 
-    def _chi2_powerspectrum(self, obs_id, params, ell, de_model=None,
-                            binning=None, convolve_window=False, q_tr_lo=None,
-                            W_damping=None, chi2_decomposition=False,
-                            compute_chi2_decomposition=True,
-                            params_to_marg=None, G_priors_marg
-                            ell_for_recon=None):
-        ell_joint = np.unique(np.hstack([ell[oi] for oi in obs_id])).tolist()
-        bins_kmax = [np.unique(np.hstack([self.data[oi].bins_kmax[i]
-                                          for oi in obs_id \
-                                          if l in self.data[oi].ell]))
-                     for i,l in enumerate(ell_joint)]
-        n_obs = len(obs_id)
-        chi2 = 0.0
-        if not chi2_decomposition:
-            convolve_obs_id = obs_id if convolve_window else None
-            Pell = self.Pell(bins_kmax, params, ell_joint,
-                             de_model=de_model, binning=binning,
-                             obs_id=convolve_obs_id, q_tr_lo=q_tr_lo,
-                             W_damping=W_damping, ell_for_recon=ell_for_recon)
-
-            for n,oi in enumerate(obs_id):
-                ids = [np.intersect1d(bins_kmax[i], self.data[oi].bins_kmax[i],
-                                      return_indices=True)[1]
-                       for i,l in enumerate(ell[oi])]
-                if Pell['ell{}'.format(ell[oi][0])].ndim == 1:
-                    Pell_list = np.hstack(
-                        [Pell['ell{}'.format(l)][ids[i]]
-                         for i,l in enumerate(ell[oi])])
-                    diff = Pell_list - self.data[oi].signal_kmax
-                else:
-                    Pell_list = np.vstack(
-                        [Pell['ell{}'.format(l)][ids[i],n::n_obs]
-                         for i,l in enumerate(ell[oi])])
-                    diff = Pell_list - self.data[oi].signal_kmax[:,None]
-                chi2 += np.einsum("a...,a...", diff,
-                                  self.data[oi].inverse_cov_kmax @ diff)
-        else:
-            # oi = obs_id[0]
-            if compute_chi2_decomposition:
-                convolve_obs_id = obs_id if convolve_window else None
-                PX_ell = {}
-                for X in self.diagrams_all:
-                    PX_ell[X] = self.PX_ell(bins_kmax, params, ell_joint, X,
-                                            binning=binning,
-                                            obs_id=convolve_obs_id,
-                                            de_model=de_model, q_tr_lo=q_tr_lo,
-                                            W_damping=W_damping,
-                                            ell_for_recon=ell_for_recon)
-
-                n_diagrams = len(self.diagrams_all)
-                nparams_poi = int(self.nparams/n_obs)
-                self.chi2_decomposition = {}
-                self.chi2_decomposition['DD'] = 0.0
-                self.chi2_decomposition['XD'] = np.empty((n_diagrams,
-                                                          n_obs, nparams_poi))
-                self.chi2_decomposition['XX'] = np.empty((n_diagrams,
-                                                          n_diagrams,
-                                                          n_obs, nparams_poi))
-                for n,oi in enumerate(obs_id):
-                    ids = [np.intersect1d(bins_kmax[i],
-                                          self.data[oi].bins_kmax[i],
-                                          return_indices=True)[1]
-                           for i,l in enumerate(ell[oi])]
-                    if PX_ell['P0L_b1b1']['ell{}'.format(ell[oi][0])].ndim == 1:
-                        # ndiag x nk x nell -> ndiag x (ids x nell)
-                        PX_ell_list = np.vstack([
-                            np.hstack([
-                                PX_ell[X]['ell{}'.format(l)][ids[i]]
-                                for i,l in enumerate(ell[oi])
-                            ]) for X in self.diagrams_all
-                        ])
-                    else:
-                        # ndiag x nk X nell x N -> ndiag x (ids x nell) x N
-                        PX_ell_list = np.stack([
-                            np.vstack([
-                                PX_ell[X]['ell{}'.format(l)][ids[i],
-                                                             n::n_obs]
-                                for i,l in enumerate(ell[oi])
-                            ]) for X in self.diagrams_all
-                        ])
-                    self.chi2_decomposition['DD'] += self.data[oi].SN_kmax
-                    self.chi2_decomposition['XD'][:,n] = \
-                        np.einsum("ab...,b->a...", PX_ell_list,
-                                  self.data[oi].inverse_cov_kmax \
-                                      @ self.data[oi].signal_kmax)
-                    self.chi2_decomposition['XX'][:,:,n] = \
-                        np.einsum("ab...,bc,dc...->ad...", PX_ell_list,
-                                  self.data[oi].inverse_cov_kmax,
-                                  PX_ell_list)
-
-            self.update_bias_params(params)
-            self.splines_up_to_date = False
-            self.dw_spline_up_to_date = False
-
-            bX = self.get_bias_coeff_for_chi2_decomposition()
-            for n in range(n_obs):
-                chi2 += np.einsum("ac,abc,bc->c", bX[:,n::n_obs],
-                                  self.chi2_decomposition['XX'][:,:,n],
-                                  bX[:,n::n_obs])
-                chi2 -= 2*np.einsum("ab,ab->b", bX[:,n::n_obs],
-                                    self.chi2_decomposition['XD'][:,n])
-            chi2 += self.chi2_decomposition['DD']
-
-        return chi2
+    # def _chi2_powerspectrum(self, obs_id, params, ell, de_model=None,
+    #                         binning=None, convolve_window=False, q_tr_lo=None,
+    #                         W_damping=None, chi2_decomposition=False,
+    #                         compute_chi2_decomposition=True,
+    #                         params_to_marg=None, G_priors_marg
+    #                         ell_for_recon=None):
+    #     ell_joint = np.unique(np.hstack([ell[oi] for oi in obs_id])).tolist()
+    #     bins_kmax = [np.unique(np.hstack([self.data[oi].bins_kmax[i]
+    #                                       for oi in obs_id \
+    #                                       if l in self.data[oi].ell]))
+    #                  for i,l in enumerate(ell_joint)]
+    #     n_obs = len(obs_id)
+    #     chi2 = 0.0
+    #     if not chi2_decomposition:
+    #         convolve_obs_id = obs_id if convolve_window else None
+    #         Pell = self.Pell(bins_kmax, params, ell_joint,
+    #                          de_model=de_model, binning=binning,
+    #                          obs_id=convolve_obs_id, q_tr_lo=q_tr_lo,
+    #                          W_damping=W_damping, ell_for_recon=ell_for_recon)
+    #
+    #         for n,oi in enumerate(obs_id):
+    #             ids = [np.intersect1d(bins_kmax[i], self.data[oi].bins_kmax[i],
+    #                                   return_indices=True)[1]
+    #                    for i,l in enumerate(ell[oi])]
+    #             if Pell['ell{}'.format(ell[oi][0])].ndim == 1:
+    #                 Pell_list = np.hstack(
+    #                     [Pell['ell{}'.format(l)][ids[i]]
+    #                      for i,l in enumerate(ell[oi])])
+    #                 diff = Pell_list - self.data[oi].signal_kmax
+    #             else:
+    #                 Pell_list = np.vstack(
+    #                     [Pell['ell{}'.format(l)][ids[i],n::n_obs]
+    #                      for i,l in enumerate(ell[oi])])
+    #                 diff = Pell_list - self.data[oi].signal_kmax[:,None]
+    #             chi2 += np.einsum("a...,a...", diff,
+    #                               self.data[oi].inverse_cov_kmax @ diff)
+    #     else:
+    #         # oi = obs_id[0]
+    #         if compute_chi2_decomposition:
+    #             convolve_obs_id = obs_id if convolve_window else None
+    #             PX_ell = {}
+    #             for X in self.diagrams_all:
+    #                 PX_ell[X] = self.PX_ell(bins_kmax, params, ell_joint, X,
+    #                                         binning=binning,
+    #                                         obs_id=convolve_obs_id,
+    #                                         de_model=de_model, q_tr_lo=q_tr_lo,
+    #                                         W_damping=W_damping,
+    #                                         ell_for_recon=ell_for_recon)
+    #
+    #             n_diagrams = len(self.diagrams_all)
+    #             nparams_poi = int(self.nparams/n_obs)
+    #             self.chi2_decomposition = {}
+    #             self.chi2_decomposition['DD'] = 0.0
+    #             self.chi2_decomposition['XD'] = np.empty((n_diagrams,
+    #                                                       n_obs, nparams_poi))
+    #             self.chi2_decomposition['XX'] = np.empty((n_diagrams,
+    #                                                       n_diagrams,
+    #                                                       n_obs, nparams_poi))
+    #             for n,oi in enumerate(obs_id):
+    #                 ids = [np.intersect1d(bins_kmax[i],
+    #                                       self.data[oi].bins_kmax[i],
+    #                                       return_indices=True)[1]
+    #                        for i,l in enumerate(ell[oi])]
+    #                 if PX_ell['P0L_b1b1']['ell{}'.format(ell[oi][0])].ndim == 1:
+    #                     # ndiag x nk x nell -> ndiag x (ids x nell)
+    #                     PX_ell_list = np.vstack([
+    #                         np.hstack([
+    #                             PX_ell[X]['ell{}'.format(l)][ids[i]]
+    #                             for i,l in enumerate(ell[oi])
+    #                         ]) for X in self.diagrams_all
+    #                     ])
+    #                 else:
+    #                     # ndiag x nk X nell x N -> ndiag x (ids x nell) x N
+    #                     PX_ell_list = np.stack([
+    #                         np.vstack([
+    #                             PX_ell[X]['ell{}'.format(l)][ids[i],
+    #                                                          n::n_obs]
+    #                             for i,l in enumerate(ell[oi])
+    #                         ]) for X in self.diagrams_all
+    #                     ])
+    #                 self.chi2_decomposition['DD'] += self.data[oi].SN_kmax
+    #                 self.chi2_decomposition['XD'][:,n] = \
+    #                     np.einsum("ab...,b->a...", PX_ell_list,
+    #                               self.data[oi].inverse_cov_kmax \
+    #                                   @ self.data[oi].signal_kmax)
+    #                 self.chi2_decomposition['XX'][:,:,n] = \
+    #                     np.einsum("ab...,bc,dc...->ad...", PX_ell_list,
+    #                               self.data[oi].inverse_cov_kmax,
+    #                               PX_ell_list)
+    #
+    #         self.update_bias_params(params)
+    #         self.splines_up_to_date = False
+    #         self.dw_spline_up_to_date = False
+    #
+    #         bX = self.get_bias_coeff_for_chi2_decomposition()
+    #         for n in range(n_obs):
+    #             chi2 += np.einsum("ac,abc,bc->c", bX[:,n::n_obs],
+    #                               self.chi2_decomposition['XX'][:,:,n],
+    #                               bX[:,n::n_obs])
+    #             chi2 -= 2*np.einsum("ab,ab->b", bX[:,n::n_obs],
+    #                                 self.chi2_decomposition['XD'][:,n])
+    #         chi2 += self.chi2_decomposition['DD']
+    #
+    #     return chi2
 
     def _chi2_bispectrum(self, obs_id, params, ell, de_model=None,
                          binning=None, convolve_window=False, q_tr_lo=None,
@@ -3390,8 +3436,7 @@ class PTEmu:
 
     def chi2(self, obs_id, params, kmax, de_model=None, binning=None,
              convolve_window=False, q_tr_lo=None, W_damping=None,
-             chi2_decomposition=False, params_to_marg=None,
-             priors_for_marg=None, ell_for_recon=None,
+             chi2_decomposition=False, AM_priors=None, ell_for_recon=None,
              cnloB_mapping=lambda x: [0.5]):
         r"""Compute the :math:`\chi^2 for the given configurations`.
 
@@ -3543,16 +3588,17 @@ class PTEmu:
             compute_chi2_decomposition = None
             compute_Bisp_chi2_decomposition = None
 
-        do_analytic_marginalisation = True
-        if params_to_marg is None or priors_for_marg is None:
-            do_analytic_marginalisation = False
-
-        if do_analytic_marginalisation:
-            if obs_id[0] not in priors_for_marg:
+        if AM_priors is not None:
+            check_obs = [x in obs_id for x in AM_priors]
+            if not any(check_obs):
                 temp = {}
                 for oi in obs_id:
-                    temp[oi] = priors_for_marg
-                priors_for_marg = temp
+                    temp[oi] = AM_priors
+                AM_priors = temp
+            else:
+                for oi in obs_id:
+                    if oi not in AM_priors:
+                        AM_priors[oi] = {}
 
         if not np.any([stat in binning for stat in obs_id_stat]):
             binning = {stat:binning for stat in obs_id_stat}
@@ -3589,30 +3635,16 @@ class PTEmu:
             for p in params:
                 params_eval[p] = np.atleast_1d(params[p])[ids_sorting]
             if stat == 'powerspectrum':
-                if do_analytic_marginalisation:
-                    chi2 += self._chi2_powerspectrum_marginalized(
-                        obs_id_stat[stat], params_eval,
-                        {oi:ell[oi] for oi in obs_id_stat[stat]},
-                        de_model=de_model, binning=binning[stat],
-                        convolve_window=convolve_window,
-                        q_tr_lo=q_tr_lo, W_damping=W_damping[stat],
-                        chi2_decomposition=chi2_decomposition,
-                        compute_chi2_decomposition=compute_chi2_decomposition,
-                        params_to_marg=params_to_marg,
-                        priors_for_marg=priors_for_marg,
-                        ell_for_recon=ell_for_recon
-                    )
-                else:
-                    chi2 += self._chi2_powerspectrum(
-                        obs_id_stat[stat], params_eval,
-                        {oi:ell[oi] for oi in obs_id_stat[stat]},
-                        de_model=de_model, binning=binning[stat],
-                        convolve_window=convolve_window,
-                        q_tr_lo=q_tr_lo, W_damping=W_damping[stat],
-                        chi2_decomposition=chi2_decomposition,
-                        compute_chi2_decomposition=compute_chi2_decomposition,
-                        ell_for_recon=ell_for_recon
-                    )
+                chi2 += self._chi2_powerspectrum(
+                    obs_id_stat[stat], params_eval,
+                    {oi:ell[oi] for oi in obs_id_stat[stat]},
+                    de_model=de_model, binning=binning[stat],
+                    convolve_window=convolve_window,
+                    q_tr_lo=q_tr_lo, W_damping=W_damping[stat],
+                    chi2_decomposition=chi2_decomposition,
+                    compute_chi2_decomposition=compute_chi2_decomposition,
+                    AM_priors=AM_priors, ell_for_recon=ell_for_recon
+                )
             elif stat == 'bispectrum':
                 chi2 += self._chi2_bispectrum(
                     obs_id_stat[stat], params_eval,
