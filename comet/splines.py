@@ -11,7 +11,7 @@ class Splines:
         self.use_Mpc = use_Mpc
         self.id_min = id_min
         self.id_max = -1
-        self.ncol = ncol
+        self.ncol = tuple([ncol]) if not isinstance(ncol, tuple) else ncol
         self.crossover_check = crossover_check
 
     def build(self, x, y, h=None, axis=0):
@@ -119,8 +119,8 @@ class Splines:
                        else x[:,None] > self.x_max
         mask = ~mask_less & ~mask_greater
 
-        y = np.empty(x.shape+(self.ncol,self.size_last,)) \
-            if self.ncol > 0 else np.empty(x.shape+(self.size_last,))
+        y = np.empty(x.shape + (*self.ncol,self.size_last,)) \
+            if sum(self.ncol) > 0 else np.empty(x.shape+(self.size_last,))
 
         y[mask_less] = self._eval_extrapolation_min(x)[mask_less]
         y[mask] = self._eval_spline(x)[mask]
@@ -133,8 +133,8 @@ class Splines:
         mask_greater = x > self.x_max
         mask = ~mask_less & ~mask_greater
 
-        y = np.empty(x.shape[:n]+(self.ncol,self.size_last,)) \
-            if self.ncol > 0 else np.empty(x.shape[:n]+(self.size_last,))
+        y = np.empty(x.shape[:n] + (*self.ncol,self.size_last,)) \
+            if sum(self.ncol) > 0 else np.empty(x.shape[:n]+(self.size_last,))
 
         for i in range(self.size_last):
             y[mask_less[...,i],...,i] = \
