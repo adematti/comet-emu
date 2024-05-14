@@ -2264,8 +2264,11 @@ class PTEmu:
         X1L_list = [t for t in X_list if 'P1L' in t]
         X_grouped_list = [t for t in [X0L_list,X1L_list] if len(t) > 0]
         X_grouped_list_flat = [t for tt in X_grouped_list for t in tt]
-        col_for_damping = [X0L_list.index(x) for x \
-                           in X0L_list if not 'Pnoise' in x]
+        col_for_damping = {}
+        for XNL_list in X_grouped_list:
+            XNL = '|'.join(XNL_list)
+            col_for_damping[XNL] = [XNL_list.index(x) for x \
+                                    in XNL_list if not 'Pnoise' in x]
         ordering = [X_grouped_list_flat.index(x) for x in X_list]
         nXNL = np.insert(np.cumsum([len(t) for t in X_grouped_list]),0,0)
         for XNL_list in X_grouped_list:
@@ -2300,7 +2303,7 @@ class PTEmu:
             kp = np.multiply.outer(keff, APfac)
             mup = np.divide.outer(mu, self.params['q_lo'])/APfac
             P2d_tot = P2d(XNL, kp, mup)
-            P2d_tot[:,col_for_damping] *= W_damping(kp, mup)[:,None,...]
+            P2d_tot[:,col_for_damping[XNL]] *= W_damping(kp, mup)[:,None,...]
             legendre = eval_legendre.outer(ell, mu)
             return 0.5 * np.einsum("aebc,db,b->adec", P2d_tot, legendre,
                                    self.gl_weights) # nk x nell x nXNL x N
@@ -2314,7 +2317,7 @@ class PTEmu:
             mup = np.divide.outer(self.grid.mu, self.params['q_lo'])/APfac
             legendre = eval_legendre.outer(ell, self.grid.mu)
             P2d_tot = P2d(XNL, kp, mup)
-            P2d_tot[col_for_damping] *= W_damping(kp, mup)
+            P2d_tot[col_for_damping[XNL]] *= W_damping(kp, mup)
             avg = np.add.reduceat(
                 np.einsum("ab,dbc,b->badc", legendre, P2d_tot,
                           self.grid.weights),
