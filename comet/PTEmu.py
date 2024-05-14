@@ -2264,6 +2264,8 @@ class PTEmu:
         X1L_list = [t for t in X_list if 'P1L' in t]
         X_grouped_list = [t for t in [X0L_list,X1L_list] if len(t) > 0]
         X_grouped_list_flat = [t for tt in X_grouped_list for t in tt]
+        col_for_damping = [X0L_list.index(x) for x \
+                           in X0L_list if not 'Pnoise' in x]
         _,_,ordering = np.intersect1d(X_list, X_grouped_list_flat,
                                       return_indices=True)
         nXNL = np.insert(np.cumsum([len(t) for t in X_grouped_list]),0,0)
@@ -2298,7 +2300,8 @@ class PTEmu:
                 + np.divide.outer(1.0 - mu2, self.params['q_tr']**2))
             kp = np.multiply.outer(keff, APfac)
             mup = np.divide.outer(mu, self.params['q_lo'])/APfac
-            P2d_tot = P2d(XNL, kp, mup) * W_damping(kp, mup)[:,None,...]
+            P2d_tot = P2d(XNL, kp, mup)
+            P2d_tot[:,col_for_damping] *= W_damping(kp, mup)[:,None,...]
             legendre = eval_legendre.outer(ell, mu)
             return 0.5 * np.einsum("aebc,db,b->adec", P2d_tot, legendre,
                                    self.gl_weights) # nk x nell x nXNL x N
@@ -2311,7 +2314,8 @@ class PTEmu:
             kp = self.grid.k[:,None] * APfac
             mup = np.divide.outer(self.grid.mu, self.params['q_lo'])/APfac
             legendre = eval_legendre.outer(ell, self.grid.mu)
-            P2d_tot = P2d(XNL, kp, mup) * W_damping(kp, mup)
+            P2d_tot = P2d(XNL, kp, mup)
+            P2d_tot[col_for_damping] *= W_damping(kp, mup)
             avg = np.add.reduceat(
                 np.einsum("ab,dbc,b->badc", legendre, P2d_tot,
                           self.grid.weights),
@@ -3031,6 +3035,8 @@ class PTEmu:
                     do_analytic_marginalisation[oi] = False
             diagrams_to_marg_all = list(set([d for oi in obs_id for d \
                                              in diagrams_to_marg[oi]]))
+            #diagrams_to_marg_all = diagrams_to_marg[obs_id[0]]
+            print(diagrams_to_marg_all,diagrams_to_marg[obs_id[0]] )
 
         if any(do_analytic_marginalisation.values()):
             chi2_decomposition = False
@@ -3122,7 +3128,7 @@ class PTEmu:
                     mu = np.array([AM_priors[oi][p][0] for p \
                                    in params_to_marg[oi]])
                     sigma = np.array([AM_priors[oi][p][1] for p \
-                                   in params_to_marg[oi]])
+                                      in params_to_marg[oi]])
                     if len(params_to_marg[oi]) > 1:
                         Aij = np.einsum(
                             "mi...,mj...->ij...", PX_ell_list,
