@@ -40,13 +40,15 @@ class Splines:
         dlx_min = np.log10(np.abs(x[self.id_min+2]/x[self.id_min]))
         self.neff_min = dly_min/dlx_min
         if self.use_Mpc:
+            if len(self.ncol) > 1:
+                self.x_min = self.x_min[:,np.newaxis]
             self.extrapolation_min = lambda x,n: self.y_min[...,n] \
                 * np.divide.outer(x,self.x_min)**self.neff_min[...,n]
         else:
             self.y_min = self.y_min*self.h3
             self.x_min = self.x_min/self.h
             self.extrapolation_min = lambda x,n: self.y_min[...,n] \
-            * np.power.outer(
+                * np.power.outer(
                     np.divide.outer(x,self.x_min[...,n]),self.neff_min[...,n])
 
         # high-k extrapolation
@@ -62,6 +64,8 @@ class Splines:
         self.neff_max = dly_max/dlx_max
         self.neff_max[np.isnan(self.neff_max)] = 0.0
         if self.use_Mpc:
+            if len(self.ncol) > 1:
+                self.x_max = self.x_max[:,np.newaxis]
             self.extrapolation_max_plaw = lambda x,n: self.y_max[...,n] \
                 * np.divide.outer(x,self.x_max)**self.neff_max[...,n]
         else:
