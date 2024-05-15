@@ -88,9 +88,10 @@ class Splines:
 
     def extrapolation_max(self, x, n):
         y = self.extrapolation_max_plaw(x,n) # nx x nell
-        if self.crossover_check and sum(self.mask[1] == n) > 0:
-            ids = self.mask[0][self.mask[1] == n]
-            y[...,ids] = self.extrapolation_max_lin(x,n)[...,ids]
+        if self.crossover_check and sum(self.mask[-1] == n) > 0:
+            ids = (Ellipsis,) + tuple(self.mask[i][self.mask[-1] == n] \
+                                      for i in range(len(self.mask)-1))
+            y[ids] = self.extrapolation_max_lin(x,n)[ids]
         return y
 
     def _eval_extrapolation_min(self, x):

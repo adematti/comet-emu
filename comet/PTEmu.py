@@ -918,7 +918,7 @@ class PTEmu:
     def get_bias_coeff_for_AM(self, diagrams_to_marg):
         b1 = self.params['b1']
         b1sq = b1**2
-        h = 1.0 if self.use_Mpc else self.params['h']
+        h = np.ones_like(b1) if self.use_Mpc else self.params['h']
         h2 = h**2
         h4 = h**4
         bias = {}
