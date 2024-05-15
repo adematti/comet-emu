@@ -222,6 +222,12 @@ class MeasuredData:
         self.kmax_is_set = False
         self.mixing_matrix_exists = False
 
+    def transpose_mixing_matrix(self, axes):
+        if hasattr(self, 'W_mixing_matrix'):
+            self.W_mixing_matrix_transpose = np.ascontiguousarray(
+                np.transpose(self.W_mixing_matrix, axes)
+            )
+
     def is_block_diagonal(self, arr, nblock):
         def is_diagonal(arr):
             return np.all(arr == np.diag(np.diag(arr)))

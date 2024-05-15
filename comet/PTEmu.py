@@ -460,6 +460,7 @@ class PTEmu:
                 stat='powerspectrum',
                 bins_mixing_matrix=self.data[obs_id_list[0]].bins_mixing_matrix,
                 W_mixing_matrix=W_stacked)
+            self.data[obs_id_stacked].transpose_mixing_matrix((2,0,1))
 
     def define_fiducial_cosmology(self, HDm_fid=None, params_fid=None,
                                   de_model='lambda'):
@@ -2471,21 +2472,37 @@ class PTEmu:
                         self.data[obs_id_use].bins_mixing_matrix[1])
                 spline = spline.reshape((spline.shape[0]*spline.shape[1],) \
                                         + spline.shape[2:], order='F')
-                if (isinstance(obs_id, list) and len(obs_id) > 1) \
-                        or len(X_list) > 1:
-                    PX_ell_convolved = (self.data[obs_id_use].W_mixing_matrix \
-                                        @ spline.T[...,None]).squeeze().T
+                if (isinstance(obs_id, list) and len(obs_id) > 1):
+                    if len(X_list) > 1:
+                        spline = np.ascontiguousarray(
+                            np.moveaxis(spline, -1, 0))
+                        PX_ell_convolved = np.moveaxis(
+                            self.data[obs_id_use].W_mixing_matrix @ spline,
+                            0, -1
+                        )
+                    else:
+                        PX_ell_convolved = \
+                            (self.data[obs_id_use].W_mixing_matrix \
+                             @ spline.T[...,None]).squeeze().T
                 else:
-                    PX_ell_convolved = self.data[obs_id_use].W_mixing_matrix \
-                                       @ spline
+                    if len(X_list) > 1:
+                        spline = np.ascontiguousarray(
+                            np.moveaxis(spline, 0, 1))
+                        PX_ell_convolved = np.moveaxis(
+                            self.data[obs_id_use].W_mixing_matrix @ spline,
+                            1, 0
+                        )
+                    else:
+                        PX_ell_convolved = \
+                            self.data[obs_id_use].W_mixing_matrix @ spline
                 nb = len(self.data[obs_id_use].bins_mixing_matrix[0])
 
                 PX_ell_dict = {}
                 if k.size != np.intersect1d(
                         k, self.data[obs_id_use].bins_mixing_matrix[0]).size:
                     PX_ell_convolved = PX_ell_convolved.reshape(
-                        (nb, len(ell_for_mixing_matrix),
-                         PX_ell_convolved.shape[-1]), order='F')
+                        (nb, len(ell_for_mixing_matrix),) \
+                         + PX_ell_convolved.shape[1:], order='F')
                     ell_ids = (np.array(ell)/2).astype(np.int64)
                     spline = make_interp_spline(
                         self.data[obs_id_use].bins_mixing_matrix[0],
