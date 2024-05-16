@@ -3176,7 +3176,7 @@ class PTEmu:
                         col_to_keep = np.delete(
                             np.arange(len(diagrams_to_marg[oi])), col_to_join)
                         PX_ell_list = np.add.reduceat(PX_ell_list, col_to_keep,
-                                                      axis=1)
+                                                      axis=1).squeeze()
                         diagrams_to_marg[oi].remove('P1L_g21')
                     if 'cnlo' in params_to_marg[oi]:
                         col_to_join = [diagrams_to_marg[oi].index(x) for x \
@@ -3184,7 +3184,7 @@ class PTEmu:
                         col_to_keep = np.delete(
                             np.arange(len(diagrams_to_marg[oi])), col_to_join)
                         PX_ell_list = np.add.reduceat(PX_ell_list, col_to_keep,
-                                                      axis=1)
+                                                      axis=1).squeeze()
                     mu = np.array([AM_priors[oi][p][0] for p \
                                    in params_to_marg[oi]])
                     sigma = np.array([AM_priors[oi][p][1] for p \
