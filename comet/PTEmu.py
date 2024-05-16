@@ -925,8 +925,15 @@ class PTEmu:
         bias['Pctr_b1b1cnlo'] = b1sq/h4
         bias['Pctr_b1cnlo'] = b1/h4
         bias['Pctr_cnlo'] = 1.0/h4
-        bias['P1L_b1g21'] = b1
-        bias['P1L_g21'] = np.ones_like(b1)
+        if self.bias_basis == 'EggScoSmi':
+            bias['P1L_b1g21'] = b1
+            bias['P1L_g21'] = np.ones_like(b1)
+        elif self.bias_basis == 'AssBauGre':
+            bias['P1L_b1g21'] = -4.0/7.0*b1
+            bias['P1L_g21'] = -4.0/7.0*np.ones_like(b1)
+        elif self.bias_basis == 'AmiGleKok':
+            bias['P1L_b1g21'] = -18.0/147.0*b1
+            bias['P1L_g21'] = -18.0/147.0*np.ones_like(b1)
         bias['Pctr_c0'] = 1.0/h2
         bias['Pctr_c2'] = 1.0/h2
         bias['Pctr_c4'] = 1.0/h2
@@ -3087,6 +3094,10 @@ class PTEmu:
                     do_analytic_marginalisation[oi] = False
             diagrams_to_marg_all = list(set([d for oi in obs_id for d \
                                              in diagrams_to_marg[oi]]))
+            for n,oi in enumerate(obs_id):
+                for p in params_to_marg[oi]:
+                    if p in params:
+                        params[p][n::n_obs] = 0.0
 
         if any(do_analytic_marginalisation.values()):
             chi2_decomposition = False
@@ -3159,7 +3170,8 @@ class PTEmu:
                 chi2 += np.einsum("a...,a...", diff, Cinv_diff)
 
                 if do_analytic_marginalisation[oi]:
-                    if 'g21' in params_to_marg[oi]:
+                    if 'g21' in params_to_marg[oi] \
+                            or 'bGam3' in params_to_marg[oi]:
                         col_to_join = diagrams_to_marg[oi].index('P1L_g21')
                         col_to_keep = np.delete(
                             np.arange(len(diagrams_to_marg[oi])), col_to_join)
