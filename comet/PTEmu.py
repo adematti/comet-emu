@@ -1130,7 +1130,7 @@ class PTEmu:
 
     def W_obs_syst(self, k, mu):
         if np.all(self.params['sigma_z'] == 0.0):
-            t = 1.0
+            t = np.ones_like(k)
         else:
             sigma_r = self.cosmo.light_speed/self.H_fid * self.params['sigma_z']
             t = np.exp(-(k * mu * sigma_r)**2)
