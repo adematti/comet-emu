@@ -93,7 +93,7 @@ class Tables:
         self.nk = nk
         self.nkloop = nkloop
 
-        if 'MODEL_SHAPE' == table_hdu.header['EXTNAME']:
+        if table_hdu.header['EXTNAME'] in ['MODEL_SHAPE', 'MODEL_LINEAR']:
             if self.model is None:
                 self.model = {}
             for TYPE in [table_hdu.header['TTYPE{}'.format(i+1)]
