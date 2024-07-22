@@ -58,7 +58,7 @@ class PTEmu:
     projecting again over the Legendre polynomials.
     """
 
-    def __init__(self, model, use_Mpc=True, bias_basis='EggScoSmi'):
+    def __init__(self, model, use_Mpc=True, bias_basis='EggScoSmi', IR='DST'):
         r"""Class constructor.
 
         Parameters
@@ -193,6 +193,8 @@ class PTEmu:
         self.chi2_decomposition = None
         self.chi2_decomposition_convolve_window = False
         self.Bisp_chi2_decomposition = None
+
+        self.IR = IR
 
         self.load_emulator_data(
             fname=base_dir+'/data_dir/tables/{}.fits'.format(model))
@@ -334,7 +336,7 @@ class PTEmu:
                 self.P6[:nkdiff,i] = self.P6[nkdiff,i] \
                     * (self.k_table[:nkdiff]/self.k_table[nkdiff])**neff
 
-        self.Bisp = Bispectrum(self.real_space, self.RSD_model, self.use_Mpc)
+        self.Bisp = Bispectrum(self.real_space, self.model, self.use_Mpc)
 
     def load_emulator(self, fname_base):
         r"""Load the emulator from pickle file.
@@ -356,8 +358,12 @@ class PTEmu:
         if 'nonu' not in self.model:
             self.emu['linear'] = pickle.load(
                 open('{}_linear.pickle'.format(fname_base), "rb"))
-        self.emu['ratios'] = pickle.load(
-            open('{}_ratios.pickle'.format(fname_base), "rb"))
+        if self.IR == 'DST':
+            self.emu['ratios'] = pickle.load(
+                open('{}_ratios.pickle'.format(fname_base), "rb"))
+        elif self.IR == 'EH':
+            self.emu['ratios'] = pickle.load(
+                open('{}_EH_ratios.pickle'.format(fname_base), "rb"))
 
     def define_units(self, use_Mpc):
         r"""Define units for the power spectrum and number density.
@@ -1097,7 +1103,7 @@ class PTEmu:
                     if 'VDG_infty' in self.model:
                         self.params['sv'] = np.atleast_1d(
                             self.training['SHAPE'].transform_inv(
-                                shape_all[:,1], 'sv').squeeze())
+                                shape_all[:,-1], 'sv').squeeze())
                         self.params['sv'] *= self.params['s12']/sigma12
                         if not self.use_Mpc:
                             self.params['sv'] *= self.params['h']
