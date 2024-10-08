@@ -1187,6 +1187,7 @@ class PTEmu:
                         self.params['sv'] = np.atleast_1d(
                             self.training['SHAPE'].transform_inv(
                                 shape_all[:,-1], 'sv').squeeze())
+                        self.params['sv'] *= amplitude_scaling
                         if not self.use_Mpc:
                             self.params['sv'] *= self.params['h']
 
