@@ -480,15 +480,15 @@ class Cosmology:
                             atol=1E-6, rtol=1E-6, vectorized=True)
 
             D_sorted = dic['y'][:nparam].T
-            D = D_sorted[unique_indices] 
+            D = D_sorted[unique_indices]
 
             if (dic['status'] != 0) or (D.shape[0] != a_eval.shape[0]):
                 raise Exception('The calculation of the growth factor failed.')
 
             if get_growth_rate:
-                Dp = dic['y'][nparam:, isort_rev].T
-                #f = np.float64(a_eval[:,None]*Dp/D)
-                f = a_eval[:,None]*Dp/D
+                Dp_sorted = dic['y'][nparam:].T
+                Dp = Dp_sorted[unique_indices]
+                f = a_eval[:, None] * Dp / D  # a_eval retains its original shape and order
                 return [D, f]
             else:
                 return D
