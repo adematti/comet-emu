@@ -20,16 +20,17 @@ base_dir = os.path.join(os.path.dirname(__file__))
 
 
 class PTEmu:
-    r"""Main class for the emulator of the power spectrum multipoles.
+    r"""Main class for the emulator of the power spectrum Legendre multipoles.
 
-    The emulator makes use of evolution mapping (`Sanchez 2020
-    <https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511>`_,
-    `Sanchez et al 2021 <https://arxiv.org/abs/2108.12710>`_,) to compress
+    The emulator makes use of evolution mapping (first introduced in `Sanchez
+    2020 <https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511>`_
+    and later extended in `Sanchez et al 2021
+    <https://arxiv.org/abs/2108.12710>`_) to compress
     the information of evolution parameters :math:`\mathbf{\Theta_{e}}`
     (e.g. :math:`h,\,\Omega_\mathrm{K},\,w_0,\,w_\mathrm{a},\,A_\mathrm{s},\,
     \ldots`) into the single quantity :math:`\sigma_{12}`, defined as the rms
     fluctuation of the linear density contrast :math:`\delta` within spheres
-    of radius :math:`R=8\,\mathrm{Mpc}`.
+    of radius :math:`R=12\,\mathrm{Mpc}`.
 
     This parameter, together with the parameters affecting the shape of the
     power spectrum :math:`\mathbf{\Theta_{s}}` (e.g.
@@ -56,25 +57,24 @@ class PTEmu:
     :math:`P_\mathrm{gg}(k,\mu)`, summing up all the even multipoles up to
     :math:`\ell=6`, applying distortions to :math:`k` and :math:`\mu`, and then
     projecting again over the Legendre polynomials.
+
+    Parameters
+    ----------
+    model: str
+        Identifier of the selected model. Must be specified from the following
+        list: ['EFT', 'VDG_infty'].
+    use_Mpc: bool, optional
+        Flag that determines if the input and output quantities are
+        specified in :math:`\mathrm{Mpc}` (**True**) or
+        :math:`h^{-1}\mathrm{Mpc}` (**False**) units. Defaults to **True**.
+    bias_basis: str, optional
+        Type of parametrisation for the galaxy bias expansion. Must be
+        specified from the following list:
+        ['EggScoSmi', 'AssBauGre', AmiGleKok]. Defaults to 'EggScoSmi'.
     """
 
-    def __init__(self, model, use_Mpc=True, bias_basis='EggScoSmi', IR='DST'):
-        r"""Class constructor.
+    def __init__(self, model, use_Mpc=True, bias_basis='EggScoSmi'):
 
-        Parameters
-        ----------
-        model: str
-            Identifier of the selected model.
-        use_Mpc: bool, optional
-            Flag that determines if the input and output quantities are
-            specified in :math:`\mathrm{Mpc}` (**True**) or
-            :math:`h^{-1}\mathrm{Mpc}` (**False**) units. Defaults to **True**.
-        bias_basis: str, optional
-            Type of parametrisation for the galaxy bias expansion. Must be
-            specified from the following list:
-            ['EggScoSmi', 'AssBauGre', AmiGleKok]. Defaults to 'EggScoSmi'.
-
-        """
         self.model = model
         self.bias_basis = bias_basis
 
@@ -132,13 +132,16 @@ class PTEmu:
                              'P1L_g2g2', 'P1L_b2', 'P1L_g2', 'P1L_g21',
                              'Pnoise_NP0', 'Pnoise_NP20', 'Pnoise_NP22']
 
-        self.diagrams_to_marg = {'cnlo':['Pctr_b1b1cnlo','Pctr_b1cnlo',
-                                        'Pctr_cnlo'],
-                                'bGam3':['P1L_b1g21','P1L_g21'], # needed?
-                                'g21':['P1L_b1g21','P1L_g21'],
-                                'c0':['Pctr_c0'],'c2':['Pctr_c2'],
-                                'c4':['Pctr_c4'], 'NP0':['Pnoise_NP0'],
-                                'NP20':['Pnoise_NP20'], 'NP22':['Pnoise_NP22']}
+        self.diagrams_to_marg = {'g21': ['P1L_b1g21', 'P1L_g21'],
+                                 'bGam3': ['P1L_b1g21', 'P1L_g21'], # needed?
+                                 'c0': ['Pctr_c0'],
+                                 'c2': ['Pctr_c2'],
+                                 'c4': ['Pctr_c4'],
+                                 'cnlo': ['Pctr_b1b1cnlo', 'Pctr_b1cnlo',
+                                          'Pctr_cnlo'],
+                                 'NP0': ['Pnoise_NP0'],
+                                 'NP20': ['Pnoise_NP20'],
+                                 'NP22': ['Pnoise_NP22']}
 
         if 'EFT' in self.model:
             self.Bisp_diagrams_all = ['B0L_b1b1b1', 'B0L_b1b1', 'B0L_b1',
@@ -194,11 +197,9 @@ class PTEmu:
         self.chi2_decomposition_convolve_window = False
         self.Bisp_chi2_decomposition = None
 
-        self.IR = IR
-
-        self.load_emulator_data(
+        self._load_emulator_data(
             fname=base_dir+'/data_dir/tables/{}.fits'.format(model))
-        self.load_emulator(
+        self._load_emulator(
             fname_base=base_dir+'/data_dir/models/{}'.format(model))
 
         self.Pell_spline = Splines(use_Mpc=self.use_Mpc, ncol=4,
@@ -212,7 +213,7 @@ class PTEmu:
                                             id_min=id_min,
                                             crossover_check=True)
 
-    def init_params_dict(self):
+    def _init_params_dict(self):
         r"""Initialize params dictionary.
 
         Sets up the internal class attribute which stores the complete list
@@ -228,13 +229,13 @@ class PTEmu:
         self.params['q_lo'] = np.array([1.0])
         self.nparams = 1
 
-    def load_emulator_data(self, fname):
+    def _load_emulator_data(self, fname):
         r"""Load tables of the emulator.
 
         Loads a fits file, reads the tables and stores them as class
         attributes, as instances of the **Tables** class. Additionally sets up
         the internal dictionary that stores the full list of model parameters,
-        by calling **init_params_dict**. Determine if the emulator is for real-
+        by calling **_init_params_dict**. Determine if the emulator is for real-
         or redshift-space, checking if the growth rate :math:`f` is part of the
         parameter sample or not.
 
@@ -256,21 +257,20 @@ class PTEmu:
             for n in range(hdul['PARAMS_SHAPE'].header['TFIELDS'])])
         self.params_shape_ranges = {}
         for p in self.params_shape_list:
-            min = hdul['PARAMS_SHAPE'].header['MIN:{}'.format(p)]
-            max = hdul['PARAMS_SHAPE'].header['MAX:{}'.format(p)]
-            self.params_shape_ranges[p] = [min, max]
+            pmin = hdul['PARAMS_SHAPE'].header['MIN:{}'.format(p)]
+            pmax = hdul['PARAMS_SHAPE'].header['MAX:{}'.format(p)]
+            self.params_shape_ranges[p] = [pmin, pmax]
 
         # Define linear parameters and read prior range
         if 'nonu' not in self.model:
-
             self.params_linear_list = ([
                 hdul['PARAMS_LINEAR'].header['TTYPE{}'.format(n+1)]
                 for n in range(hdul['PARAMS_LINEAR'].header['TFIELDS'])])
             self.params_linear_ranges = {}
             for p in self.params_shape_list:
-                min = hdul['PARAMS_LINEAR'].header['MIN:{}'.format(p)]
-                max = hdul['PARAMS_LINEAR'].header['MAX:{}'.format(p)]
-                self.params_linear_ranges[p] = [min, max]
+                pmin = hdul['PARAMS_LINEAR'].header['MIN:{}'.format(p)]
+                pmax = hdul['PARAMS_LINEAR'].header['MAX:{}'.format(p)]
+                self.params_linear_ranges[p] = [pmin, pmax]
         else:
             self.params_linear_list = self.params_shape_list
             self.params_linear_ranges = self.params_shape_ranges
@@ -281,9 +281,9 @@ class PTEmu:
             for n in range(hdul['PARAMS_FULL'].header['TFIELDS'])])
         self.params_ranges = {}
         for p in self.params_list:
-            min = hdul['PARAMS_FULL'].header['MIN:{}'.format(p)]
-            max = hdul['PARAMS_FULL'].header['MAX:{}'.format(p)]
-            self.params_ranges[p] = [min, max]
+            pmin = hdul['PARAMS_FULL'].header['MIN:{}'.format(p)]
+            pmax = hdul['PARAMS_FULL'].header['MAX:{}'.format(p)]
+            self.params_ranges[p] = [pmin, pmax]
 
         # Check if the model is in real or redshift space
         self.real_space = False if 'f' in self.params_list else True
@@ -295,11 +295,11 @@ class PTEmu:
         self.nkloop = sum(self.k_table > hdul['K_TABLE'].header['k1loop'])
 
         # Length of stacked terms for a single multipole
-        self.lst = 9*self.nk + 10*self.nkloop
+        self.emu_output_length = 9*self.nk + 10*self.nkloop
 
         # Initialise list of parameters (including params_list read in the
         # previous step, bias_params_list, and de_model_params_list)
-        self.init_params_dict()
+        self._init_params_dict()
 
         # Create instances of Tables class for shape, linear, and full,
         # and assign tables read from fits file
@@ -338,7 +338,7 @@ class PTEmu:
 
         self.Bisp = Bispectrum(self.real_space, self.model, self.use_Mpc)
 
-    def load_emulator(self, fname_base):
+    def _load_emulator(self, fname_base):
         r"""Load the emulator from pickle file.
 
         Loads an emulator object from a file (pickle format) and adds it to the
@@ -348,22 +348,14 @@ class PTEmu:
         ----------
         fname_base: str
             Root name of the input pickle file.
-        data_type: str, optional
-            Type of the table which refers to the input emulator. If **None**,
-            it loads the emulators for all the tables that are stored as class
-            attributes. Defaults to **None**.
         """
         self.emu['shape'] = pickle.load(
             open('{}_shape.pickle'.format(fname_base), "rb"))
         if 'nonu' not in self.model:
             self.emu['linear'] = pickle.load(
                 open('{}_linear.pickle'.format(fname_base), "rb"))
-        if self.IR == 'DST':
-            self.emu['ratios'] = pickle.load(
-                open('{}_ratios.pickle'.format(fname_base), "rb"))
-        elif self.IR == 'EH':
-            self.emu['ratios'] = pickle.load(
-                open('{}_EH_ratios.pickle'.format(fname_base), "rb"))
+        self.emu['ratios'] = pickle.load(
+            open('{}_ratios.pickle'.format(fname_base), "rb"))
 
     def define_units(self, use_Mpc):
         r"""Define units for the power spectrum and number density.
@@ -412,6 +404,19 @@ class PTEmu:
                   "cleared.".format(nbar_unit))
 
     def change_bias_basis(self, bias_basis):
+        r"""Change bias basis.
+
+        Changes the parametrisation assumed for the bias expansion, and
+        additionally resets the input params dictionary by calling
+        **_init_params_dict**.
+
+        Parameters
+        ----------
+        bias_basis: str
+            Type of parametrisation for the galaxy bias expansion. Must be
+            specified from the following list:
+            ['EggScoSmi', 'AssBauGre', AmiGleKok]. Defaults to 'EggScoSmi'.
+        """
         if self.bias_basis != bias_basis:
             self.bias_basis = bias_basis
             if self.bias_basis == 'EggScoSmi':
@@ -430,7 +435,7 @@ class PTEmu:
                 print('Warning. Bias basis not recognised, choose between '
                       '"EggScoSmi" (default), "AssBauGre", or "AmiGleKok".')
 
-            self.init_params_dict()
+            self._init_params_dict()
             self.splines_up_to_date = False
             self.dw_spline_up_to_date = False
 
@@ -451,12 +456,12 @@ class PTEmu:
 
         Sets the internal class attribute **nbar** to the value provided as
         input. The latter is intended to be in the set of units currently used
-        by the emulator, that can be specified at class instanciation, or using
-        the method **define_units**.
+        by the emulator, which can be specified at class instanciation, or
+        using the method **define_units**.
 
         Parameters
         ----------
-        nbar: float
+        nbar: np.ndarray
             Number density of the sample, in units of
             :math:`\mathrm{Mpc}^{-3}` or :math:`h^3\,\mathrm{Mpc}^{-3}`,
             depending on the value of the class attribute **use_Mpc**.
@@ -535,8 +540,9 @@ class PTEmu:
                    if 'Mnu' in params_fid.keys() else np.array([0.0]))
             # Compute fractional matter content, and set the other parameters
             Om0 = np.atleast_1d(
-                (params_fid['wc']+params_fid['wb']+wnu)/params_fid['h']**2)
-            H0 = np.atleast_1d(params_fid['h']*100.0)
+                (params_fid['wc'] + params_fid['wb'] + wnu) /
+                 params_fid['h']**2)
+            H0 = np.atleast_1d(params_fid['h'] * 100.0)
             Ok0 = np.array([0.0]) if 'Ok' not in params_fid \
                 else np.atleast_1d(params_fid['Ok'])
             if de_model == 'lambda':
@@ -561,7 +567,7 @@ class PTEmu:
                 self.H_fid /= params_fid['h']
                 self.Dm_fid *= params_fid['h']
 
-    def update_params(self, params, de_model=None):
+    def _update_params(self, params, de_model=None):
         r"""Update parameters of the emulator.
 
         Sets the internal attributes of the class to store the parameters
@@ -599,8 +605,8 @@ class PTEmu:
             check_ranges(self.params_list)
         elif de_model is None and not self.use_Mpc:
             emu_params_updated = np.any([params[p] != self.params[p] for p
-                                         in self.params_list+['h']])
-            for p in self.params_list+['h']:
+                                         in self.params_list + ['h']])
+            for p in self.params_list + ['h']:
                 self.params[p] = np.atleast_1d(params[p])
             #self.params['As'] = np.zeros_like(self.params['wc'])
             self.params['z'] = np.zeros_like(self.params['wc'])
@@ -653,13 +659,13 @@ class PTEmu:
             self.chi2_decomposition = None
             self.Bisp_chi2_decomposition = None
 
-        self.update_bias_params(params, include_RSD_params=True,
-                                include_obs_syst_params=True)
+        self._update_bias_params(params, include_RSD_params=True,
+                                 include_obs_syst_params=True)
 
         return emu_params_updated
 
-    def update_bias_params(self, params, include_RSD_params=False,
-                           include_obs_syst_params=False):
+    def _update_bias_params(self, params, include_RSD_params=False,
+                            include_obs_syst_params=False):
         r"""Update bias parameters.
 
         Sets the bias (and RSD and observational systematics, depending on the
@@ -713,7 +719,7 @@ class PTEmu:
                                                - 18*self.params['b2t']
                                                + 9*self.params['b3t'])
 
-    def update_AP_params(self, params, de_model=None, q_tr_lo=None):
+    def _update_AP_params(self, params, de_model=None, q_tr_lo=None):
         r"""Update AP parameters.
 
         Sets the internal attributes of the class to store the AP parameters.
@@ -740,9 +746,9 @@ class PTEmu:
         # the latter are computed using the input params dictionary
         if de_model is not None and q_tr_lo is None:
             # Compute fractional matter density, H0, and update cosmology
-            Om0 = ((self.params['wc']+self.params['wb']+self.params['wnu']) /
-                   self.params['h']**2)
-            H0 = 100.0*self.params['h']
+            Om0 = ((self.params['wc'] + self.params['wb'] + self.params['wnu'])
+                   / self.params['h']**2)
+            H0 = 100.0 * self.params['h']
             self.cosmo.update_cosmology(
                 Om0=Om0, H0=H0, Ok0=self.params['Ok'],
                 de_model=de_model, w0=self.params['w0'], wa=self.params['wa'])
@@ -769,11 +775,13 @@ class PTEmu:
             self.params['q_tr'] = q_tr
         # If no de_model is specified, the AP parameters must be specified in
         # the input params dictionary
-        elif (de_model is None and 'q_lo' in params and 'q_tr' in params):
-            self.params['q_lo'] = params['q_lo']
-            self.params['q_tr'] = params['q_tr']
+        elif de_model is None:
+            self.params['q_lo'] = np.atleast_1d(params['q_lo']) if 'q_lo' \
+                in params else np.repeat(1.0, self.nparams)
+            self.params['q_tr'] = np.atleast_1d(params['q_tr']) if 'q_tr' \
+                in params else np.repeat(1.0, self.nparams)
 
-    def get_bias_coeff(self):
+    def _get_bias_coeff(self):
         r"""Get bias coefficients for the emulated terms.
 
         Each term of the :math:`P_{\ell}` expansion is multiplied by a
@@ -815,20 +823,20 @@ class PTEmu:
         g2 = self.params['g2']
         g21 = self.params['g21']
         c0 = self.params['c0'] if self.use_Mpc \
-            else self.params['c0']/self.params['h']**2
+            else self.params['c0'] / self.params['h']**2
         c2 = self.params['c2'] if self.use_Mpc \
-            else self.params['c2']/self.params['h']**2
+            else self.params['c2'] / self.params['h']**2
         c4 = self.params['c4'] if self.use_Mpc \
-            else self.params['c4']/self.params['h']**2
+            else self.params['c4'] / self.params['h']**2
         cnlo = self.params['cnlo'] if self.use_Mpc \
-            else self.params['cnlo']/self.params['h']**4
+            else self.params['cnlo'] / self.params['h']**4
         b1sq = b1**2
 
         return np.array([b1sq, b1, np.ones_like(b1), c0, c2, c4,
                          b1sq*cnlo, b1*cnlo, cnlo, b1sq, b1*b2, b1*g2,
                          b1*g21, b2**2, b2*g2, g2**2, b2, g2, g21])
 
-    def get_bias_coeff_for_P6(self):
+    def _get_bias_coeff_for_P6(self):
         r"""Get bias coefficients for the emulated terms of the octopole.
 
         Differently from the lower-order multipoles :math:`P_{0,2,4}`, the
@@ -868,7 +876,7 @@ class PTEmu:
         g2 = self.params['g2']
         g21 = self.params['g21']
         cnlo = self.params['cnlo'] if self.use_Mpc \
-            else self.params['cnlo']/self.params['h']**4
+            else self.params['cnlo'] / self.params['h']**4
         f = self.params['f']
 
         b1sq = b1**2
@@ -882,16 +890,16 @@ class PTEmu:
                             f2, f3, f4, b1*b2, b1f*b2, b1*g2, b1f*g2, b1*g21,
                             b2**2, b2*g2, g2**2, b2*f, b2*f2, g2*f, g2*f2,
                             g21*f])
-        bb_k4ctr = np.array([b1sq*f4, b1f*f4, f2*f4])*cnlo
+        bb_k4ctr = np.array([b1sq*f4, b1f*f4, f2*f4]) * cnlo
 
-        s12ratio = (self.params['s12']/self.s12_for_P6)**2
+        s12ratio = (self.params['s12'] / self.s12_for_P6)**2
         bb_tree *= s12ratio
         bb_loop *= s12ratio**2
         bb_k4ctr *= s12ratio
 
         return np.vstack([bb_tree, bb_loop, bb_k4ctr])
 
-    def get_bias_coeff_for_chi2_decomposition(self):
+    def _get_bias_coeff_for_chi2_decomposition(self):
         r"""Get bias coefficients for the :math:`\chi^2` tables.
 
         In order to speed up the evaluation of the likelihood, the total
@@ -937,19 +945,19 @@ class PTEmu:
         g2 = self.params['g2']
         g21 = self.params['g21']
         c0 = self.params['c0'] if self.use_Mpc \
-            else self.params['c0']/self.params['h']**2
+            else self.params['c0'] / self.params['h']**2
         c2 = self.params['c2'] if self.use_Mpc \
-            else self.params['c2']/self.params['h']**2
+            else self.params['c2'] / self.params['h']**2
         c4 = self.params['c4'] if self.use_Mpc \
-            else self.params['c4']/self.params['h']**2
+            else self.params['c4'] / self.params['h']**2
         cnlo = self.params['cnlo'] if self.use_Mpc \
-            else self.params['cnlo']/self.params['h']**4
+            else self.params['cnlo'] / self.params['h']**4
         N0 = self.params['NP0'] if self.use_Mpc \
-            else self.params['NP0']/self.params['h']**3
+            else self.params['NP0'] / self.params['h']**3
         N20 = self.params['NP20'] if self.use_Mpc \
-            else self.params['NP20']/self.params['h']**5
+            else self.params['NP20'] / self.params['h']**5
         N22 = self.params['NP22'] if self.use_Mpc \
-            else self.params['NP22']/self.params['h']**5
+            else self.params['NP22'] / self.params['h']**5
         b1sq = b1**2
 
         return np.array([b1sq, b1, np.ones_like(b1), c0, c2, c4,
@@ -957,7 +965,7 @@ class PTEmu:
                          b2**2, b2*g2, g2**2, b2, g2, g21, N0/self.nbar,
                          N20/self.nbar, N22/self.nbar])
 
-    def get_bias_coeff_for_Bisp_chi2_decomposition(self):
+    def _get_bias_coeff_for_Bisp_chi2_decomposition(self):
         r"""Get bias coefficients for the bispectrum :math:`\chi^2` tables.
 
         In order to speed up the evaluation of the likelihood, the total
@@ -998,34 +1006,49 @@ class PTEmu:
 
         return params_comb
 
-    def get_bias_coeff_for_AM(self, diagrams_to_marg):
+    def _get_bias_coeff_for_AM(self, diagrams_to_marg):
+        r"""Get bias coefficients for the analytical marginalization.
+
+        Parameters
+        ----------
+        diagrams_to_marg: list
+            List of tables that must be analytically marginalized.
+
+        Returns
+        -------
+        params_comb: numpy.ndarray
+            Combinations of bias and noise parameters that multiply each term
+            of the factorisation of the total :math:`\chi^2` into individual
+            terms.
+        """
         b1 = self.params['b1']
         b1sq = b1**2
         h = np.ones_like(b1) if self.use_Mpc else self.params['h']
         h2 = h**2
         h4 = h**4
+
         bias = {}
-        bias['Pctr_b1b1cnlo'] = b1sq/h4
-        bias['Pctr_b1cnlo'] = b1/h4
-        bias['Pctr_cnlo'] = 1.0/h4
+        bias['Pctr_b1b1cnlo'] = b1sq / h4
+        bias['Pctr_b1cnlo'] = b1 / h4
+        bias['Pctr_cnlo'] = 1.0 / h4
         if self.bias_basis == 'EggScoSmi':
             bias['P1L_b1g21'] = b1
             bias['P1L_g21'] = np.ones_like(b1)
         elif self.bias_basis == 'AssBauGre':
-            bias['P1L_b1g21'] = -4.0/7.0*b1
-            bias['P1L_g21'] = -4.0/7.0*np.ones_like(b1)
+            bias['P1L_b1g21'] = -4.0/7.0 * b1
+            bias['P1L_g21'] = -4.0/7.0 * np.ones_like(b1)
         elif self.bias_basis == 'AmiGleKok':
-            bias['P1L_b1g21'] = -18.0/147.0*b1
-            bias['P1L_g21'] = -18.0/147.0*np.ones_like(b1)
-        bias['Pctr_c0'] = 1.0/h2
-        bias['Pctr_c2'] = 1.0/h2
-        bias['Pctr_c4'] = 1.0/h2
-        bias['Pnoise_NP0'] = 1.0/(h*h2*self.nbar)
-        bias['Pnoise_NP20'] = 1.0/(h*h4*self.nbar)
-        bias['Pnoise_NP22'] = 1.0/(h*h4*self.nbar)
+            bias['P1L_b1g21'] = -18.0/147.0 * b1
+            bias['P1L_g21'] = -18.0/147.0 * np.ones_like(b1)
+        bias['Pctr_c0'] = 1.0 / h2
+        bias['Pctr_c2'] = 1.0 / h2
+        bias['Pctr_c4'] = 1.0 / h2
+        bias['Pnoise_NP0'] = 1.0 / (h*h2*self.nbar)
+        bias['Pnoise_NP20'] = 1.0 / (h*h4*self.nbar)
+        bias['Pnoise_NP22'] = 1.0 / (h*h4*self.nbar)
         return np.array([bias[x] for x in diagrams_to_marg]).squeeze()
 
-    def eval_emulator(self, params, ell, de_model=None):
+    def _eval_emulator(self, params, ell, de_model=None):
         r"""Evaluate the emulators for the different terms.
 
         Sets up the internal parameters of the class, and evaluate the
@@ -1033,15 +1056,13 @@ class PTEmu:
         stored as class attributes.
 
         The list of emulated quantities comprises the linear power spectrum
-        :math:`P_\mathrm{L}(k)` (function of the shape parameters
-        :math:`\mathbf{\Theta_{s}}`), the value of :math:`\sigma_{12}`
-        (function of the shape parameters :math:`\mathbf{\Theta_{s}}`), and all
+        :math:`P_\mathrm{L}(k)`, the no-wiggle power spectrum
+        :math:`P_\mathrm{nw}(k)`, the value of :math:`\sigma_{12}`, and all
         the integral tables consisting of ratios between individual
-        contributions to the one-loop galaxy power spectrum and the linear one
-        (function of shape parameters :math:`\mathbf{\Theta_{s}}`, the growth
-        rate :math:`f`, and :math:`\sigma_{12}`). For the `VDG_infty` model, an
-        additional emulator is evaluated to obtain the value of the pairwise
-        velocity dispersion, i.e. :math:`\sigma_\mathrm{v}`.
+        contributions to the one-loop galaxy power spectrum and the linear one.
+        For the `VDG_infty` model, an additional emulator is evaluated to
+        obtain the value of the pairwise velocity dispersion, i.e.
+        :math:`\sigma_\mathrm{v}`.
 
         Parameters
         ----------
@@ -1061,11 +1082,12 @@ class PTEmu:
             the standard cosmological parameters, or be left undefined to use
             only :math:`\sigma_{12}`. Defaults to **None**.
         """
-        emu_params_updated = self.update_params(params, de_model=de_model)
+        emu_params_updated = self._update_params(params, de_model=de_model)
 
         # Selecting all the parameters needed for the shape emulator
         params_shape = np.array(
             [self.params[p] for p in self.params_shape_list]).T
+        # The second entry of the parameter list is wc
         params_shape[:,1] += self.params['wnu']
 
         if de_model is None:
@@ -1111,7 +1133,7 @@ class PTEmu:
             ratios_all = self.emu['ratios'].predict(params_all)
             for i,m in enumerate(ell):
                 self.Pk_ratios[m] = self.training['FULL'].transform_inv(
-                    ratios_all[:,i*self.lst:(i+1)*self.lst], m).T
+                    ratios_all[:,i*self.emu_output_length:(i+1)*self.emu_output_length], m).T
         else:
 
             if self.Pk_lin is None or emu_params_updated:
@@ -1128,15 +1150,15 @@ class PTEmu:
 
                 # compute growth factors corresponding to fiducial and target
                 # parameters + growth rate
-                Om0_fid = (self.params['wc']+self.params['wb']+
+                Om0_fid = (self.params['wc'] + self.params['wb'] +
                            self.params['wnu']) / self.emu_LCDM_params['h']**2
-                H0_fid = 100.0*self.emu_LCDM_params['h']
+                H0_fid = 100.0 * self.emu_LCDM_params['h']
                 self.cosmo.update_cosmology(Om0=Om0_fid, H0=H0_fid)
                 Dfid = self.cosmo.growth_factor(self.emu_LCDM_params['z'])
 
-                Om0 = (self.params['wc']+self.params['wb']+
+                Om0 = (self.params['wc'] + self.params['wb'] +
                        self.params['wnu']) / self.params['h']**2
-                H0 = 100.0*self.params['h']
+                H0 = 100.0 * self.params['h']
                 self.cosmo.update_cosmology(
                     Om0=Om0, H0=H0, Ok0=self.params['Ok'],
                     de_model=de_model, w0=self.params['w0'],
@@ -1145,8 +1167,8 @@ class PTEmu:
                                                 get_growth_rate=True)
 
                 amplitude_scaling = np.sqrt(
-                    self.params['As']/self.emu_LCDM_params['As']) \
-                    * np.diag(D)/Dfid[0]
+                    self.params['As'] / self.emu_LCDM_params['As']) \
+                    * np.diag(D) / Dfid[0]
                 self.params['s12'] = sigma12*amplitude_scaling
 
                 self.params['f'] = np.diag(f)
@@ -1197,14 +1219,13 @@ class PTEmu:
             ratios_all = self.emu['ratios'].predict(params_all)
             for i,m in enumerate(ell):
                 self.Pk_ratios[m] = self.training['FULL'].transform_inv(
-                    ratios_all[:,i*self.lst:(i+1)*self.lst], m).T
+                    ratios_all[:,i*self.emu_output_length:(i+1)*self.emu_output_length], m).T
 
-    def W_kurt(self, k, mu):
+    def _W_kurt(self, k, mu):
         r"""Large scale limit of the velocity difference generating function.
 
-        Method used exclusively if the `VDG_infty` model is specified.
-
-        In the large scale limit, :math:`r\rightarrow\infty`, the velocity
+        Method used exclusively if the `VDG_infty` model is specified. In the
+        large scale limit, :math:`r\rightarrow\infty`, the velocity
         difference generating function :math:`W_\mathrm{G}` becomes
         scale-independent, with a gaussian limit given by
 
@@ -1243,7 +1264,7 @@ class PTEmu:
         t2 = 1.0 + t1*self.params['avir']**2
         return 1.0/np.sqrt(t2)*np.exp(-t1*self.params['sv']**2/t2)
 
-    def WB_kurt(self, tri, mu1, mu2, mu3):
+    def _WB_kurt(self, tri, mu1, mu2, mu3):
         # including AP effect!
         k1 = tri[:,0].reshape((-1,1))
         k2 = tri[:,1].reshape((-1,1))
@@ -1253,7 +1274,26 @@ class PTEmu:
         t = 1.0 + lsq*self.params['avirB']**2
         return 1.0/np.sqrt(t**3) * np.exp(-lsq*self.params['sv']**2/t)
 
-    def W_obs_syst(self, k, mu):
+    def _W_obs_syst(self, k, mu):
+        r"""Observational systematics damping function.
+
+        Damping function introduced by the currently available systematic
+        effects, i.e. sample purity (scale-independent) and redshift
+        uncertainty (scale-dependent).
+
+        Parameters
+        ----------
+        k: float
+            Value of the wavemode :math:`k`.
+        mu: float
+            Value of the cosine :math:`\mu` of the angle between
+            the pair separation and the line of sight.
+
+        Returns
+        -------
+        W_obs: np.ndarray
+            Value of the observational systematics damping.
+        """
         if np.all(self.params['sigma_z'] == 0.0):
             t = np.ones_like(k)
         else:
@@ -1264,7 +1304,7 @@ class PTEmu:
     def PL(self, k, params, de_model=None):
         r"""Compute the linear power spectrum predictions.
 
-        Evaluates the emulator calling **eval_emulator**, and returns the
+        Evaluates the emulator calling **_eval_emulator**, and returns the
         linear power spectrum :math:`P_\mathrm{L}(k)` at the specified
         wavemodes.
 
@@ -1289,17 +1329,51 @@ class PTEmu:
             Linear power spectrum :math:`P_\mathrm{L}(k)` evaluated at the
             input wavemodes :math:`k`.
         """
-        self.eval_emulator(params, ell=[], de_model=de_model)
+        self._eval_emulator(params, ell=[], de_model=de_model)
         h = None if self.use_Mpc else self.params['h']
         self.PL_spline.build(self.k_table, self.Pk_lin, h=h)
         PL = np.squeeze(self.PL_spline.eval(np.atleast_1d(k)))
         return PL
 
+    def Pnw(self, k, params, de_model=None):
+        r"""Compute the no-wiggle power spectrum predictions.
+
+        Evaluates the emulator calling **_eval_emulator**, and returns the
+        no-wiggle power spectrum :math:`P_\mathrm{nw}(k)` at the specified
+        wavemodes.
+
+        Parameters
+        ----------
+        k: float or numpy.ndarray
+            Value of the requested wavemodes :math:`k`.
+        params: dict
+            Dictionary containing the list of total model parameters which are
+            internally used by the emulator. The keyword/value pairs of the
+            dictionary specify the names and the values of the parameters,
+            respectively.
+        de_model: str, optional
+            String that determines the dark energy equation of state. Can be
+            chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
+            the standard cosmological parameters, or be left undefined to use
+            only :math:`\sigma_{12}`. Defaults to **None**.
+
+        Returns
+        -------
+        Pnw: float or numpy.ndarray
+            No-wiggle power spectrum :math:`P_\mathrm{nw}(k)` evaluated at the
+            input wavemodes :math:`k`.
+        """
+        self._eval_emulator(params, ell=[], de_model=de_model)
+        h = None if self.use_Mpc else self.params['h']
+        self.PNW_spline.build(self.k_table, self.Pk_nw, h=h)
+        Pnw = np.squeeze(self.PNW_spline.eval(np.atleast_1d(k)))
+        return Pnw
+
     # TODO
     def Pdw_2d(self, k, mu, params, de_model=None, ell_for_recon=None):
         r"""Compute the anisotropic leading order IR-resummed power spectrum.
 
-        Evaluates the emulator calling **eval_emulator**, and returns the
+        Evaluates the emulator calling **_eval_emulator**, and returns the
         anisotropic leading order IR-resummed power spectrum
         :math:`P_\mathrm{IR-res}^\mathrm{LO}(k,\mu)`, defined as
 
@@ -1352,7 +1426,7 @@ class PTEmu:
         if 6 in ell_eval_emu:
             ell_eval_emu.remove(6)
 
-        self.eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
+        self._eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
 
         Pdw_ell = np.zeros([self.nk, len(ell_for_recon)])
         for i, ell in enumerate(ell_for_recon):
@@ -1383,7 +1457,7 @@ class PTEmu:
     def Pdw(self, k, params, de_model=None, ell_for_recon=None):
         r"""Compute the real space leading order IR-resummed power spectrum.
 
-        Evaluates the emulator calling **eval_emulator**, and returns the
+        Evaluates the emulator calling **_eval_emulator**, and returns the
         real space (:math:`\mu = 0`) leading order IR-resummed power spectrum
         :math:`P_\mathrm{IR-res}^\mathrm{LO}(k,\mu)`, defined as
 
@@ -1436,7 +1510,7 @@ class PTEmu:
         if 6 in ell_eval_emu:
             ell_eval_emu.remove(6)
 
-        self.eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
+        self._eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
 
         if not self.dw_spline_up_to_date:
             Pdw_ell = np.zeros([self.nk, len(ell_for_recon),
@@ -1473,7 +1547,7 @@ class PTEmu:
             internally used by the emulator. The keyword/value pairs of the
             dictionary specify the names and the values of the parameters,
             respectively.
-        ell: int
+        ell: int, list
             Specific multipole order :math:`\ell`.
             Can be chosen from the list [0,2,4,6], whose entries correspond to
             monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`),
@@ -1495,8 +1569,8 @@ class PTEmu:
         if 6 in ell_eval_emu:
             ell_eval_emu.remove(6)
 
-        self.eval_emulator(params, ell_eval_emu, de_model=de_model)
-        bij = self.get_bias_coeff()
+        self._eval_emulator(params, ell_eval_emu, de_model=de_model)
+        bij = self._get_bias_coeff()
 
         Pell = np.zeros([self.nk, len(ell), self.nparams])
         for i, m in enumerate(ell):
@@ -1513,7 +1587,7 @@ class PTEmu:
 
                 Pell[:, i] = np.einsum("abc,bc->ac", Pk_bij, bij)
             else:
-                bij_for_P6 = self.get_bias_coeff_for_P6()
+                bij_for_P6 = self._get_bias_coeff_for_P6()
                 Pell[:, i] = np.einsum("ab,bc->ac", self.P6, bij_for_P6)
 
         return Pell
@@ -1568,7 +1642,7 @@ class PTEmu:
             wavemode :math:`k` and the cosinus of the angle between pair
             separation and line of sight :math:`\mu`, and returns a float. This
             function is used only with the **VDG_infty** model. If **None**, it
-            uses the free kurtosis distribution defined by **W_kurt**.
+            uses the free kurtosis distribution defined by **_W_kurt**.
             Defaults to **None**.
         ell_for_recon: list, optional
             List of :math:`\ell` values used for the reconstruction of the
@@ -1663,7 +1737,7 @@ class PTEmu:
 
         elif 'VDG_infty' in self.model:
             if W_damping is None:
-                W_damping = self.W_kurt
+                W_damping = self._W_kurt
 
             if binning is None or use_effective_modes:
                 def integrand(mu):
@@ -1718,8 +1792,8 @@ class PTEmu:
                 # self.X_splines_up_to_date = {X: False for X in self.diagrams_all}
                 # self.chi2_decomposition = None
 
-            self.update_AP_params(params, de_model=de_model,
-                                  q_tr_lo=q_tr_lo)
+            self._update_AP_params(params, de_model=de_model,
+                                   q_tr_lo=q_tr_lo)
             q3 = self.params['q_tr']**2 * self.params['q_lo']
 
             if binning is None or use_effective_modes:
@@ -1835,7 +1909,7 @@ class PTEmu:
             wavemode :math:`k` and the cosinus of the angle between pair
             separation and line of sight :math:`\mu`, and returns a float. This
             function is used only with the **VDG_infty** model. If **None**, it
-            uses the free kurtosis distribution defined by **W_kurt**.
+            uses the free kurtosis distribution defined by **_W_kurt**.
             Defaults to **None**.
         ell_for_recon: list, optional
             List of :math:`\ell` values used for the reconstruction of the
@@ -1880,11 +1954,11 @@ class PTEmu:
         keff = self.grid.keff if use_effective_modes else k
 
         if 'EFT' in self.model:
-            W_damping = self.W_obs_syst
+            W_damping = self._W_obs_syst
         elif 'VDG_infty' in self.model:
             if W_damping is None:
-                W_damping = lambda k, mu: self.W_kurt(k,mu) \
-                                          * self.W_obs_syst(k, mu)
+                W_damping = lambda k, mu: self._W_kurt(k,mu) \
+                                          * self._W_obs_syst(k, mu)
         else:
             raise ValueError('Unsupported RSD model.')
 
@@ -1943,8 +2017,8 @@ class PTEmu:
                 self.Pell_spline.build(self.k_table, Pell, h=h)
                 self.splines_up_to_date = True
 
-            self.update_AP_params(params, de_model=de_model,
-                                  q_tr_lo=q_tr_lo)
+            self._update_AP_params(params, de_model=de_model,
+                                   q_tr_lo=q_tr_lo)
             q3 = self.params['q_tr']**2 * self.params['q_lo']
 
             if binning is None or use_effective_modes:
@@ -2083,7 +2157,7 @@ class PTEmu:
             wavemode :math:`k` and the cosinus of the angle between pair
             separation and line of sight :math:`\mu`, and returns a float. This
             function is used only with the **VDG_infty** model. If **None**, it
-            uses the free kurtosis distribution defined by **W_kurt**.
+            uses the free kurtosis distribution defined by **_W_kurt**.
             Defaults to **None**.
         ell_for_recon: list, optional
             List of :math:`\ell` values used for the reconstruction of the
@@ -2157,7 +2231,7 @@ class PTEmu:
                 self.params[p] = 0.0
         # self.splines_up_to_date = False
         # self.dw_spline_up_to_date = False
-        bX = self.get_bias_coeff_for_chi2_decomposition()
+        bX = self._get_bias_coeff_for_chi2_decomposition()
 
         Pell_dict = {}
         for i, m in enumerate(ell):
@@ -2216,7 +2290,7 @@ class PTEmu:
 
         if ids is not None:
             ell_for_recon = [0, 2, 4] if not self.real_space else [0]
-            self.eval_emulator(params, ell=ell_for_recon, de_model=de_model)
+            self._eval_emulator(params, ell=ell_for_recon, de_model=de_model)
 
             PX_ell = np.zeros([self.nk, 3])
             for i, ell in enumerate(ell_for_recon):
@@ -2370,7 +2444,7 @@ class PTEmu:
             wavemode :math:`k` and the cosinus of the angle between pair
             separation and line of sight :math:`\mu`, and returns a float. This
             function is used only with the **VDG_infty** model. If **None**, it
-            uses the free kurtosis distribution defined by **W_kurt**.
+            uses the free kurtosis distribution defined by **_W_kurt**.
             Defaults to **None**.
         ell_for_recon: list, optional
             List of :math:`\ell` values used for the reconstruction of the
@@ -2439,11 +2513,11 @@ class PTEmu:
                 self.X_splines_up_to_date[XNL] = False
 
         if 'EFT' in self.model:
-            W_damping = self.W_obs_syst
+            W_damping = self._W_obs_syst
         elif 'VDG_infty' in self.model:
             if W_damping is None:
-                W_damping = lambda k, mu: self.W_kurt(k, mu) \
-                                          * self.W_obs_syst(k, mu)
+                W_damping = lambda k, mu: self._W_kurt(k, mu) \
+                                          * self._W_obs_syst(k, mu)
         else:
             raise ValueError('Unsupported RSD model.')
 
@@ -2493,7 +2567,7 @@ class PTEmu:
 
             if np.any(params_updated) \
                     or np.any([p not in params.keys() for p in params_nonzero]):
-                self.eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
+                self._eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
 
             for XNL_list in X_grouped_list:
                 XNL = '|'.join(XNL_list)
@@ -2540,8 +2614,8 @@ class PTEmu:
                     self.PX_ell_spline[XNL].build(self.k_table, PXNL_ell, h=h)
                     self.X_splines_up_to_date[XNL] = True
 
-            self.update_AP_params(params, de_model=de_model,
-                                  q_tr_lo=q_tr_lo)
+            self._update_AP_params(params, de_model=de_model,
+                                   q_tr_lo=q_tr_lo)
             q3 = self.params['q_tr']**2 * self.params['q_lo']
 
             PX_ell_model = np.empty((len(keff), len(ell), len(X_list),
@@ -2668,7 +2742,7 @@ class PTEmu:
 
         if 'VDG_infty' in self.model:
             if W_damping is None:
-                W_damping = self.WB_kurt
+                W_damping = self._WB_kurt
         else:
             W_damping = None
 
@@ -2713,8 +2787,8 @@ class PTEmu:
                 - (coeff[0]*self.params['avirB']**self.Bisp.pow_ctr \
                    + 0.5*self.params['sv']**self.Bisp.pow_ctr)
 
-        self.update_AP_params(params, de_model=de_model,
-                              q_tr_lo=q_tr_lo)
+        self._update_AP_params(params, de_model=de_model,
+                               q_tr_lo=q_tr_lo)
 
         Bell_dict = self.Bisp.Bell(Pdw, neff, self.params, ell, W_damping)
         return Bell_dict
@@ -2901,7 +2975,7 @@ class PTEmu:
             wavemode :math:`k` and the cosinus of the angle between pair
             separation and line of sight :math:`\mu`, and returns a float. This
             function is used only with the **VDG_infty** model. If **None**, it
-            uses the free kurtosis distribution defined by **W_kurt**.
+            uses the free kurtosis distribution defined by **_W_kurt**.
             Defaults to **None**.
         volume: float, optional
             Reference volume to be used in the calculation of the gaussian
@@ -3035,7 +3109,7 @@ class PTEmu:
             wavemode :math:`k` and the cosinus of the angle between pair
             separation and line of sight :math:`\mu`, and returns a float. This
             function is used only with the **VDG_infty** model. If **None**, it
-            uses the free kurtosis distribution defined by **W_kurt**.
+            uses the free kurtosis distribution defined by **_W_kurt**.
             Defaults to **None**.
         volume: float, optional
             Reference volume to be used in the calculation of the gaussian
@@ -3244,7 +3318,7 @@ class PTEmu:
                                      obs_id=convolve_obs_id, de_model=de_model,
                                      q_tr_lo=q_tr_lo, W_damping=W_damping,
                                      ell_for_recon=ell_for_recon)
-                bX = self.get_bias_coeff_for_AM(diagrams_to_marg_all)
+                bX = self._get_bias_coeff_for_AM(diagrams_to_marg_all)
 
             for n,oi in enumerate(obs_id):
                 ids = [np.intersect1d(bins_kmax[i], self.data[oi].bins_kmax[i],
@@ -3387,11 +3461,11 @@ class PTEmu:
                                   self.data[oi].inverse_cov_kmax,
                                   PX_ell_list)
 
-            self.update_bias_params(params)
+            self._update_bias_params(params)
             self.splines_up_to_date = False
             self.dw_spline_up_to_date = False
 
-            bX = self.get_bias_coeff_for_chi2_decomposition()
+            bX = self._get_bias_coeff_for_chi2_decomposition()
             for n in range(n_obs):
                 chi2 += np.einsum("ac,abc,bc->c", bX[:,n::n_obs],
                                   self.chi2_decomposition['XX'][:,:,n],
@@ -3492,11 +3566,11 @@ class PTEmu:
     #                               self.data[oi].inverse_cov_kmax,
     #                               PX_ell_list)
     #
-    #         self.update_bias_params(params)
+    #         self._update_bias_params(params)
     #         self.splines_up_to_date = False
     #         self.dw_spline_up_to_date = False
     #
-    #         bX = self.get_bias_coeff_for_chi2_decomposition()
+    #         bX = self._get_bias_coeff_for_chi2_decomposition()
     #         for n in range(n_obs):
     #             chi2 += np.einsum("ac,abc,bc->c", bX[:,n::n_obs],
     #                               self.chi2_decomposition['XX'][:,:,n],
@@ -3606,11 +3680,11 @@ class PTEmu:
                 self.Bisp_chi2_decomposition['XX'] = BX_ell_list.T \
                     @ self.data[obs_id].inverse_cov_kmax @ BX_ell_list
 
-            self.update_bias_params(params)
+            self._update_bias_params(params)
             self.splines_up_to_date = False
             self.dw_spline_up_to_date = False
 
-            bX = self.get_bias_coeff_for_Bisp_chi2_decomposition()
+            bX = self._get_bias_coeff_for_Bisp_chi2_decomposition()
             chi2 += (bX @ self.Bisp_chi2_decomposition['XX'] @ bX -
                      2*bX @ self.Bisp_chi2_decomposition['XD'] +
                      self.Bisp_chi2_decomposition['DD'])
@@ -3662,7 +3736,7 @@ class PTEmu:
             wavemode :math:`k` and the cosinus of the angle between pair
             separation and line of sight :math:`\mu`, and returns a float. This
             function is used only with the **VDG_infty** model. If **None**, it
-            uses the free kurtosis distribution defined by **W_kurt**.
+            uses the free kurtosis distribution defined by **_W_kurt**.
             Defaults to **None**.
         chi2_decomposition: bool, optional
             Flag to determine if the :math:`\chi^2` is computed using the fast
@@ -3724,9 +3798,9 @@ class PTEmu:
             for stat in obs_id_stat:
                 if 'VDG_infty' in self.model:
                     if stat == 'powerspectrum':
-                        W_damping[stat] = self.W_kurt
+                        W_damping[stat] = self._W_kurt
                     elif stat == 'bispectrum':
-                        W_damping[stat] = self.WB_kurt
+                        W_damping[stat] = self._WB_kurt
                 elif 'EFT' in self.model:
                     if stat == 'powerspectrum':
                         W_damping[stat] = lambda k, mu: 1.0
