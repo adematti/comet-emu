@@ -202,14 +202,16 @@ class PTEmu:
         self._load_emulator(
             fname_base=base_dir+'/data_dir/models/{}'.format(model))
 
-        self.Pell_spline = Splines(use_Mpc=self.use_Mpc, ncol=4,
+        self.ncol = 1 if self.real_space else 4
+        self.Pell_spline = Splines(use_Mpc=self.use_Mpc, ncol=self.ncol,
                                    crossover_check=True)
         self.PL_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
         self.Pdw_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
         self.PX_ell_spline = {}
         for X in self.diagrams_all:
             id_min = self.nk - self.nkloop if 'P1L' in X else 0
-            self.PX_ell_spline[X] = Splines(use_Mpc=self.use_Mpc, ncol=(1,4),
+            self.PX_ell_spline[X] = Splines(use_Mpc=self.use_Mpc,
+                                            ncol=(1,self.ncol),
                                             id_min=id_min,
                                             crossover_check=True)
 
@@ -380,7 +382,7 @@ class PTEmu:
 
             self.Pk_lin = None
             self.Pk_nw = None
-            self.Pell_spline = Splines(use_Mpc=self.use_Mpc, ncol=4,
+            self.Pell_spline = Splines(use_Mpc=self.use_Mpc, ncol=self.ncol,
                                        crossover_check=True)
             self.PL_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
             self.PNW_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
@@ -388,7 +390,8 @@ class PTEmu:
             self.PX_ell_spline = {}
             for X in self.diagrams_all:
                 id_min = self.nk - self.nkloop if 'P1L' in X else 0
-                self.PX_ell_spline[X] = Splines(use_Mpc=self.use_Mpc,ncol=(1,4),
+                self.PX_ell_spline[X] = Splines(use_Mpc=self.use_Mpc,
+                                                ncol=(1,self.ncol),
                                                 id_min=id_min,
                                                 crossover_check=True)
                 self.X_splines_up_to_date[X] = False
@@ -1953,7 +1956,7 @@ class PTEmu:
 
         keff = self.grid.keff if use_effective_modes else k
 
-        if 'EFT' in self.model:
+        if 'EFT' in self.model or 'RS' in self.model:
             W_damping = self._W_obs_syst
         elif 'VDG_infty' in self.model:
             if W_damping is None:
@@ -2508,7 +2511,7 @@ class PTEmu:
             id_min = self.nk - self.nkloop if 'P1L' in XNL else 0
             if not XNL in self.PX_ell_spline:
                 self.PX_ell_spline[XNL] = Splines(
-                    use_Mpc=self.use_Mpc, ncol=(len(XNL_list),4),
+                    use_Mpc=self.use_Mpc, ncol=(len(XNL_list),self.ncol),
                     id_min=id_min, crossover_check=True)
                 self.X_splines_up_to_date[XNL] = False
 
