@@ -1122,7 +1122,7 @@ class PTEmu:
                     self.Pk_lin = self.training['SHAPE'].transform_inv(
                         shape_all[:,:self.nk], 'PL').T
                     self.Pk_nw = self.training['SHAPE'].transform_inv(
-                        shape_all[:,:self.nk], 'PL').T
+                        shape_all[:,self.nk:-2], 'PNW').T
                     self.Pk_lin *= (self.params['s12']/sigma12)**2
                     self.Pk_nw *= (self.params['s12']/sigma12)**2
                     if 'VDG_infty' in self.model:
