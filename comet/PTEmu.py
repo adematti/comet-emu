@@ -2515,7 +2515,7 @@ class PTEmu:
                     id_min=id_min, crossover_check=True)
                 self.X_splines_up_to_date[XNL] = False
 
-        if 'EFT' in self.model:
+        if 'EFT' in self.model or 'RS' in self.model:
             W_damping = self._W_obs_syst
         elif 'VDG_infty' in self.model:
             if W_damping is None:
