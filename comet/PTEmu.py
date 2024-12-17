@@ -184,6 +184,8 @@ class PTEmu:
         self.grid = None
 
         self.splines_up_to_date = False
+        self.lin_spline_up_to_date = False
+        self.nw_spline_up_to_date = False
         self.dw_spline_up_to_date = False
         self.X_splines_up_to_date = {X: False for X in self.diagrams_all}
         self.X_obs_id = None
@@ -396,6 +398,8 @@ class PTEmu:
                                                 crossover_check=True)
                 self.X_splines_up_to_date[X] = False
             self.splines_up_to_date = False
+            self.lin_spline_up_to_date = False
+            self.nw_spline_up_to_date = False
             self.dw_spline_up_to_date = False
             self.Bisp.define_units(self.use_Mpc)
             self.Bisp.define_nbar(self.nbar)
@@ -648,6 +652,8 @@ class PTEmu:
         if emu_params_updated:
             self.Pk_ratios = {0: None, 2: None, 4: None}
             self.splines_up_to_date = False
+            self.lin_spline_up_to_date = False
+            self.nw_spline_up_to_date = False
             self.dw_spline_up_to_date = False
             self.X_splines_up_to_date = {X: False for X
                                          in self.X_splines_up_to_date}
@@ -1335,8 +1341,10 @@ class PTEmu:
             input wavemodes :math:`k`.
         """
         self._eval_emulator(params, ell=[], de_model=de_model)
-        h = None if self.use_Mpc else self.params['h']
-        self.PL_spline.build(self.k_table, self.Pk_lin, h=h)
+        if not self.lin_spline_up_to_date:
+            h = None if self.use_Mpc else self.params['h']
+            self.PL_spline.build(self.k_table, self.Pk_lin, h=h)
+            self.lin_spline_up_to_date = True
         PL = np.squeeze(self.PL_spline.eval(np.atleast_1d(k)))
         return PL
 
@@ -1405,8 +1413,10 @@ class PTEmu:
             input wavemodes :math:`k`.
         """
         self._eval_emulator(params, ell=[], de_model=de_model)
-        h = None if self.use_Mpc else self.params['h']
-        self.PNW_spline.build(self.k_table, self.Pk_nw, h=h)
+        if not self.nw_spline_up_to_date:
+            h = None if self.use_Mpc else self.params['h']
+            self.PNW_spline.build(self.k_table, self.Pk_nw, h=h)
+            self.nw_spline_up_to_date = True
         Pnw = np.squeeze(self.PNW_spline.eval(np.atleast_1d(k)))
         return Pnw
 
