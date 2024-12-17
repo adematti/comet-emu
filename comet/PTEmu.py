@@ -325,7 +325,7 @@ class PTEmu:
 
         # If redshift-space model is selected, then also load P6 table
         if not self.real_space:
-            self.s12_for_P6 = hdul['MODEL_Pell6'].header['SIG12']
+            self.s12_tilde_for_P6 = hdul['MODEL_Pell6'].header['SIG12_TILDE']
             self.P6 = hdul['MODEL_Pell6'].data['P_all']
             # better compute P6 table for full k-range...
             nkdiff = self.nk-self.nkloop
@@ -618,7 +618,7 @@ class PTEmu:
             expected_params = self.params_linear_list \
                 + self.de_model_params_list[de_model]
             if 'nonu' not in self.model:
-                expected_params.remove('s12')
+                expected_params.remove('s12_tilde')
             if 'Ok' not in params:
                 expected_params.remove('Ok')
             emu_params_updated = np.any([params[p] != self.params[p] for p
@@ -895,7 +895,7 @@ class PTEmu:
                             g21*f])
         bb_k4ctr = np.array([b1sq*f4, b1f*f4, f2*f4]) * cnlo
 
-        s12ratio = (self.params['s12'] / self.s12_for_P6)**2
+        s12ratio = (self.params['s12_tilde'] / self.s12_tilde_for_P6)**2
         bb_tree *= s12ratio
         bb_loop *= s12ratio**2
         bb_k4ctr *= s12ratio
@@ -1117,19 +1117,21 @@ class PTEmu:
 
                 else:
                     shape_all = self.emu['shape'].predict(params_shape)
-                    sigma12 = self.training['SHAPE'].transform_inv(
-                        shape_all[:,-2], 's12').squeeze()
+                    sigma12_tilde = self.training['SHAPE'].transform_inv(
+                        shape_all[:,-2], 's12_tilde').squeeze()
                     self.Pk_lin = self.training['SHAPE'].transform_inv(
                         shape_all[:,:self.nk], 'PL').T
                     self.Pk_nw = self.training['SHAPE'].transform_inv(
                         shape_all[:,self.nk:-2], 'PNW').T
-                    self.Pk_lin *= (self.params['s12']/sigma12)**2
-                    self.Pk_nw *= (self.params['s12']/sigma12)**2
+                    self.Pk_lin *= (self.params['s12_tilde'] /
+                                    sigma12_tilde)**2
+                    self.Pk_nw *= (self.params['s12_tilde'] / sigma12_tilde)**2
                     if 'VDG_infty' in self.model:
                         self.params['sv'] = np.atleast_1d(
                             self.training['SHAPE'].transform_inv(
                                 shape_all[:,-1], 'sv').squeeze())
-                        self.params['sv'] *= self.params['s12']/sigma12
+                        self.params['sv'] *= (self.params['s12_tilde'] /
+                                              sigma12_tilde)
                         if not self.use_Mpc:
                             self.params['sv'] *= self.params['h']
 
@@ -1144,12 +1146,12 @@ class PTEmu:
                 shape_all = self.emu['shape'].predict(params_shape)
 
                 if 'nonu' not in self.model:
-                    sigma12 = (self.training['SHAPE'].transform_inv(shape_all,
-                               's12').squeeze())
+                    sigma12_tilde = (self.training['SHAPE'].transform_inv(
+                                     shape_all, 's12_tilde').squeeze())
                 else:
-                    sigma12 = (
+                    sigma12_tilde = (
                         self.training['SHAPE'].transform_inv(shape_all[:,-2],
-                        's12').squeeze())
+                        's12_tilde').squeeze())
 
                 # compute growth factors corresponding to fiducial and target
                 # parameters + growth rate
@@ -1172,11 +1174,11 @@ class PTEmu:
                 amplitude_scaling = np.sqrt(
                     self.params['As'] / self.emu_LCDM_params['As']) \
                     * np.diag(D) / Dfid[0]
-                self.params['s12'] = sigma12*amplitude_scaling
+                self.params['s12_tilde'] = sigma12_tilde * amplitude_scaling
 
                 self.params['f'] = np.diag(f)
 
-                for p in list(set(['s12','f']) & set(self.params_list)):
+                for p in list(set(['s12_tilde','f']) & set(self.params_list)):
                     if np.any((self.params[p] < self.params_ranges[p][0]) |
                               (self.params[p] > self.params_ranges[p][1])):
                             print('Warning! Leaving emulator range ' + \
@@ -1337,6 +1339,42 @@ class PTEmu:
         self.PL_spline.build(self.k_table, self.Pk_lin, h=h)
         PL = np.squeeze(self.PL_spline.eval(np.atleast_1d(k)))
         return PL
+
+    def sigmaR(self, R, params, use_Mpc, de_model):
+        r"""Compute the rms density fluctuations within a given radius.
+
+        Parameters
+        ----------
+        R: float or numpy.ndarray
+            Value of the requested scale :math:`R`.
+        params: dict
+            Dictionary containing the list of total model parameters which are
+            internally used by the emulator. The keyword/value pairs of the
+            dictionary specify the names and the values of the parameters,
+            respectively.
+        use_Mpc: bool
+            Flag to decided whether to use Mpc or Mpc/h units to compute the
+            rms density fluctuations.
+        de_model: str
+            String that determines the dark energy equation of state. Can be
+            chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`].
+
+        Returns
+        -------
+        sigmaR: float or numpy.ndarray
+            Rms density fluctuations at a scale :math:`R`.
+        """
+        PL_spline = Splines(use_Mpc=use_Mpc, ncol=0)
+        self._eval_emulator(params, ell=[], de_model=de_model)
+        h = None if use_Mpc else params['h']
+        PL_spline.build(self.k_table, self.Pk_lin, h=h)
+        def W(x):
+            return 3.0 * (np.sin(x) - x*np.cos(x)) / x**3
+        def integrand(x):
+            return (x**2 * np.squeeze(PL_spline.eval(np.atleast_1d(x))) *
+                    W(x*R)**2)
+        return (np.sqrt(quad_vec(integrand, 1e-4, 5, limit=100)[0] /
+                (2*np.pi**2)))
 
     def Pnw(self, k, params, de_model=None):
         r"""Compute the no-wiggle power spectrum predictions.
@@ -2005,17 +2043,20 @@ class PTEmu:
             return avg
 
         if obs_id is None:
-            params_updated = [params[p] != self.params[p] for p in
+            params_updated = [np.array(params[p]) != self.params[p] for p in
                               params.keys()]
             params_nonzero = [x for x in self.bias_params_list +
                               self.RSD_params_list + self.obs_syst_params_list
                               if np.any(self.params[x] != 0)]
+            diff_shape = np.any([np.array(params[p]).shape != self.params[p].shape
+                                 for p in params.keys()])
 
             if (np.any(params_updated) or
                     np.any([p not in params.keys() for p in params_nonzero]) or
-                    not self.splines_up_to_date):
+                    not self.splines_up_to_date or diff_shape):
                 Pell = self.Pell_fid_ktable(params, ell=ell_for_recon,
                                             de_model=de_model)
+                print (Pell.shape)
                 h = None if self.use_Mpc else self.params['h']
                 self.Pell_spline.build(self.k_table, Pell, h=h)
                 self.splines_up_to_date = True
@@ -2343,7 +2384,7 @@ class PTEmu:
         P6X: numpy.ndarray
             Array containing the X contribution to the octopole :math:`P_6(k)`.
         """
-        s12ratio = (self.params['s12']/self.s12_for_P6)**2
+        s12ratio = (self.params['s12_tilde']/self.s12_tilde_for_P6)**2
         s12ratio_sq = s12ratio**2
         f = self.params['f']
         if X == 'P0L_b1b1':
