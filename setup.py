@@ -23,7 +23,7 @@ def get_compiler():
 def get_sdk_path():
     if platform.system() == 'Darwin':
         #Latest C compiers on mac do not include authomatically the headers.
-        return subprocess.check_output(['xcrun', '--show-sdk-path']).strip()
+        return subprocess.check_output(['xcrun', '--show-sdk-path']).strip().decode('utf-8')
     return ''
 
 def get_compile_args():
