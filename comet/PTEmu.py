@@ -3675,15 +3675,9 @@ class PTEmu:
             else:
                 neff = tri_unique * \
                        self.Pdw_spline.derivative(n=1)(tri_unique)/Pdw
-<<<<<<< HEAD
-            if binning[obs_id] and 'VDG_infty' in self.model:
-                coeff = cnloB_mapping([self.params['avirB'],
-                                      self.params['sv']])
-=======
             if binning and self.RSD_model == 'VDG_infty':
                 coeff = cnloB_mapping([self.params['avirB'][0],
                                        self.params['sv'][0]])
->>>>>>> multiparam
                 self.params['cnloB'] = \
                     - (coeff[0]*self.params['avirB']**self.Bisp.pow_ctr \
                        + 0.5*self.params['sv']**self.Bisp.pow_ctr)
