@@ -148,3 +148,8 @@ class Splines:
             y[mask_greater[...,i],...,i] = \
                 self.extrapolation_max(x[mask_greater[...,i],i],i)
         return y
+
+    # this is just a quick fix for compatibility with the bispectrum module
+    # derivative should also be applied to the extrapolations
+    def derivative(self, n):
+        return self.spline[0].derivative(n)
