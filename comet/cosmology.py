@@ -455,9 +455,9 @@ class Cosmology:
                 D = y[:nparam,0]
                 Dp = y[nparam:,0]
 
-                wa = cosmo.wz(z)
-                Oma = cosmo.Om(z)
-                Odea = cosmo.Ode(z)
+                wa = self.wz(z)
+                Oma = self.Om(z)
+                Odea = self.Ode(z)
 
                 u1 = -(2.0 - 0.5*(Oma + (3.0*wa+1.0)*Odea))/a
                 u2 = 1.5*Oma/a**2
