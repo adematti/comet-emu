@@ -10,7 +10,6 @@ nb.config.THREADING_LAYER = 'workqueue'
 class Grid:
 
     def __init__(self, kfun, dk):
-
         self.kfun = kfun
         self.dk = dk
         self.kbin = None
@@ -120,6 +119,7 @@ class Grid:
             self.mu2 = self.mu2_all
             self.weights = self.weights_all
             self.nmodes = self.nmodes_all
+            self.weights_sum = np.add.reduceat(self.weights, self.nmodes[:-1])
 
     def find_discrete_triangles(self, tri_unique, tri_to_id, **kwargs):
         def id_to_mode(ii):

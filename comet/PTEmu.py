@@ -1262,7 +1262,7 @@ class PTEmu:
 
         return Pdw_2d
 
-    def Pdw(self, k, params, de_model=None, ell_for_recon=None):
+    def Pdw(self, k, params, de_model=None, mu=0.0, ell_for_recon=None):
         r"""Compute the real space leading order IR-resummed power spectrum.
 
         Evaluates the emulator calling **eval_emulator**, and returns the
@@ -1321,17 +1321,16 @@ class PTEmu:
         self.eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
 
         if not self.dw_spline_up_to_date:
-            Pdw_ell = np.zeros([self.nk, len(ell_for_recon),
-                                len(self.params['wc'])])
+            Pdw_ell = np.zeros([self.nk, len(ell_for_recon), self.nparams])
             for i, ell in enumerate(ell_for_recon):
                 if ell != 6:
                     Pdw_ell[:, i] = self.Pk_ratios[ell][:self.nk]
                 else:
-                    Pdw_ell[:, i] = self.P6[:, 0]
+                    Pdw_ell[:, i] = self.P6[:,0,None]
             Pdw_ell[:, :len(ell_eval_emu)] = Pdw_ell[:, :len(ell_eval_emu)] \
                                              * self.Pk_lin[:,None,:]
             Pdw = np.einsum("abc,b", Pdw_ell,
-                            eval_legendre.outer(ell_for_recon, 0.0))
+                            eval_legendre.outer(ell_for_recon, mu))
 
             self.Pdw_spline.build(self.k_table, Pdw, h=self.params['h'])
             self.dw_spline_up_to_date = True
@@ -3391,15 +3390,16 @@ class PTEmu:
 
     def _chi2_bispectrum(self, obs_id, params, ell, de_model=None,
                          binning=None, convolve_window=False, q_tr_lo=None,
-                         W_damping=None, chi2_decomposition=False,
+                         W_damping=None, tri_has_changed=True,
+                         binning_has_changed=True, chi2_decomposition=False,
                          compute_chi2_decomposition=True,
                          ell_for_recon=None, cnloB_mapping=lambda x: [0.5]):
         obs_id = obs_id[0]
         chi2 = 0.0
         if not chi2_decomposition:
-            if binning[obs_id]:
+            if binning:
                 tri_unique = self.Bisp.tri_eff_unique
-                if not binning[obs_id].get('effective', False) \
+                if not binning.get('effective', False) \
                         and (tri_has_changed or binning_has_changed):
                     self.Bisp.set_fiducial_cosmology(params)
                     Pdw_eff = self.Pdw(tri_unique, self.Bisp.fiducial_cosmology,
@@ -3429,14 +3429,13 @@ class PTEmu:
             else:
                 neff = tri_unique * \
                        self.Pdw_spline.derivative(n=1)(tri_unique)/Pdw
-            if binning[obs_id] and self.RSD_model == 'VDG_infty':
-                coeff = cnloB_mapping([self.params['avirB'],
-                                      self.params['sv']])
+            if binning and self.RSD_model == 'VDG_infty':
+                coeff = cnloB_mapping([self.params['avirB'][0],
+                                       self.params['sv'][0]])
                 self.params['cnloB'] = \
                     - (coeff[0]*self.params['avirB']**self.Bisp.pow_ctr \
                        + 0.5*self.params['sv']**self.Bisp.pow_ctr)
-            Bell = self.Bisp.Bell(Pdw, neff, self.params, ell[oi],
-                                  W_damping[oi])
+            Bell = self.Bisp.Bell(Pdw, neff, self.params, ell,  W_damping)
 
             if self.data[obs_id].cov_is_block_diagonal:
                 diff = {}
@@ -3471,8 +3470,7 @@ class PTEmu:
                            self.Pdw_spline.derivative(n=1)(
                                self.Bisp.tri_unique) / Pdw
                 BX_ell = self.Bisp.BX_ell(Pdw, neff, self.params,
-                                          ell=ell[obs_id],
-                                          W_damping=W_damping[obs_id])
+                                          ell=ell, W_damping=W_damping)
                 BX_ell_list = np.zeros([sum(self.data[obs_id].nbins),
                                         len(self.Bisp_diagrams_all)])
                 for i, X in enumerate(self.Bisp_diagrams_all):
@@ -3595,7 +3593,13 @@ class PTEmu:
         if binning is None:
             binning = {stat:None for stat in obs_id_stat}
         if not np.any([stat in binning for stat in obs_id_stat]):
-            binning = {stat:binning for stat in obs_id_stat}
+            binning_temp = {}
+            for stat in obs_id_stat:
+                if obs_id_stat[stat][0] in binning:
+                    binning_temp[stat] = binning[obs_id_stat[stat][0]]
+                else:
+                    binning_temp[stat] = binning
+            binning = binning_temp #{stat:binning for stat in obs_id_stat}
         else:
             for stat in obs_id_stat:
                 if stat not in binning:
@@ -3666,13 +3670,6 @@ class PTEmu:
                     if oi not in AM_priors:
                         AM_priors[oi] = {}
 
-        if not np.any([stat in binning for stat in obs_id_stat]):
-            binning = {stat:binning for stat in obs_id_stat}
-        else:
-            for stat in obs_id_stat:
-                if stat not in binning:
-                    binning[stat] = None
-
         # TODO:
         # - extend multi parameter sampling to bispectrum
 
@@ -3717,7 +3714,9 @@ class PTEmu:
                     ell[obs_id_stat[stat][0]],
                     de_model=de_model, binning=binning[stat],
                     convolve_window=convolve_window,
-                    q_tr_lo=q_tr_lo, W_damping=W_damping,
+                    q_tr_lo=q_tr_lo, W_damping=W_damping[stat],
+                    tri_has_changed=tri_has_changed,
+                    binning_has_changed=binning_has_changed,
                     chi2_decomposition=chi2_decomposition,
                     compute_chi2_decomposition=compute_Bisp_chi2_decomposition,
                     ell_for_recon=ell_for_recon, cnloB_mapping=cnloB_mapping
