@@ -453,7 +453,7 @@ class Bispectrum:
             self.cov_mixing_kernel = {}
 
             if binning is None:
-                print('Recompute (non-binned) kernels!')
+                # print('Recompute (non-binned) kernels!')
                 if not self.calibration_mode \
                         and self.RSD_model == 'VDG_infty_ctr':
                     self.pow_ctr = 2
@@ -1645,7 +1645,7 @@ class Bispectrum:
                         n123_perm_even[0] += ell
                         self.n123_tuples_all = np.vstack(
                             (self.n123_tuples_all, n123_perm_even))
-        self.n123_tuples_all = np.unique(self.n123_tuples_all, axis=0)
+
         for kk in self.discrete_stoch_kernel_mu_tuples:
             self.stoch_kernels_shell_average[kk] = {}
             for n123 in self.discrete_stoch_kernel_mu_tuples[kk]:
@@ -1653,6 +1653,13 @@ class Bispectrum:
                 for ell in ell_req:
                     self.stoch_kernels_shell_average[kk][tuple(n123)][ell] = \
                         np.zeros((self.tri.shape[0],3))
+                    for i in range(3):
+                        n123_perm_even = np.roll(np.array(n123), i)
+                        n123_perm_even[0] += ell
+                        self.n123_tuples_all = np.vstack(
+                            (self.n123_tuples_all, n123_perm_even))
+
+        self.n123_tuples_all = np.unique(self.n123_tuples_all, axis=0)
 
         self.I_tuples_dict = {}
         for kk in self.kernels_shell_average:
@@ -1828,7 +1835,7 @@ class Bispectrum:
                 pickle.dump(self.stoch_kernels_shell_average, f)
 
     def load_kernels_shell_average(self):
-        print('Load (binned) kernels!')
+        # print('Load (binned) kernels!')
         self.kernels_shell_average = pickle.load(
             open('{}.pickle'.format(self.binning.get('filename_root_kernels')),
             "rb")
