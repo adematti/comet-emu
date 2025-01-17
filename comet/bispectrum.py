@@ -4,7 +4,6 @@ import numpy as np
 import numba as nb
 import pickle
 from comet.grid import Grid, CtypedGrid
-#from comet.ctypedgrid import CtypedGrid
 
 nb.config.THREADING_LAYER = 'workqueue'
 
@@ -97,13 +96,13 @@ class Bispectrum:
             self.kernel_mu_tuples['G2'] = [(0,0,2), (2,0,2), (0,2,2), (2,2,2)]
             self.kernel_mu_tuples['b2'] = self.kernel_mu_tuples['F2']
             self.kernel_mu_tuples['K'] = self.kernel_mu_tuples['F2']
-            self.kernel_mu_tuples['k31'] = [(1,0,1), (3,0,1), (1,2,1),
-                                            (1,4,1), (3,2,1), (3,4,1)]
-            self.kernel_mu_tuples['k32'] = [(0,1,1), (0,3,1), (2,1,1),
-                                            (4,1,1), (2,3,1), (4,3,1)]
-            self.n123_tuples_stoch_all = np.array([[0,0,0],[2,0,0],[0,2,0],
-                                                   [0,0,2],[4,0,0],[2,2,0],
-                                                   [2,0,2]])
+            self.kernel_mu_tuples['k31'] = [
+                (1,0,1), (3,0,1), (1,2,1), (1,4,1), (3,2,1), (3,4,1)]
+            self.kernel_mu_tuples['k32'] = [
+                (0,1,1), (0,3,1), (2,1,1), (4,1,1), (2,3,1), (4,3,1)]
+            self.n123_tuples_stoch_all = np.array([
+                [0,0,0], [2,0,0], [0,2,0], [0,0,2], [4,0,0], [2,2,0],
+                [2,0,2], [6,0,0], [4,2,0], [4,0,2]])
             self._get_mu_tuples_for_discrete_average()
 
         self.grid = None
@@ -258,7 +257,7 @@ class Bispectrum:
                 self.discrete_stoch_kernel_mu_tuples['ksq']
             )
             self.discrete_stoch_kernel_mu_tuples['dksq_dlnk'] = np.array([
-                [2,0,0],[4,0,0],[6,0,0]
+                [2,0,0], [4,0,0], [6,0,0], [8,0,0]
             ])
 
     def change_RSD_model(self, model):
@@ -1588,8 +1587,19 @@ class Bispectrum:
                 n123_ctr[0] += 2
                 self.I_stoch_ctr[tuple(n123_ctr)] = {}
                 for ell in [0,2,4]:
-                    self.I_stoch_ctr[tuple(n123_ctr)][ell] = \
-                        self.I['b2'][tuple(n123_ctr)][ell]
+                    if tuple(n123_ctr) in [(6,0,2), (8,0,0)]:
+                        self.I_stoch_ctr[tuple(n123_ctr)][ell] = \
+                            np.zeros([tri.shape[0],3])
+                        for i in range(3):
+                            n123_perm_even = np.roll(np.array(n123_ctr), i)
+                            n123_perm_even[0] += ell
+                            ii = np.argsort(n123_perm_even)[::-1]
+                            self.I_stoch_ctr[tuple(n123_ctr)][ell][:,i] = \
+                                self.mu123_integrals(*n123_perm_even[ii],
+                                                     *tri[:,ii].T)
+                    else:
+                        self.I_stoch_ctr[tuple(n123_ctr)][ell] = \
+                            self.I['b2'][tuple(n123_ctr)][ell]
 
     def compute_damped_mu123_integrals(self, tri, W_damping):
         gl_W3p_damping = W_damping(tri, self.gl_mu1, self.gl_mu2, self.gl_mu3)

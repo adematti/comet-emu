@@ -272,32 +272,38 @@ class Grid:
 
 class CtypedGrid:
 
-    lib = ctypes.cdll.LoadLibrary('{}/discreteness/libgrid.so'.format(
-        os.path.join(os.path.dirname(__file__))))
-    lib.new_double_vector.restype = ctypes.c_void_p
-    lib.new_double_vector.argtypes = []
-    lib.delete_double_vector.restype = None
-    lib.delete_double_vector.argtypes = [ctypes.c_void_p]
-    lib.get_double_vector_size.restype = ctypes.c_int
-    lib.get_double_vector_size.argtypes = [ctypes.c_void_p]
-    lib.push_back_double_vector.restype = None
-    lib.push_back_double_vector.argtypes = [ctypes.c_void_p, ctypes.c_double]
+    try:
+        lib = ctypes.cdll.LoadLibrary('{}/discreteness/libgrid.so'.format(
+            os.path.join(os.path.dirname(__file__))))
+        lib.new_double_vector.restype = ctypes.c_void_p
+        lib.new_double_vector.argtypes = []
+        lib.delete_double_vector.restype = None
+        lib.delete_double_vector.argtypes = [ctypes.c_void_p]
+        lib.get_double_vector_size.restype = ctypes.c_int
+        lib.get_double_vector_size.argtypes = [ctypes.c_void_p]
+        lib.push_back_double_vector.restype = None
+        lib.push_back_double_vector.argtypes = [ctypes.c_void_p,
+                                                ctypes.c_double]
 
-    lib.new_Grid.restype = ctypes.c_void_p
-    lib.new_Grid.argtypes = [ctypes.c_int, ctypes.c_double, ctypes.c_double,
-                             ctypes.c_double, ctypes.c_double, ctypes.c_double]
-    lib.find_unique_triangles.restype = None
-    lib.find_unique_triangles.argtypes = [ctypes.c_void_p, ctypes.c_void_p,
-                                          ctypes.c_double]
-    lib.get_num_triangle_bins.restype = ctypes.c_int
-    lib.get_num_triangle_bins.argtypes = [ctypes.c_void_p]
-    lib.get_num_fundamental_triangles.restype = ctypes.c_int
-    lib.get_num_fundamental_triangles.argtypes = [ctypes.c_void_p]
-    lib.get_unique_triangles.restype = None
-    lib.get_unique_triangles.argtypes = [ctypes.c_void_p,
-        np.ctypeslib.ndpointer(ctypes.c_double, flags="C_CONTIGUOUS"),
-        np.ctypeslib.ndpointer(ctypes.c_int, flags="C_CONTIGUOUS"),
-        np.ctypeslib.ndpointer(ctypes.c_int, flags="C_CONTIGUOUS")]
+        lib.new_Grid.restype = ctypes.c_void_p
+        lib.new_Grid.argtypes = [ctypes.c_int, ctypes.c_double,
+                                 ctypes.c_double, ctypes.c_double,
+                                 ctypes.c_double, ctypes.c_double]
+        lib.find_unique_triangles.restype = None
+        lib.find_unique_triangles.argtypes = [ctypes.c_void_p, ctypes.c_void_p,
+                                              ctypes.c_double]
+        lib.get_num_triangle_bins.restype = ctypes.c_int
+        lib.get_num_triangle_bins.argtypes = [ctypes.c_void_p]
+        lib.get_num_fundamental_triangles.restype = ctypes.c_int
+        lib.get_num_fundamental_triangles.argtypes = [ctypes.c_void_p]
+        lib.get_unique_triangles.restype = None
+        lib.get_unique_triangles.argtypes = [ctypes.c_void_p,
+            np.ctypeslib.ndpointer(ctypes.c_double, flags="C_CONTIGUOUS"),
+            np.ctypeslib.ndpointer(ctypes.c_int, flags="C_CONTIGUOUS"),
+            np.ctypeslib.ndpointer(ctypes.c_int, flags="C_CONTIGUOUS")]
+    except:
+        print('Warning! "libgrid.so" not found, bispectrum binning options '
+              'will not be available.')
 
     def __init__(self, **kwargs):
         self.kfun = kwargs.get('kfun')

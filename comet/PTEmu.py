@@ -943,7 +943,7 @@ class PTEmu:
 
                 if self.RSD_model == 'VDG_infty':
                     self.params['sv'] = self.training['SHAPE'].transform_inv(
-                        params_shape[0,1], 'sv')
+                        shape_all[0,1], 'sv')
                     self.params['sv'] *= amplitude_scaling
                     if not self.use_Mpc:
                         self.params['sv'] *= self.params['h']
