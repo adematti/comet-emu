@@ -2,8 +2,7 @@
 
 import numpy as np
 from scipy.interpolate import UnivariateSpline
-from scipy.integrate import quad_vec
-from scipy.integrate import quad,dblquad
+from scipy.integrate import quad_vec, quad, dblquad
 from scipy.special import eval_legendre
 from astropy.io import fits
 import pickle
@@ -56,7 +55,8 @@ class PTEmu:
     projecting again over the Legendre polynomials.
     """
 
-    def __init__(self, model, use_Mpc=True, bias_basis='EggScoSmi'):
+    def __init__(self, model, use_Mpc=True, bias_basis='EggScoSmi',
+                 counterterm_basis='Comet'):
         r"""Class constructor.
 
         Parameters
@@ -69,6 +69,7 @@ class PTEmu:
             :math:`h^{-1}\mathrm{Mpc}` (**False**) units. Defaults to **True**.
         """
         self.bias_basis = bias_basis
+        self.counterterm_basis = counterterm_basis
 
         if self.bias_basis == 'EggScoSmi':
             self.bias_params_list = ['b1', 'b2', 'g2', 'g21', 'c0', 'c2', 'c4',
@@ -160,19 +161,10 @@ class PTEmu:
         self.chi2_decomposition = None
         self.Bisp_chi2_decomposition = None
 
-        try:
-            self.load_emulator_data(
-                fname=base_dir+'/data_dir/tables/{}.fits'.format(model))
-        except Exception:
-            print('Table file for this model not found. Initialise '
-                  'with `load_emulator_data`')
-        try:
-            self.load_emulator(
-                fname_base=base_dir+'/data_dir/models/{}'.format(model))
-        except Exception:
-            print('Emulator files for this model not found. Initialise with '
-                  '`load_emulator`, or train the emulator first, '
-                  'if necessary.')
+        self.load_emulator_data(
+            fname=base_dir+'/data_dir/tables/{}.fits'.format(model))
+        self.load_emulator(
+            fname_base=base_dir+'/data_dir/models/{}'.format(model))
 
     def init_params_dict(self):
         r"""Initialize params dictionary.
@@ -182,7 +174,7 @@ class PTEmu:
         biases, noises, counterterms, and other nuisance parameters.
         """
         self.params = {p: 0.0 for p in self.params_list +
-                       self.bias_params_list +
+                       self.bias_params_list + self.RSD_params_list +
                        self.de_model_params_list['w0wa']}
         self.params['w0'] = -1.0
         self.params['q_tr'] = 1.0
@@ -225,7 +217,6 @@ class PTEmu:
             min = hdul['PARAMS_FULL'].header['MIN:{}'.format(p)]
             max = hdul['PARAMS_FULL'].header['MAX:{}'.format(p)]
             self.params_ranges[p] = [min, max]
-        self.init_params_dict()
 
         self.training['SHAPE'] = Tables(self.params_shape_list)
         self.training['FULL'] = Tables(self.params_list)
@@ -237,8 +228,8 @@ class PTEmu:
 
         if self.RSD_model == 'VDG_infty':
             self.RSD_params_list += ['avir','avirB']
-            self.params['avir'] = 0.0
-            self.params['avirB'] = 0.0
+
+        self.init_params_dict()
 
         if self.RSD_model == 'EFT':
             self.Bisp_diagrams_all = ['B0L_b1b1b1', 'B0L_b1b1', 'B0L_b1',
@@ -267,10 +258,20 @@ class PTEmu:
         if not self.real_space:
             self.s12_for_P6 = hdul['MODEL_Pell6'].header['SIG12']
             self.P6 = hdul['MODEL_Pell6'].data['P_all']
+            # better compute P6 table for full k-range...
+            nkdiff = self.nk-self.nkloop
+            for i in range(3,25):
+                dly = np.log10(
+                    np.abs(self.P6[nkdiff+2,i]/self.P6[nkdiff,i]))
+                dlx = np.log10(
+                    np.abs(self.k_table[nkdiff+2]/self.k_table[nkdiff]))
+                neff = dly/dlx
+                self.P6[:nkdiff,i] = self.P6[nkdiff,i] \
+                    * (self.k_table[:nkdiff]/self.k_table[nkdiff])**neff
 
         self.Bisp = Bispectrum(self.real_space, self.RSD_model, self.use_Mpc)
 
-    def load_emulator(self, fname_base, data_type=None):
+    def load_emulator(self, fname_base):
         r"""Load the emulator from pickle file.
 
         Loads an emulator object from a file (pickle format) and adds it to the
@@ -285,29 +286,10 @@ class PTEmu:
             it loads the emulators for all the tables that are stored as class
             attributes. Defaults to **None**.
         """
-        if data_type is None:
-            ell_train = [0, 2, 4] if not self.real_space else [0]
-            for dt in ['PL', 's12']:
-                self.emu[dt] = pickle.load(
-                    open('{}_{}.pickle'.format(fname_base, dt), "rb"))
-            if self.RSD_model == 'VDG_infty':
-                self.emu['sv'] = pickle.load(
-                    open('{}_{}.pickle'.format(fname_base, 'sv'), "rb"))
-            for ell in ell_train:
-                self.emu[ell] = pickle.load(
-                    open('{}_ratios_ell{}.pickle'.format(fname_base, ell),
-                         "rb"))
-        else:
-            data_type = [data_type] if not isinstance(data_type, list) \
-                else data_type
-            for dt in data_type:
-                if dt in ['PL', 's12', 'sv']:
-                    self.emu[dt] = pickle.load(
-                        open('{}_{}.pickle'.format(fname_base, dt), "rb"))
-                else:
-                    self.emu[dt] = pickle.load(
-                        open('{}_ratios_ell{}.pickle'.format(fname_base, dt),
-                             "rb"))
+        self.emu['shape'] = pickle.load(
+            open('{}_scikit_s12svPL.pickle'.format(fname_base), "rb"))
+        self.emu['ratios'] = pickle.load(
+            open('{}_scikit_ratios.pickle'.format(fname_base), "rb"))
 
     def define_units(self, use_Mpc):
         r"""Define units for the power spectrum and number density.
@@ -363,6 +345,17 @@ class PTEmu:
             self.splines_up_to_date = False
             self.dw_spline_up_to_date = False
 
+    def change_counterterm_basis(self, counterterm_basis):
+        if counterterm_basis in ['Comet','ClassPT']:
+            if self.counterterm_basis != counterterm_basis:
+                self.counterterm_basis = counterterm_basis
+                self.init_params_dict()
+                self.splines_up_to_date = False
+                self.dw_splines_up_to_date = False
+        else:
+            print('Warning. Counterterm basis not recognised, choose between '
+                  '"Comet" (default), or "ClassPT".')
+
     def change_gauss_legendre_degree(self, degree):
         self.gl_x, self.gl_weights = np.polynomial.legendre.leggauss(degree)
         self.gl_x = 0.5 * self.gl_x + 0.5
@@ -409,7 +402,7 @@ class PTEmu:
             Dictionary of keyword arguments (check docs of **MeasuredData**
             class for the list of allowed keyword arguments).
         """
-        if obs_id not in self.data.keys():
+        if obs_id not in self.data:
             self.data[obs_id] = MeasuredData(**kwargs)
         else:
             self.data[obs_id].update(**kwargs)
@@ -621,9 +614,7 @@ class PTEmu:
         elif de_model is not None:
             self.params['q_lo'] = q_tr_lo[1]
             self.params['q_tr'] = q_tr_lo[0]
-        elif (de_model is None and
-              'q_lo' in params and
-              'q_tr' in params):
+        elif (de_model is None and 'q_lo' in params and 'q_tr' in params):
             self.params['q_lo'] = params['q_lo']
             self.params['q_tr'] = params['q_tr']
 
@@ -894,30 +885,31 @@ class PTEmu:
             params_all = np.array([self.params[p] for p in self.params_list])
 
             if self.Pk_lin is None or emu_params_updated:
+                shape_all = self.emu['shape'].predict(params_shape[None, :])
                 sigma12 = self.training['SHAPE'].transform_inv(
-                    self.emu['s12'].predict(params_shape[None, :])[0][0], 's12')
+                    shape_all[0,0], 's12')
                 self.Pk_lin = self.training['SHAPE'].transform_inv(
-                    self.emu['PL'].predict(params_shape[None, :])[0][0], 'PL')
+                    shape_all[0,2:], 'PL')
                 self.Pk_lin *= (self.params['s12']/sigma12)**2
 
                 if self.RSD_model == 'VDG_infty':
                     self.params['sv'] = self.training['SHAPE'].transform_inv(
-                        self.emu['sv'].predict(params_shape[None, :])[0][0],
-                        'sv')[0]
+                        shape_all[0,1], 'sv')
                     self.params['sv'] *= self.params['s12']/sigma12
                     if not self.use_Mpc:
                         self.params['sv'] *= self.params['h']
 
-            for m in ell:
-                if self.Pk_ratios[m] is None or emu_params_updated:
-                    self.Pk_ratios[m] = self.training['FULL'].transform_inv(
-                        self.emu[m].predict(params_all[None, :])[0][0], m)
+            ratios_all = self.emu['ratios'].predict(params_all[None, :])
+            for i,m in enumerate(ell):
+                self.Pk_ratios[m] = self.training['FULL'].transform_inv(
+                    ratios_all[0,i*1754:(i+1)*1754], m)
         else:
             if self.Pk_lin is None or emu_params_updated:
+                shape_all = self.emu['shape'].predict(params_shape[None, :])
                 sigma12 = self.training['SHAPE'].transform_inv(
-                    self.emu['s12'].predict(params_shape[None, :])[0][0], 's12')
+                    shape_all[0,0], 's12')
                 self.Pk_lin = self.training['SHAPE'].transform_inv(
-                    self.emu['PL'].predict(params_shape[None, :])[0][0], 'PL')
+                    shape_all[0,2:], 'PL')
 
                 # compute growth factors corresponding to fiducial and target
                 # parameters + growth rate
@@ -940,7 +932,7 @@ class PTEmu:
                 amplitude_scaling = np.sqrt(
                     self.params['As']/self.emu_LCDM_params['As'])*D/Dfid
                 self.Pk_lin *= amplitude_scaling**2
-                self.params['s12'] = sigma12[0]*amplitude_scaling
+                self.params['s12'] = sigma12*amplitude_scaling
                 self.params['f'] = f
 
                 for p in list(set(['s12','f']) & set(self.params_list)):
@@ -951,8 +943,7 @@ class PTEmu:
 
                 if self.RSD_model == 'VDG_infty':
                     self.params['sv'] = self.training['SHAPE'].transform_inv(
-                        self.emu['sv'].predict(params_shape[None, :])[0][0],
-                        'sv')[0]
+                        params_shape[0,1], 'sv')
                     self.params['sv'] *= amplitude_scaling
                     if not self.use_Mpc:
                         self.params['sv'] *= self.params['h']
@@ -960,10 +951,17 @@ class PTEmu:
             params_all = np.array([self.params[p] for p in self.params_list],
                                   dtype=object)
 
-            for m in ell:
-                if self.Pk_ratios[m] is None or emu_params_updated:
-                    self.Pk_ratios[m] = self.training['FULL'].transform_inv(
-                        self.emu[m].predict(params_all[None, :])[0][0], m)
+            ratios_all = self.emu['ratios'].predict(params_all[None, :])
+            for i,m in enumerate(ell):
+                self.Pk_ratios[m] = self.training['FULL'].transform_inv(
+                    ratios_all[0,i*1754:(i+1)*1754], m)
+
+        if self.counterterm_basis == 'ClassPT':
+            self.params['c2'] = 2.0/3.0 * self.params['f'] * self.params['c2']
+            self.params['c4'] = 8.0/35.0 * self.params['f']**2 * self.params['c4']
+            self.params['cnlo'] = - self.params['cnlo']
+            self.params['NP20'] = self.params['NP20'] + 1.0/3.0 * self.params['NP22']
+            self.params['NP22'] = 2.0/3.0 * self.params['NP22']
 
     def W_kurt(self, k, mu):
         r"""Large scale limit of the velocity difference generating function.
@@ -1277,10 +1275,9 @@ class PTEmu:
         if ell_for_recon is None:
             ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
         ell_eval_emu = ell_for_recon.copy()
-        try:
+        if 6 in ell_eval_emu:
             ell_eval_emu.remove(6)
-        except Exception:
-            pass
+
         self.eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
 
         Pdw_ell = np.zeros([self.nk, len(ell_for_recon)])
@@ -1362,10 +1359,9 @@ class PTEmu:
         if ell_for_recon is None:
             ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
         ell_eval_emu = ell_for_recon.copy()
-        try:
+        if 6 in ell_eval_emu:
             ell_eval_emu.remove(6)
-        except Exception:
-            pass
+
         self.eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
 
         if not self.dw_spline_up_to_date:
@@ -1422,12 +1418,10 @@ class PTEmu:
         """
         ell = [ell] if not isinstance(ell, list) else ell
         ell_eval_emu = ell.copy()
-        try:
+        if 6 in ell_eval_emu:
             ell_eval_emu.remove(6)
-        except Exception:
-            pass
-        self.eval_emulator(params, ell_eval_emu, de_model=de_model)
 
+        self.eval_emulator(params, ell_eval_emu, de_model=de_model)
         bij = self.get_bias_coeff()
 
         Pell = np.zeros([self.nk, len(ell)])
@@ -1785,8 +1779,8 @@ class PTEmu:
 
         if isinstance(k, list):
             if len(k) != len(ell):
-                raise ValueError("If 'k' is given as a list, it must match the"
-                                 " length of 'ell'.")
+                raise ValueError("If 'k' is given as a list, it must match the "
+                                 "length of 'ell'.")
             else:
                 k_list = k
                 k = np.unique(np.hstack(k_list))

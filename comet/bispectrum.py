@@ -365,7 +365,7 @@ class Bispectrum:
             tri_is_subset = False
             tri_has_changed = True
         else:
-            tri_mismatch = np.any(self.tri != tri_test) \
+            tri_mismatch = np.logical_not(np.array_equal(self.tri, tri_test)) \
                 or len(tri_test) != max([len(self.tri_id_ell[l])
                                          for l in self.tri_id_ell])
                 #or length of tri_test doesn't match length of tri_id_ell
@@ -2615,7 +2615,11 @@ class Bispectrum:
             params_kernels['k31'] = -b1f * np.array([b1sq, b1f, 2*b1f, f2,
                                                      2*f2, f4/b1f])
             params_kernels['k32'] = params_kernels['k31']
-            params_stoch = params['MB0']/self.nbar * np.array([b1sq, b1f])
+            params_stoch = np.array([
+                b1sq * params['MB0'],
+                b1f * (params['MB0'] + params['NP0']),
+                f2 * (params['NP0'])
+            ]) / self.nbar
             if (self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr') \
                     and self.cnlo_type == 'EggLeeSco':
                 cnloB = params['cnloB']*f2
@@ -2644,7 +2648,7 @@ class Bispectrum:
                         )
                     kernel_stoch[l] = \
                         self.join_stoch_kernel_mu123_shell_average(
-                            [(0,0,0),(2,0,0)], l, neff, params_stoch,
+                            [(0,0,0),(2,0,0),(4,0,0)], l, neff, params_stoch,
                             params['q_tr'], params['q_lo'], cnloB_stoch
                         )
                 else:
@@ -2656,7 +2660,7 @@ class Bispectrum:
                             cnloB
                         )
                     kernel_stoch[l] = self.join_stoch_kernel_mu123_integral(
-                        [(0,0,0),(2,0,0)], l, neff, params_stoch,
+                        [(0,0,0),(2,0,0),(4,0,0)], l, neff, params_stoch,
                         params['q_tr'], params['q_lo'], cnloB_stoch
                     )
 
