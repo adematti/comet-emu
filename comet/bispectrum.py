@@ -1432,6 +1432,7 @@ class Bispectrum:
         # first, find all n1,n2,n3 tuples
         self.n123_tuples_all = np.array([0,0,0])
         kernel_names = ['F2','G2','k31','k32']
+        self.I = {}
         for kk in kernel_names:
             self.I[kk] = {}
             n123_tuples = self.kernel_mu_tuples[kk]
@@ -1517,6 +1518,7 @@ class Bispectrum:
         a class attribute.
         """
         kernel_names = ['F2'] if self.real_space else ['F2','G2','k31','k32']
+        self.I = {}
         for kk in kernel_names:
             self.I[kk] = {}
             n123_tuples = self.kernel_mu_tuples[kk]
@@ -2746,6 +2748,7 @@ class Bispectrum:
 
             kernel_stoch[0]['Bnoise_MB0b1b1'] = 1.0
             kernel_stoch[0]['Bnoise_MB0b1'] = 0.0
+            kernel_stoch[0]['Bnoise_NP0'] = 0.0
         else:
             f2 = params['f']**2
             f3 = params['f']**3
@@ -2760,7 +2763,7 @@ class Bispectrum:
             params_kernels['k31'] = -np.array([params['f'], f2, 2*f2, f3,
                                                      2*f3, f4])
             params_kernels['k32'] = params_kernels['k31']
-            params_stoch = np.array([1.0, params['f']])
+            params_stoch = np.array([1.0, params['f'], f2])
 
             if self.RSD_model == 'VDG_infty':
                 if not self.discrete_average:
@@ -2782,11 +2785,12 @@ class Bispectrum:
                                 kernel[l][diagram] += kernel_temp[i]
                     kernel_stoch_temp = \
                         self.join_stoch_kernel_mu123_integral_indv(
-                            [(0,0,0),(2,0,0)], l, neff, params_stoch,
+                            [(0,0,0),(2,0,0),(4,0,0)], l, neff, params_stoch,
                             params['q_tr'], params['q_lo']
                         )
                     kernel_stoch[l]['Bnoise_MB0b1b1'] = kernel_stoch_temp[0]
                     kernel_stoch[l]['Bnoise_MB0b1'] = kernel_stoch_temp[1]
+                    kernel_stoch[l]['Bnoise_NP0'] = kernel_stoch_temp[2]
 
             if 4 in ell:
                 for diagram in kernel[4]:

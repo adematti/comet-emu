@@ -241,13 +241,14 @@ class PTEmu:
                                       'B0L_b1b1g2cnloB', 'B0L_b1g2cnloB',
                                       'B0L_g2cnloB', 'B0L_id', 'B0L_cnloB',
                                       'Bnoise_MB0b1b1', 'Bnoise_MB0b1',
-                                      'Bnoise_NB0']
+                                      'Bnoise_NP0', 'Bnoise_NB0']
         else:
             self.Bisp_diagrams_all = ['B0L_b1b1b1', 'B0L_b1b1', 'B0L_b1',
                                       'B0L_b1b1b2', 'B0L_b1b2', 'B0L_b2',
                                       'B0L_b1b1g2', 'B0L_b1g2', 'B0L_g2',
                                       'B0L_id', 'Bnoise_MB0b1b1',
-                                      'Bnoise_MB0b1', 'Bnoise_NB0']
+                                      'Bnoise_MB0b1', 'Bnoise_NP0',
+                                      'Bnoise_NB0']
 
         self.training['SHAPE'].assign_samples(hdul['PARAMS_SHAPE'])
         self.training['SHAPE'].assign_table(hdul['MODEL_SHAPE'],
@@ -406,6 +407,9 @@ class PTEmu:
             self.data[obs_id] = MeasuredData(**kwargs)
         else:
             self.data[obs_id].update(**kwargs)
+
+        self.chi2_decomposition = None
+        self.Bisp_chi2_decomposition = None
 
     def define_fiducial_cosmology(self, HDm_fid=None, params_fid=None,
                                   de_model='lambda'):
@@ -824,6 +828,7 @@ class PTEmu:
         cnloB = self.params['cnloB']*self.params['f']**2
         MB0 = self.params['MB0']
         NB0 = self.params['NB0']
+        NP0 = self.params['NP0']
         b1sq = b1**2
 
         if self.RSD_model == 'EFT':
@@ -832,12 +837,13 @@ class PTEmu:
                                     b1sq*b2*cnloB, b1*b2*cnloB, b2*cnloB,
                                     b1sq*g2, b1*g2, g2, b1sq*g2*cnloB,
                                     b1*g2*cnloB, g2*cnloB, 1.0, cnloB,
-                                    MB0*b1sq/self.nbar, MB0*b1/self.nbar,
-                                    NB0/self.nbar**2])
+                                    MB0*b1sq/self.nbar, (MB0+NP0)*b1/self.nbar,
+                                    NP0/self.nbar, NB0/self.nbar**2])
         else:
             params_comb = np.array([b1sq*b1, b1sq, b1, b1sq*b2, b1*b2, b2,
                                     b1sq*g2, b1*g2, g2, 1.0, MB0*b1sq/self.nbar,
-                                    MB0*b1/self.nbar, NB0/self.nbar**2])
+                                    (MB0+NP0)*b1/self.nbar, NP0/self.nbar,
+                                    NB0/self.nbar**2])
 
         return params_comb
 
@@ -3110,6 +3116,12 @@ class PTEmu:
                 if oi not in binning.keys():
                     binning[oi] = None
 
+        # deactivating chi2-decomposition if the bispectrum is involved
+        # [TODO: include counterterms in stochastic contributions for EFT/VDG]
+        for oi in obs_id:
+            if self.data[oi].stat == 'bispectrum':
+                chi2_decomposition = False
+
         ell = {}
         for oi in obs_id:
             # kmax_updated = False
@@ -3123,7 +3135,7 @@ class PTEmu:
                             self.Bisp_chi2_decomposition = None
                         # kmax_updated = True
 
-            ell[oi] = self.data[oi].ell
+                        ell[oi] = self.data[oi].ell
 
             if self.data[oi].stat == 'bispectrum':
                 # if self.Bisp.tri is not None:
