@@ -7,6 +7,25 @@ import os
 import sys
 from ctypes.util import find_library
 
+"""
+This script is a setup configuration for building and installing the `comet.discreteness.libgrid` extension module using setuptools.
+Functions:
+    get_compiler(): Determines the C++ compiler to use based on the platform or environment variable.
+    get_sdk_path(): Retrieves the SDK path on macOS.
+    get_cpp_standard(): Determines the C++ standard to use based on an environment variable or defaults to C++11.
+    find_dirs(): Finds common include and library directories.
+    get_compile_args(): Constructs the compile arguments for the C++ compiler.
+    get_link_args(): Constructs the link arguments for the C++ compiler.
+Classes:
+    CustomBuild(build_ext): Custom build class to compile and link the C++ extension module.
+Setup Configuration:
+    - Defines the compiler to be used.
+    - Cleans default flags as defined by setuptools.
+    - Adds appropriate compile and link flags.
+    - Defines the `comet.discreteness.libgrid` extension module.
+    - Configures the setup to use the custom build class and include the extension module.
+"""
+
 # Custom function to determine the compiler version
 def get_compiler():
     # Allow user to specify the compiler (e.g., 'g++', 'clang++') via an environment variable
@@ -19,7 +38,7 @@ def get_compiler():
         return 'clang++'  # Default to clang++ on macOS
     return 'g++'  # Default to g++ on other platforms
 
-# Newes version of Mac changed the directory of sdk files. Need to llok for them
+# Newest versions of Mac changed the directory of sdk files. Need to llok for them
 def get_sdk_path():
     if platform.system() == 'Darwin':
         return subprocess.check_output(['xcrun', '--show-sdk-path']).strip().decode('utf-8')
