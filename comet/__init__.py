@@ -36,9 +36,9 @@ def download_data(download_dir):
 
         if not os.path.exists(final_path):
             if i == 0:
-                print("\n As it is the first instance of the emulator, "
-                      "we need to download some data, it can take a few "
-                      "seconds...\n")
+                print("\n Since this is the first time COMET is loaded,  "
+                      "we need to download some required files. This may "
+                      "take a few minutes...\n")
 
             print("Downloading %s...\n" % out_filenames[i])
 
