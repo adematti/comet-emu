@@ -7,78 +7,7 @@ import os
 import sys
 from ctypes.util import find_library
 
-## Helper functions for automatic detection
-#def locate_include_dirs():
-#    """
-#    Locate include directories automatically using common paths and pkg-config.
-#    """
-#    discreteness_dir = os.path.join(os.path.dirname(__file__), 'comet', 'discreteness')
-#    pc_file = os.path.join(discreteness_dir, 'comet.pc')
-#    pc_content = f"""prefix=/usr/local
-#prefix = sysconfig.get_config_var('prefix')
-#exec_prefix=${{prefix}}
-#libdir=${{exec_prefix}}/lib
-#includedir=${{prefix}}/include
-#
-#Name: comet
-#Description: Cosmological Observables Modelled by Emulated perturbation Theory
-#Version: 1.2.3
-#Requires: 
-#Cflags: -I${{includedir}}
-#Libs: -L${{libdir}} -lgrid 
-#"""
-#
-#    os.makedirs(discreteness_dir, exist_ok=True)
-#
-#    # Write the .pc file
-#    with open(pc_file, "w") as f:
-#        f.write(pc_content)
-#
-#    print(f"Installed pkg-config file to {pc_file}")
-#
-#    include_dirs = []
-#
-#    # Use pkg-config if available
-#    try:
-#        output = subprocess.check_output(['pkg-config', '--cflags-only-I', '--define-variable=prefix=' + discreteness_dir, 'comet'], stderr=subprocess.DEVNULL)
-#        include_dirs.extend(path[2:] for path in output.decode().split() if path.startswith("-I"))
-#    except (subprocess.CalledProcessError, FileNotFoundError):
-#        pass  # pkg-config not available
-#
-#    # Add common system include directories
-#    common_dirs = ['/usr/include', '/usr/local/include']
-#    include_dirs.extend(dir for dir in common_dirs if os.path.exists(dir))
-#
-#    print('These are the INCS folders: ', list(set(include_dirs)))
-#    return list(set(include_dirs))
-#
-#
-#def locate_library_dirs(): 
-#    """
-#    Locate library directories automatically using common paths and pkg-config.
-#    """
-#    library_dirs = []
-#    discreteness_dir = os.path.join(os.path.dirname(__file__), 'comet', 'discreteness')
-#
-#
-#    # Use pkg-config if available
-#    try:
-#        output = subprocess.check_output(['pkg-config', '--cflags-only-I', '--define-variable=prefix=' + discreteness_dir, 'comet'], stderr=subprocess.DEVNULL)
-#        library_dirs.extend(path[2:] for path in output.decode().split() if path.startswith("-L"))
-#    except (subprocess.CalledProcessError, FileNotFoundError):
-#        pass  # pkg-config not available
-#
-#    # Add common system library directories
-#    common_dirs = ['/usr/lib', '/usr/local/lib']
-#    library_dirs.extend(dir for dir in common_dirs if os.path.exists(dir))
-#
-#    print('These are the LIBS folders: ',list(set(library_dirs)))
-#
-#    return list(set(library_dirs))
-#
-#
-## Custom function to determine the compiler version
-
+# Custom function to determine the compiler version
 def get_compiler():
     # Allow user to specify the compiler (e.g., 'g++', 'clang++') via an environment variable
     compiler = os.environ.get('CXX_COMPILER')
@@ -95,6 +24,7 @@ def get_sdk_path():
         return subprocess.check_output(['xcrun', '--show-sdk-path']).strip().decode('utf-8')
     return ''
 
+# I ommited calling this function since it was not obvios if was really needed.
 def get_cpp_standard():
     # Allow user to specify C++ version via environment variable or default to C++11
     return str(os.environ.get('CXX_STANDARD', 'c++11'))
@@ -182,6 +112,7 @@ class CustomBuild(build_ext):
 os.environ['CXX'] = get_compiler()
 
 # Clean default flags as defined by setuptools.
+# It may be needed because of Cython types
 #os.environ['CXXFLAGS'] = ''
 #os.environ['LDFLAGS'] = ''
 #os.environ['CPPFLAGS'] = ''
@@ -195,7 +126,6 @@ if platform.system() == 'Darwin':
         link_args += ['-isysroot', get_sdk_path()]
     
 # This module make sure that libgrid is constructed when called from PIPY.
-# Function to dynamically find include and library directories
 
 Module = Extension(
     name='comet.discreteness.libgrid',
