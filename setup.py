@@ -19,6 +19,7 @@ def get_compiler():
         return 'clang++'  # Default to clang++ on macOS
     return 'g++'  # Default to g++ on other platforms
 
+# Newes version of Mac changed the directory of sdk files. Need to llok for them
 def get_sdk_path():
     if platform.system() == 'Darwin':
         return subprocess.check_output(['xcrun', '--show-sdk-path']).strip().decode('utf-8')
@@ -33,7 +34,7 @@ def find_dirs():
     include_dirs = []
     library_dirs = []
 
-    # Check common directories
+    # Check common directories. Looking for std directories is done authomatically by C++
     common_dirs = ['/usr/local', '/opt/local', '/usr'] 
     for dir in common_dirs:
         include_path = os.path.join(dir, 'include')
@@ -49,8 +50,6 @@ include_dirs, library_dirs = find_dirs()
 
 def get_compile_args():
     cpp_standard = get_cpp_standard()
-    #include_dirs = locate_include_dirs()
-    #library_dirs = locate_library_dirs()
     args = [
         '-O3', '-c', '-fPIC'#, f'-std={cpp_standard}' #ommiting call to std since it give issues with PIPY
         ]
@@ -107,7 +106,9 @@ class CustomBuild(build_ext):
             return filename.replace(suffix, "") + ext
 
 
-# Setup configuration
+
+# Setup configuration to make sure that libgrid is constructed when called from PIPY.
+
 # Define the compiler to be used
 os.environ['CXX'] = get_compiler()
 
