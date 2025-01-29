@@ -1,4 +1,41 @@
 [build-system]
-requires = ["setuptools>=42", 'wheel']
+requires = ["setuptools>=42", "wheel", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
+[project]
+name = "comet-emu"
+version = "1.4.0.dev20"
+description = "COMET - Cosmological Observables Modelled by Emulated perturbation Theory."
+authors = [
+    {name = "Alex Eggemeier, Benjamin Camacho-Quevedo, Andrea Pezzotta, Martin Crocce, Román Scoccimarro, Ariel Sánchez", email = "aeggemeier@astro.uni-bonn.de"}
+]
+license = {text = "MIT License"}
+requires-python = ">=3.6"
+classifiers = [
+    "Programming Language :: Python :: 3.7",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent"
+]
+readme = "README.md"
+dependencies = [
+    "scikit-learn",
+    "numba",
+    "numpy",
+    "matplotlib",
+    "scipy",
+    "astropy"
+]
+
+[project.urls]
+Homepage = "https://comet-emu.readthedocs.io/"
+Documentation = "https://comet-emu.readthedocs.io/"
+Repository ="https://gitlab.com/aegge/comet-emu"
+
+
+[tool.setuptools]
+package-dir = {"" = ".", "comet.discreteness" = "comet/discreteness/"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ['.']
+exclude = ["docs*", "scripts*", "comet_developer*",]
