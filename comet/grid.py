@@ -312,7 +312,7 @@ class CtypedGrid:
         self.num_grid = 0
         self.do_rounding = kwargs.get('do_rounding', True)
         self.decimals = kwargs.get('decimals', [3,3])
-        self.shape_limits = kwargs.get('shape_limits', [1.02,1.15])
+        self.shape_limits = kwargs.get('shape_limits', [0.999,1.15])
         self.c_grid = None
         self.kmu123 = None
         if self.do_rounding:
@@ -326,12 +326,12 @@ class CtypedGrid:
         if self.kfun != kwargs.get('kfun') or self.dk != kwargs.get('dk') \
                 or self.do_rounding != kwargs.get('do_rounding', True) \
                 or self.decimals != kwargs.get('decimals', [3,3]) \
-                or self.shape_limits != kwargs.get('shape_limits', [1.02,1.15]):
+                or self.shape_limits != kwargs.get('shape_limits',[0.999,1.15]):
             self.kfun = kwargs.get('kfun')
             self.dk = kwargs.get('dk')
             self.do_rounding = kwargs.get('do_rounding', True)
             self.decimals = kwargs.get('decimals', [3,3])
-            self.shape_limits = kwargs.get('shape_limits', [1.02,1.15])
+            self.shape_limits = kwargs.get('shape_limits', [0.999,1.15])
             self.c_grid = None
             self.kmu123 = None
             if self.do_rounding:

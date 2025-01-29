@@ -481,11 +481,12 @@ class Bispectrum:
                     self.grid = CtypedGrid(**self.binning)
                 else:
                     self.grid.update(**self.binning)
-                self.tri_unique = np.arange(
-                    int(np.around(np.amax(self.tri)/self.binning.get('dk')))
-                )
-                self.tri_unique = self.tri_unique * self.binning.get('dk') \
-                                  + self.binning.get('first_bin_centre')
+                # self.tri_unique = np.arange(
+                #     int(np.around(np.amax(self.tri)/self.binning.get('dk')))
+                # )
+                # self.tri_unique = self.tri_unique * self.binning.get('dk') \
+                #                   + self.binning.get('first_bin_centre')
+                self.tri_unique = np.unique(self.tri)
                 if self.binning.get('effective', False):
                     self.discrete_average = False
                     self.use_effective_triangles = True

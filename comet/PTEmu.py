@@ -1019,6 +1019,41 @@ class PTEmu:
         t2 = 1.0 + t1*self.params['avir']**2
         return 1.0/np.sqrt(t2)*np.exp(-t1*self.params['sv']**2/t2)
 
+    def get_kmu_products(self, tri, mu1, mu2, mu3):
+        r"""Computes the products k1*mu1, k2*mu2, and k3*mu3.
+
+        The method returns the products in a format needed for the computation
+        of the bispectrum damping function. It also applies Alcock-Paczynski
+        distortions to the wave modes and cosines.
+
+        Parameters
+        ----------
+        tri: numpy.ndarray
+            Wavemodes :math:`k_1`, :math:`k_2`, :math:`k_3`.
+        mu1: numpy.ndarray
+            Cosines of the angle between :math:`k_1` and the LOS.
+        mu2: numpy.ndarray
+            Cosines of the angle between :math:`k_2` and the LOS.
+        mu3: numpy.ndarray
+            Cosines of the angle between :math:`k_3` and the LOS.
+
+        Returns
+        -------
+        kmu1: numpy.ndarray
+            Product of k1 and mu1.
+        kmu2: numpy.ndarray
+            Product of k2 and mu2.
+        kmu2: numpy.ndarray
+            Product of k3 and mu3.
+        """
+        k1 = tri[:,0].reshape((-1,1))
+        k2 = tri[:,1].reshape((-1,1))
+        k3 = tri[:,2].reshape((-1,1))
+        kmu1 = np.outer(k1,mu1)/self.params['q_lo']
+        kmu2 = k2*mu2/self.params['q_lo']
+        kmu3 = k3*mu3/self.params['q_lo']
+        return kmu1, kmu2, kmu3
+
     def WB_kurt(self, tri, mu1, mu2, mu3):
         # including AP effect!
         k1 = tri[:,0].reshape((-1,1))
@@ -2567,7 +2602,7 @@ class PTEmu:
 
     def Bell(self, tri, params, ell, de_model=None, kfun=None, binning=None,
              q_tr_lo=None, W_damping=None, ell_for_recon=None, gl_deg=8,
-             cnloB_mapping=lambda x: [0.5]):
+             cnloB_mapping=None):
         ell = [ell] if not isinstance(ell, list) else ell
         if tri.ndim == 1:
             tri = tri[None,:]
@@ -2619,10 +2654,12 @@ class PTEmu:
             neff = tri_unique*self.Pdw_spline.derivative(n=1)(tri_unique)/Pdw
 
         if binning and self.RSD_model == 'VDG_infty':
-            coeff = cnloB_mapping([self.params['avirB'],self.params['sv']])
-            self.params['cnloB'] = \
-                - (coeff[0]*self.params['avirB']**self.Bisp.pow_ctr \
-                   + 0.5*self.params['sv']**self.Bisp.pow_ctr)
+            if cnloB_mapping is not None:
+                coeff = cnloB_mapping([self.params['avirB'],
+                                       self.params['sv'].squeeze()])
+                self.params['cnloB'] = \
+                    - (coeff[0]*self.params['avirB']**self.Bisp.pow_ctr \
+                       + 0.5*self.params['sv']**self.Bisp.pow_ctr)
 
         self._update_AP_params(params, de_model=de_model,
                               q_tr_lo=q_tr_lo)
@@ -3031,7 +3068,7 @@ class PTEmu:
                                                       return_indices=True)
                     ids_ij = np.intersect1d(self.Bisp.tri.view(tri_dtype),
                                             tri_ij, return_indices=True)[1]
-                    cov_l1l2 = self.Bisp._Gaussian_covariance(
+                    cov_l1l2 = self.Bisp.Gaussian_covariance(
                         l1, l2, dk, Pell, volume, Ntri)[ids_ij]
                     cov[sum(nbins[:i]):sum(nbins[:i+1]),
                         sum(nbins[:j]):sum(nbins[:j+1])][id1, id2] = cov_l1l2
@@ -3046,7 +3083,7 @@ class PTEmu:
     def chi2(self, obs_id, params, kmax, de_model=None, binning=None,
              convolve_window=False, q_tr_lo=None, W_damping=None,
              chi2_decomposition=False, ell_for_recon=None,
-             cnloB_mapping=lambda x: [0.5]):
+             cnloB_mapping=None):
         r"""Compute the :math:`\chi^2 for the given configurations`.
 
         Generates the selected power spectrum multipoles for the specified set
@@ -3222,11 +3259,12 @@ class PTEmu:
                         neff = tri_unique * \
                                self.Pdw_spline.derivative(n=1)(tri_unique)/Pdw
                     if binning and self.RSD_model == 'VDG_infty':
-                        coeff = cnloB_mapping([self.params['avirB'],
-                                              self.params['sv']])
-                        self.params['cnloB'] = \
-                            - (coeff[0]*self.params['avirB']**1.75 \
-                               + 0.5*self.params['sv']**1.75)
+                        if cnloB_mapping is not None:
+                            coeff = cnloB_mapping([self.params['avirB'],
+                                                  self.params['sv'].squeeze()])
+                            self.params['cnloB'] = \
+                                - (coeff[0]*self.params['avirB']**1.75 \
+                                   + 0.5*self.params['sv']**1.75)
                     Bell = self.Bisp.Bell(Pdw, neff, self.params, ell[oi],
                                           W_damping[oi])
 

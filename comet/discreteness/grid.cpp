@@ -228,11 +228,11 @@ void Grid::find_unique_triangles (vector<double> kbin, double dk,
   if (nbin_ != kbin.size()) generate_triangle_ids(kbin.size(), kbin[0]/dk);
 
   // chrono::steady_clock::time_point begin = chrono::steady_clock::now();
-
   // cout << "Get started!" << endl;
 
   int nthreads = omp_get_max_threads();
   double half_dk = 0.5*dk;
+  double savety_factor = (dk > kf_ ? 1.0 : 1.8);
   for (int n=0; n<tri_.size(); n++)
   {
     // cout << "Iteration: " << n << endl;
@@ -243,7 +243,7 @@ void Grid::find_unique_triangles (vector<double> kbin, double dk,
     for (int m=0; m<tri_[n].size()-3; m++)
     {
       int ntrif = 8*pow(M_PI,2)*(tri_[n][1]+1)*(tri_[n][2]+1)*(tri_[n][m+3]+1)
-                  *pow(dk,6)/pow(kf_,6)/1.5;
+                  *pow(dk,6)/pow(kf_,6)/1.5*savety_factor;
       kmu123[m].resize(ntrif);
       weights[m].resize(ntrif);
     }
@@ -274,7 +274,6 @@ void Grid::find_unique_triangles (vector<double> kbin, double dk,
         kmu123_private[m].reserve(ntri);
         weights_private[m].reserve(ntri);
       }
-
       #pragma omp for schedule(dynamic) nowait
       for (int i=0; i<get_num_modes_in_posmu_shell(i1); i++)
       {
