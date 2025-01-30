@@ -10,7 +10,7 @@ authors = [
     {name = "Alex Eggemeier, Benjamin Camacho-Quevedo, Andrea Pezzotta, Martin Crocce, Román Scoccimarro, Ariel Sánchez", email = "aeggemeier@astro.uni-bonn.de"}
 ]
 license = {text = "MIT License"}
-requires-python = ">=3.6"
+requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Python :: 3.7",
     "License :: OSI Approved :: MIT License",
