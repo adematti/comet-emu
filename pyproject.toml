@@ -23,7 +23,8 @@ dependencies = [
     "numpy",
     "matplotlib",
     "scipy",
-    "astropy"
+    "astropy",
+    "numpydoc"
 ]
 
 [project.urls]
