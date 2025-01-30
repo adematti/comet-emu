@@ -13,7 +13,8 @@ extensions = [
     'sphinx.ext.napoleon',   # Support for NumPy and Google style docstrings
     'sphinx.ext.viewcode',   # Add links to highlighted source code
 ]
-
+source_suffix = '.rst'
+master_doc = 'source/index'
 #templates_path = ['_templates']
 exclude_patterns = []
 
