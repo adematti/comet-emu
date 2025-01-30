@@ -44,7 +44,7 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.napoleon',
     'sphinx.ext.intersphinx',
-    'numpydoc',
+    # 'numpydoc',
     'sphinxemoji.sphinxemoji',
 ]
 
