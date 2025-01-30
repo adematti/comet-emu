@@ -1,6 +1,7 @@
 alabaster==0.7.12
+astropy==4.3.1
 Babel==2.9.1
-bleach==5.0.0
+bleach
 build==0.7.0
 certifi==2021.10.8
 charset-normalizer==2.0.12
