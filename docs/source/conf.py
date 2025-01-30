@@ -44,8 +44,8 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.napoleon',
     'sphinx.ext.intersphinx',
-    # 'numpydoc',
-    # 'sphinxemoji.sphinxemoji',
+    'numpydoc',
+    'sphinxemoji.sphinxemoji',
 ]
 
 sphinxemoji_style = 'twemoji'
