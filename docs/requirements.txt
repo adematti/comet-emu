@@ -12,7 +12,7 @@ decorator
 docutils
 fonttools
 idna
-imagesize=
+imagesize
 importlib-metadata
 Jinja2
 keyring
