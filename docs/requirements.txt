@@ -1,5 +1,4 @@
 alabaster==0.7.12
-astropy==4.3.1
 Babel==2.9.1
 bleach==5.0.0
 build==0.7.0
