@@ -3,24 +3,37 @@
 Installation
 ============
 
-Install the code is as easy as
+Installing COMET is as easy as
 
 ::
 
   pip install comet-emu
 
 
-Then you can follow the :ref:`examples`
-for small examples in how to make predictions, compare with data and estimate
-the :math:`\chi^2` of you model.
+.. note::
 
-**Developer version**
+  COMET requires a Python 3 environment with version ``>= 3.8``\ ; it moreover depends on the following packages:
 
-If you want to modify the code and play around with it, we provide a developer
-version so that you can make it and test it. Also, could be possible that you
-have your own theoretical predictions and you wish to train the emulator
-with your own computations. You can install the developer
-version as follow.
+  * numpy
+  * matplotlib
+  * scipy
+  * astropy
+  * scikit-learn
+  * numba
+
+  The installation process will automatically install these packages if they are not already present.
+
+
+One of COMET's submodules makes use of an external library, ``libgrid.so``\ , which will be compiled with the pip install command above. This requires a C++ compiler with standard >=C++11 and the following two additional libraries:
+
+* OpenMP
+* Boost
+
+The automatic compilation may fail if these libraries do not exist or cannot be found, but COMET will be installed successfully nonetheless. If this is the case, importing COMET will prompt the message
+
+    "Warning! 'libgrid.so' not found, bispectrum binning options will not be available."
+
+It is possible to compile the ``libgrid.so`` library manually, following the steps below. First, make a local clone of the ``comet-emu`` repository:
 
 ::
 
@@ -29,27 +42,14 @@ version as follow.
   pip install -e .
 
 
-Then you can follow the :ref:`examples` to learn how to train the *COMET* and make predictions.
+Now, compile and link the library, making sure to specify the include path to the OpenMP and Boost libraries, for instance (replacing ``/path/to/header/files``\ ):
 
-.. warning::
-   The comet emulator only works in a Python 3 environment; the data file at
-   its core cannot be unpickled by Python 2.x; in case your ``pip`` command
-   doesn't link to a Python 3 pip executable, please modify the line above
-   accordingly (e.g. with ``pip3`` instead of ``pip``).
-   Also, notice that if you are working on an environment with a python ``version
-   > 3.7``, you should update ``setuptools`` and ``wheel`` packages as follow:
+::
 
-   ::
+  cd discreteness
+  g++-14 -O3 -c -fPIC grid.cpp -o grid.o -I/path/to/header/files -fopenmp
+  g++-14 -O3 -shared -o libgrid.so grid.o -I/path/to/header/files -fopenmp
 
-      pip install --upgrade pip setuptools wheel
 
-.. note::
-  The comet emulator depends on the following external packages:
-
-  * numpy
-  * matplotlib
-  * scipy
-  * astropy
-  * GPy
-
-  The installation process will automatically try to install them if they are not already present.
+Once installed, make sure to check out the :ref:`Tutorial pages<examples>`
+for examples on how to use the code and its various options.

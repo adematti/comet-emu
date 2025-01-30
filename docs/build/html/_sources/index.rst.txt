@@ -6,8 +6,8 @@
 Welcome to COMET's documentation!
 =================================
 
-.. warning::
-   UNDER CONSTRUCTION |:construction_worker:| |:wrench:| |:nut_and_bolt:|
+.. .. warning::
+..    UNDER CONSTRUCTION |:construction_worker:| |:wrench:| |:nut_and_bolt:|
 
 ====================  =====
 **Contributors**:     Alex Eggemeier, Benjamin Camacho-Quevedo, Andrea Pezzotta,
@@ -15,7 +15,7 @@ Welcome to COMET's documentation!
 **Source**:           `Source code at GitLab <https://gitlab.com/aegge/comet-emu>`_
 **Documentation**:    `Documentation at Readthedocs <https://comet-emu.readthedocs.io/en/latest/>`_
 **Installation**:     ``pip install comet-emu``
-**References**:       `Sanchez 2020 <https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511>`_, `Sanchez et al. 2021 <https://arxiv.org/abs/2108.12710>`_,
+**References**:       `Eggemeier et al. 2022 <https://academic.oup.com/mnras/article/519/2/2962/6912276>`_
 ====================  =====
 
 |:dizzy:| **COMET** - Cosmological Observables Modelled by Emulated perturbation Theory
@@ -47,12 +47,14 @@ Welcome to COMET's documentation!
      Currently, COMET can be used to obtain the following quantities (the
      perturbation theory models are described :ref:`here<models>`):
 
-     - the real-space galaxy power spectrum at one-loop order
+     - the real-space galaxy power spectrum at one-loop order and bispectrum
+       at tree-level order
      - multipoles (monopole, quadrupole, hexadecapole) of the redshift-space
-       power spectrum at one-loop order
+       power spectrum at one-loop order and bispectrum at tree-level order for
+       two different redshift-space distortion models
      - the linear matter power spectrum (with and without infrared resummation)
      - Gaussian covariance matrices for the real-space power spectrum and
-       redshift-space multipoles
+       bispectrum and their redshift-space multipoles
      - :math:`\chi^2`'s for arbitrary combinations of multipoles
 
      COMET provides an easy-to-use interface for all of these computations, and
