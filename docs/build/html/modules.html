@@ -1,23 +1,25 @@
+
+
 <!DOCTYPE html>
-<html class="writer-html5" lang="en" >
+<html class="writer-html5" lang="en" data-content_root="./">
 <head>
-  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>comet &mdash; Comet 0.1 documentation</title>
-      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
-      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
-      <link rel="stylesheet" href="_static/twemoji.css" type="text/css" />
-  <!--[if lt IE 9]>
-    <script src="_static/js/html5shiv.min.js"></script>
-  <![endif]-->
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="_static/twemoji.css?v=2199c511" />
+
   
-        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
-        <script src="_static/jquery.js"></script>
-        <script src="_static/underscore.js"></script>
-        <script src="_static/doctools.js"></script>
-        <script src="https://twemoji.maxcdn.com/v/latest/twemoji.min.js"></script>
-        <script src="_static/twemoji.js"></script>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=2709fde1"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="https://unpkg.com/twemoji@latest/dist/twemoji.min.js"></script>
+      <script src="_static/twemoji.js?v=a4381b3f"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
@@ -30,11 +32,15 @@
     <nav data-toggle="wy-nav-shift" class="wy-nav-side">
       <div class="wy-side-scroll">
         <div class="wy-side-nav-search" >
-            <a href="index.html" class="icon icon-home"> Comet
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Comet
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
-    <input type="text" name="q" placeholder="Search docs" />
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
     <input type="hidden" name="check_keywords" value="yes" />
     <input type="hidden" name="area" value="default" />
   </form>
@@ -45,22 +51,28 @@
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="Tutorial/examples.html">Tutorials</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="Tutorial/examples.html#quick-start">Quick-start</a></li>
-<li class="toctree-l2"><a class="reference internal" href="Tutorial/examples.html#exploring-a-few-in-depth-options">Exploring a few in-depth options</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Tutorial/examples.html#advanced-configuration-options">Advanced configuration options</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#fiducial-background-cosmologies">Fiducial background cosmologies</a></li>
 <li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#alcock-paczynski-parameters">Alcock-Paczynski parameters</a></li>
 <li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#shot-noise-normalisation">Shot noise normalisation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#non-flat-and-non-lambda-cosmologies">Non-flat and non-<span class="math notranslate nohighlight">\(\Lambda\)</span> cosmologies</a></li>
 <li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#the-f-sigma-12-parameter-space">The <span class="math notranslate nohighlight">\(f\)</span>-<span class="math notranslate nohighlight">\(\sigma_{12}\)</span> parameter space</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#user-defined-finger-of-god-damping-functions">User-defined finger-of-god damping functions</a></li>
 <li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#providing-different-k-scales">Providing different <span class="math notranslate nohighlight">\(k\)</span>-scales</a></li>
-<li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#speedup-when-changing-just-bias-parameters">Speedup when changing just bias parameters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#speed-up-with-fixed-cosmological-parameters">Speed-up with fixed cosmological parameters</a></li>
 <li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#using-different-bases-for-galaxy-bias">Using different bases for galaxy bias</a></li>
-<li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#accounting-for-discreteness-effects">Accounting for discreteness effects</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#using-different-bases-for-counterterms">Using different bases for counterterms</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="Tutorial/examples.html#beyond-p-ell-predictions">Beyond <span class="math notranslate nohighlight">\(P_{\ell}\)</span> predictions</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#linear-power-spectrum">Linear power spectrum</a></li>
 <li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#tree-level-bispectrum">Tree-level bispectrum</a></li>
-<li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#computing-covariance-matrices">Computing covariance matrices</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="Tutorial/examples.html#covariance-matrices">Covariance matrices</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Tutorial/examples.html#binning-and-discreteness-effects">Binning and discreteness effects</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#power-spectrum">Power spectrum</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#bispectrum">Bispectrum</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="Tutorial/examples.html#working-with-data-sets">Working with data sets</a><ul>
@@ -81,18 +93,33 @@
 <li class="toctree-l1"><a class="reference internal" href="spaceparams.html">Parameter space</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="spaceparams.html#ranges-of-emulated-parameters">Ranges of emulated parameters</a></li>
 <li class="toctree-l2"><a class="reference internal" href="spaceparams.html#cosmological-parameters">Cosmological parameters</a></li>
-<li class="toctree-l2"><a class="reference internal" href="spaceparams.html#bias-parameters">Bias parameters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="spaceparams.html#bias-and-rsd-parameters">Bias and RSD parameters</a></li>
 </ul>
 </li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Complete API:</span></p>
 <ul class="current">
 <li class="toctree-l1 current"><a class="current reference internal" href="#">comet</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="comet.html">PTEmu</a></li>
-<li class="toctree-l2"><a class="reference internal" href="comet.html#module-comet.bispectrum">bispectrum</a></li>
-<li class="toctree-l2"><a class="reference internal" href="comet.html#module-comet.cosmology">cosmology</a></li>
-<li class="toctree-l2"><a class="reference internal" href="comet.html#module-comet.data">data</a></li>
-<li class="toctree-l2"><a class="reference internal" href="comet.html#module-comet.tables">tables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="comet.html">PTEmu</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu"><code class="docutils literal notranslate"><span class="pre">PTEmu</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="comet.html#module-comet.bispectrum">bispectrum</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum"><code class="docutils literal notranslate"><span class="pre">Bispectrum</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="comet.html#module-comet.cosmology">cosmology</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.cosmology.Cosmology"><code class="docutils literal notranslate"><span class="pre">Cosmology</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="comet.html#module-comet.data">data</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.data.MeasuredData"><code class="docutils literal notranslate"><span class="pre">MeasuredData</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="comet.html#module-comet.tables">tables</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.tables.Tables"><code class="docutils literal notranslate"><span class="pre">Tables</span></code></a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -110,8 +137,8 @@
         <div class="rst-content">
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
-      <li><a href="index.html" class="icon icon-home"></a> &raquo;</li>
-      <li>comet</li>
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">comet</li>
       <li class="wy-breadcrumbs-aside">
             <a href="_sources/modules.rst.txt" rel="nofollow"> View page source</a>
       </li>
@@ -122,14 +149,123 @@
            <div itemprop="articleBody">
              
   <section id="comet">
-<h1>comet<a class="headerlink" href="#comet" title="Permalink to this headline"></a></h1>
+<h1>comet<a class="headerlink" href="#comet" title="Link to this heading"></a></h1>
 <div class="toctree-wrapper compound">
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="comet.html">PTEmu</a></li>
-<li class="toctree-l1"><a class="reference internal" href="comet.html#module-comet.bispectrum">bispectrum</a></li>
-<li class="toctree-l1"><a class="reference internal" href="comet.html#module-comet.cosmology">cosmology</a></li>
-<li class="toctree-l1"><a class="reference internal" href="comet.html#module-comet.data">data</a></li>
-<li class="toctree-l1"><a class="reference internal" href="comet.html#module-comet.tables">tables</a></li>
+<li class="toctree-l1"><a class="reference internal" href="comet.html">PTEmu</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu"><code class="docutils literal notranslate"><span class="pre">PTEmu</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu.init_params_dict"><code class="docutils literal notranslate"><span class="pre">PTEmu.init_params_dict()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu.define_units"><code class="docutils literal notranslate"><span class="pre">PTEmu.define_units()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu.change_bias_basis"><code class="docutils literal notranslate"><span class="pre">PTEmu.change_bias_basis()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu.change_counterterm_basis"><code class="docutils literal notranslate"><span class="pre">PTEmu.change_counterterm_basis()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu.change_gauss_legendre_degree"><code class="docutils literal notranslate"><span class="pre">PTEmu.change_gauss_legendre_degree()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu.change_cnloB_type"><code class="docutils literal notranslate"><span class="pre">PTEmu.change_cnloB_type()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu.define_nbar"><code class="docutils literal notranslate"><span class="pre">PTEmu.define_nbar()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu.define_data_set"><code class="docutils literal notranslate"><span class="pre">PTEmu.define_data_set()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu.define_fiducial_cosmology"><code class="docutils literal notranslate"><span class="pre">PTEmu.define_fiducial_cosmology()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu.W_kurt"><code class="docutils literal notranslate"><span class="pre">PTEmu.W_kurt()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu.get_kmu_products"><code class="docutils literal notranslate"><span class="pre">PTEmu.get_kmu_products()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu.WB_kurt"><code class="docutils literal notranslate"><span class="pre">PTEmu.WB_kurt()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu.PL"><code class="docutils literal notranslate"><span class="pre">PTEmu.PL()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu.Pdw_2d"><code class="docutils literal notranslate"><span class="pre">PTEmu.Pdw_2d()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu.Pdw"><code class="docutils literal notranslate"><span class="pre">PTEmu.Pdw()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu.Pell_quad"><code class="docutils literal notranslate"><span class="pre">PTEmu.Pell_quad()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu.Pell"><code class="docutils literal notranslate"><span class="pre">PTEmu.Pell()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu.Pell_fixed_cosmo_boost"><code class="docutils literal notranslate"><span class="pre">PTEmu.Pell_fixed_cosmo_boost()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu.PX"><code class="docutils literal notranslate"><span class="pre">PTEmu.PX()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu.PX_ell"><code class="docutils literal notranslate"><span class="pre">PTEmu.PX_ell()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu.Bell"><code class="docutils literal notranslate"><span class="pre">PTEmu.Bell()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu.Avg_covariance"><code class="docutils literal notranslate"><span class="pre">PTEmu.Avg_covariance()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu.Pell_covariance"><code class="docutils literal notranslate"><span class="pre">PTEmu.Pell_covariance()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu.Bell_covariance"><code class="docutils literal notranslate"><span class="pre">PTEmu.Bell_covariance()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu.chi2"><code class="docutils literal notranslate"><span class="pre">PTEmu.chi2()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="comet.html#module-comet.bispectrum">bispectrum</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum"><code class="docutils literal notranslate"><span class="pre">Bispectrum</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.change_RSD_model"><code class="docutils literal notranslate"><span class="pre">Bispectrum.change_RSD_model()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.change_cnlo_type"><code class="docutils literal notranslate"><span class="pre">Bispectrum.change_cnlo_type()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.define_units"><code class="docutils literal notranslate"><span class="pre">Bispectrum.define_units()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.define_nbar"><code class="docutils literal notranslate"><span class="pre">Bispectrum.define_nbar()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.set_tri"><code class="docutils literal notranslate"><span class="pre">Bispectrum.set_tri()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.set_fiducial_cosmology"><code class="docutils literal notranslate"><span class="pre">Bispectrum.set_fiducial_cosmology()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.init_Pdw"><code class="docutils literal notranslate"><span class="pre">Bispectrum.init_Pdw()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.init_Pdw_eff"><code class="docutils literal notranslate"><span class="pre">Bispectrum.init_Pdw_eff()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.F2"><code class="docutils literal notranslate"><span class="pre">Bispectrum.F2()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.G2"><code class="docutils literal notranslate"><span class="pre">Bispectrum.G2()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.K"><code class="docutils literal notranslate"><span class="pre">Bispectrum.K()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.kernels_real_space"><code class="docutils literal notranslate"><span class="pre">Bispectrum.kernels_real_space()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.kernels_redshift_space"><code class="docutils literal notranslate"><span class="pre">Bispectrum.kernels_redshift_space()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.mu123_integrals"><code class="docutils literal notranslate"><span class="pre">Bispectrum.mu123_integrals()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.compute_kernels"><code class="docutils literal notranslate"><span class="pre">Bispectrum.compute_kernels()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.Gauss_Legendre_mu123_integrals"><code class="docutils literal notranslate"><span class="pre">Bispectrum.Gauss_Legendre_mu123_integrals()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.compute_mu123_integrals"><code class="docutils literal notranslate"><span class="pre">Bispectrum.compute_mu123_integrals()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.compute_damped_mu123_integrals"><code class="docutils literal notranslate"><span class="pre">Bispectrum.compute_damped_mu123_integrals()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.compute_kernels_shell_average"><code class="docutils literal notranslate"><span class="pre">Bispectrum.compute_kernels_shell_average()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.load_kernels_shell_average"><code class="docutils literal notranslate"><span class="pre">Bispectrum.load_kernels_shell_average()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.compute_covariance_mixing_kernel"><code class="docutils literal notranslate"><span class="pre">Bispectrum.compute_covariance_mixing_kernel()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.generate_index_arrays"><code class="docutils literal notranslate"><span class="pre">Bispectrum.generate_index_arrays()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.generate_eff_index_arrays"><code class="docutils literal notranslate"><span class="pre">Bispectrum.generate_eff_index_arrays()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.join_kernel_mu123_integral"><code class="docutils literal notranslate"><span class="pre">Bispectrum.join_kernel_mu123_integral()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.join_kernel_mu123_integral_indv"><code class="docutils literal notranslate"><span class="pre">Bispectrum.join_kernel_mu123_integral_indv()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.join_stoch_kernel_mu123_integral"><code class="docutils literal notranslate"><span class="pre">Bispectrum.join_stoch_kernel_mu123_integral()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.join_stoch_kernel_mu123_integral_indv"><code class="docutils literal notranslate"><span class="pre">Bispectrum.join_stoch_kernel_mu123_integral_indv()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.join_kernel_mu123_shell_average"><code class="docutils literal notranslate"><span class="pre">Bispectrum.join_kernel_mu123_shell_average()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.join_stoch_kernel_mu123_shell_average"><code class="docutils literal notranslate"><span class="pre">Bispectrum.join_stoch_kernel_mu123_shell_average()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.Bell"><code class="docutils literal notranslate"><span class="pre">Bispectrum.Bell()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.BX_ell"><code class="docutils literal notranslate"><span class="pre">Bispectrum.BX_ell()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum.Gaussian_covariance"><code class="docutils literal notranslate"><span class="pre">Bispectrum.Gaussian_covariance()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="comet.html#module-comet.cosmology">cosmology</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="comet.html#comet.cosmology.Cosmology"><code class="docutils literal notranslate"><span class="pre">Cosmology</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.cosmology.Cosmology.update_cosmology"><code class="docutils literal notranslate"><span class="pre">Cosmology.update_cosmology()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.cosmology.Cosmology.DE_z"><code class="docutils literal notranslate"><span class="pre">Cosmology.DE_z()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.cosmology.Cosmology.wz"><code class="docutils literal notranslate"><span class="pre">Cosmology.wz()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.cosmology.Cosmology.Ez"><code class="docutils literal notranslate"><span class="pre">Cosmology.Ez()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.cosmology.Cosmology.one_over_Ez"><code class="docutils literal notranslate"><span class="pre">Cosmology.one_over_Ez()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.cosmology.Cosmology.Hz"><code class="docutils literal notranslate"><span class="pre">Cosmology.Hz()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.cosmology.Cosmology.Om"><code class="docutils literal notranslate"><span class="pre">Cosmology.Om()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.cosmology.Cosmology.Ode"><code class="docutils literal notranslate"><span class="pre">Cosmology.Ode()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.cosmology.Cosmology.comoving_transverse_distance"><code class="docutils literal notranslate"><span class="pre">Cosmology.comoving_transverse_distance()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.cosmology.Cosmology.angular_diameter_distance"><code class="docutils literal notranslate"><span class="pre">Cosmology.angular_diameter_distance()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.cosmology.Cosmology.growth_factor"><code class="docutils literal notranslate"><span class="pre">Cosmology.growth_factor()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.cosmology.Cosmology.growth_rate"><code class="docutils literal notranslate"><span class="pre">Cosmology.growth_rate()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.cosmology.Cosmology.comoving_volume"><code class="docutils literal notranslate"><span class="pre">Cosmology.comoving_volume()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="comet.html#module-comet.data">data</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="comet.html#comet.data.MeasuredData"><code class="docutils literal notranslate"><span class="pre">MeasuredData</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.data.MeasuredData.update"><code class="docutils literal notranslate"><span class="pre">MeasuredData.update()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.data.MeasuredData.clear_data"><code class="docutils literal notranslate"><span class="pre">MeasuredData.clear_data()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.data.MeasuredData.is_block_diagonal"><code class="docutils literal notranslate"><span class="pre">MeasuredData.is_block_diagonal()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.data.MeasuredData.set_kmax"><code class="docutils literal notranslate"><span class="pre">MeasuredData.set_kmax()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.data.MeasuredData.AHfactor"><code class="docutils literal notranslate"><span class="pre">MeasuredData.AHfactor()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.data.MeasuredData.get_signal"><code class="docutils literal notranslate"><span class="pre">MeasuredData.get_signal()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.data.MeasuredData.get_std"><code class="docutils literal notranslate"><span class="pre">MeasuredData.get_std()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="comet.html#module-comet.tables">tables</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="comet.html#comet.tables.Tables"><code class="docutils literal notranslate"><span class="pre">Tables</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.tables.Tables.set_param_ranges"><code class="docutils literal notranslate"><span class="pre">Tables.set_param_ranges()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.tables.Tables.assign_samples"><code class="docutils literal notranslate"><span class="pre">Tables.assign_samples()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.tables.Tables.assign_table"><code class="docutils literal notranslate"><span class="pre">Tables.assign_table()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.tables.Tables.get_flip_and_offset"><code class="docutils literal notranslate"><span class="pre">Tables.get_flip_and_offset()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.tables.Tables.transform"><code class="docutils literal notranslate"><span class="pre">Tables.transform()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.tables.Tables.transform_inv"><code class="docutils literal notranslate"><span class="pre">Tables.transform_inv()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.tables.Tables.transform_emulator_data"><code class="docutils literal notranslate"><span class="pre">Tables.transform_emulator_data()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
 </ul>
 </div>
 </section>
