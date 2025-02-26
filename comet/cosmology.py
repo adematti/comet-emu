@@ -220,10 +220,10 @@ class Cosmology:
         ainv = 1.0 + z
         Ez2 = np.multiply.outer(ainv**3, self.Om0) + self.Ode0*self.DE_z(z)
         if np.any(np.invert(self.flat)):
-            Ez2[:,np.invert(self.flat)] += np.multiply.outer(
+            Ez2[...,np.invert(self.flat)] += np.multiply.outer(
                 ainv**2, self.Ok0[np.invert(self.flat)])
         if np.any(self.relspecies):
-            Ez2[:,self.relspecies] += np.multiply.outer(
+            Ez2[...,self.relspecies] += np.multiply.outer(
                 ainv**4, self.Or0[self.relspecies])
         Ez = np.sqrt(Ez2)
         return Ez
@@ -380,11 +380,11 @@ class Cosmology:
         if np.any(self.Ok0 > 0.0):
             ii = self.Ok0 > 0.0
             sqrt_Ok0 = np.sqrt(self.Ok0[ii])
-            dm[:,ii] = np.sinh(sqrt_Ok0*r[:,ii])/sqrt_Ok0
-        elif np.any(self.Ok0 < 0.0):
+            dm[ii] = np.sinh(sqrt_Ok0*r[ii])/sqrt_Ok0
+        if np.any(self.Ok0 < 0.0):
             ii = self.Ok0 < 0.0
             sqrt_Ok0 = np.sqrt(-self.Ok0[ii])
-            dm[:,ii] = np.sin(sqrt_Ok0*r[:,ii])/sqrt_Ok0
+            dm[ii] = np.sin(sqrt_Ok0*r[ii])/sqrt_Ok0
         dm *= self.hubble_distance
         return dm
 
