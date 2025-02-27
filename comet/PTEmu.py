@@ -208,6 +208,7 @@ class PTEmu:
         self.Pell_spline = Splines(use_Mpc=self.use_Mpc, ncol=self.ncol,
                                    crossover_check=True)
         self.PL_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
+        self.Pnw_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
         self.Pdw_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
         self.PX_ell_spline = {}
         for X in self.diagrams_all:
@@ -387,7 +388,7 @@ class PTEmu:
             self.Pell_spline = Splines(use_Mpc=self.use_Mpc, ncol=self.ncol,
                                        crossover_check=True)
             self.PL_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
-            self.PNW_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
+            self.Pnw_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
             self.Pdw_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
             self.PX_ell_spline = {}
             for X in self.diagrams_all:
@@ -1415,9 +1416,9 @@ class PTEmu:
         self._eval_emulator(params, ell=[], de_model=de_model)
         if not self.nw_spline_up_to_date:
             h = None if self.use_Mpc else self.params['h']
-            self.PNW_spline.build(self.k_table, self.Pk_nw, h=h)
+            self.Pnw_spline.build(self.k_table, self.Pk_nw, h=h)
             self.nw_spline_up_to_date = True
-        Pnw = np.squeeze(self.PNW_spline.eval(np.atleast_1d(k)))
+        Pnw = np.squeeze(self.Pnw_spline.eval(np.atleast_1d(k)))
         return Pnw
 
     # TODO
@@ -2065,7 +2066,6 @@ class PTEmu:
                     not self.splines_up_to_date or diff_shape):
                 Pell = self.Pell_fid_ktable(params, ell=ell_for_recon,
                                             de_model=de_model)
-                print (Pell.shape)
                 h = None if self.use_Mpc else self.params['h']
                 self.Pell_spline.build(self.k_table, Pell, h=h)
                 self.splines_up_to_date = True

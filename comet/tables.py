@@ -184,7 +184,7 @@ class Tables:
         resc_table: numpy.ndarray
             Rescaled table.
         """
-        if data_type not in ['PL', 's12', 'sv']:
+        if data_type not in ['PL', 'PNW', 's12', 'sv']:
             self.flip[data_type], self.offset[data_type] = \
                 self.get_flip_and_offset(table.T)
         else:
