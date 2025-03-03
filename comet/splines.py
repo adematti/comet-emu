@@ -44,12 +44,20 @@ class Splines:
                 self.x_min = self.x_min[:,np.newaxis]
             self.extrapolation_min = lambda x,n: self.y_min[...,n] \
                 * np.divide.outer(x,self.x_min)**self.neff_min[...,n]
+            self.extrapolation_min_derivative = lambda x,n: self.y_min[...,n] \
+                * np.divide.outer(x,self.x_min)**(self.neff_min[...,n]-1) \
+                * self.neff_min[...,n] / self.x_min
         else:
             self.y_min = self.y_min*self.h3
             self.x_min = self.x_min/self.h
             self.extrapolation_min = lambda x,n: self.y_min[...,n] \
                 * np.power.outer(
                     np.divide.outer(x,self.x_min[...,n]),self.neff_min[...,n])
+            self.extrapolation_min_derivative = lambda x,n: self.y_min[...,n] \
+                * np.power.outer(
+                    np.divide.outer(x,self.x_min[...,n]),
+                    self.neff_min[...,n]-1) \
+                * self.neff_min[...,n] / self.x_min[...,n]
 
         # high-k extrapolation
         self.y_max = y[self.id_max]
@@ -68,12 +76,21 @@ class Splines:
                 self.x_max = self.x_max[:,np.newaxis]
             self.extrapolation_max_plaw = lambda x,n: self.y_max[...,n] \
                 * np.divide.outer(x,self.x_max)**self.neff_max[...,n]
+            self.extrapolation_max_plaw_derivative = lambda x,n: \
+                self.y_max[...,n] \
+                * np.divide.outer(x,self.x_max)**(self.neff_max[...,n]-1) \
+                * self.neff_max[...,n] / self.x_max
         else:
             self.y_max = self.y_max*self.h3
             self.x_max = self.x_max/self.h
             self.extrapolation_max_plaw = lambda x,n: self.y_max[...,n] \
                 * np.power.outer(
                     np.divide.outer(x,self.x_max[...,n]), self.neff_max[...,n])
+            self.extrapolation_max_plaw_derivative = lambda x,n: \
+                self.y_max[...,n] * np.power.outer(
+                    np.divide.outer(x,self.x_max[...,n]),
+                    self.neff_max[...,n]-1) \
+                * self.neff_max[...,n] / self.x_max[...,n]
 
         if self.crossover_check:
             self.mask = np.where((dy_max > 2) | (dy_max < 0.5))
@@ -85,6 +102,8 @@ class Splines:
                 self.intrcpt *= self.h3
             self.extrapolation_max_lin = lambda x,n: np.multiply.outer(x,
                 self.slope[...,n]) + self.intrcpt[...,n]
+            self.extrapolation_max_lin_derivative = lambda x,n: \
+                np.multiply.outer(np.ones_like(x),self.slope[...,n])
 
     def extrapolation_max(self, x, n):
         y = self.extrapolation_max_plaw(x,n) # nx x nell
@@ -94,8 +113,22 @@ class Splines:
             y[ids] = self.extrapolation_max_lin(x,n)[ids]
         return y
 
+    def extrapolation_max_derivative(self, x, n):
+        y = self.extrapolation_max_plaw_derivative(x,n) # nx x nell
+        if self.crossover_check and sum(self.mask[-1] == n) > 0:
+            ids = (Ellipsis,) + tuple(self.mask[i][self.mask[-1] == n] \
+                                      for i in range(len(self.mask)-1))
+            y[ids] = self.extrapolation_max_lin_derivative(x,n)[ids]
+        return y
+
     def _eval_extrapolation_min(self, x):
         y = np.stack([np.squeeze(self.extrapolation_min(x,n)) \
+                      for n in range(self.size_last)],
+                     axis=-1)
+        return np.atleast_2d(y)
+
+    def _eval_extrapolation_min_derivative(self, x):
+        y = np.stack([np.squeeze(self.extrapolation_min_derivative(x,n)) \
                       for n in range(self.size_last)],
                      axis=-1)
         return np.atleast_2d(y)
@@ -106,15 +139,22 @@ class Splines:
                      axis=-1)
         return np.atleast_2d(y)
 
+    def _eval_spline_derivative(self, x):
+        y = np.stack([np.squeeze(self.spline[n].derivative(1)(x)) \
+                      for n in range(self.size_last)],
+                     axis=-1)
+        return np.atleast_2d(y)
+
     def _eval_extrapolation_max(self, x):
         y = np.stack([np.squeeze(self.extrapolation_max(x,n)) \
                       for n in range(self.size_last)],
                      axis=-1)
-        # if self.crossover_check:
-        #     ylin = np.stack([self.extrapolation_max_lin(x,n) \
-        #                      for n in range(self.size_last)],
-        #                     axis=-1)
-        #     y[(Ellipsis, *self.mask)] = ylin[(Ellipsis, *self.mask)]
+        return np.atleast_2d(y)
+
+    def _eval_extrapolation_max_derivative(self, x):
+        y = np.stack([np.squeeze(self.extrapolation_max_derivative(x,n)) \
+                      for n in range(self.size_last)],
+                     axis=-1)
         return np.atleast_2d(y)
 
     def eval(self, x):
@@ -153,3 +193,19 @@ class Splines:
     # derivative should also be applied to the extrapolations
     def derivative(self, n):
         return self.spline[0].derivative(n)
+
+    def eval_derivative(self, x):
+        mask_less = x < self.x_min if self.use_Mpc \
+                    else x[:,None] < self.x_min # -> nx x N
+        mask_greater = x > self.x_max if self.use_Mpc \
+                       else x[:,None] > self.x_max
+        mask = ~mask_less & ~mask_greater
+
+        y = np.empty(x.shape + (*self.ncol,self.size_last,)) \
+            if sum(self.ncol) > 0 else np.empty(x.shape+(self.size_last,))
+
+        y[mask_less] = self._eval_extrapolation_min_derivative(x)[mask_less]
+        y[mask] = self._eval_spline_derivative(x)[mask]
+        y[mask_greater] = self._eval_extrapolation_max_derivative(x) \
+                          [mask_greater]
+        return y

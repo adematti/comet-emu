@@ -1130,8 +1130,10 @@ class PTEmu:
         k1 = tri[:,0].reshape((-1,1))
         k2 = tri[:,1].reshape((-1,1))
         k3 = tri[:,2].reshape((-1,1))
-        lsq = 0.5 * (self.params['f']/self.params['q_lo'])**2 \
-            * (np.outer(k1,mu1)**2 + (k2*mu2)**2 + (k3*mu3)**2)
+        lsq = 0.5 * np.einsum(
+            "...,ab->ab...", (self.params['f']/self.params['q_lo'])**2,
+            np.outer(k1,mu1)**2 + (k2*mu2)**2 + (k3*mu3)**2
+        )
         t = 1.0 + lsq*self.params['avirB']**2
         return 1.0/np.sqrt(t**3) * np.exp(-lsq*self.params['sv']**2/t)
 
@@ -2546,6 +2548,9 @@ class PTEmu:
             tri = tri_sorted
             print('Warning. Triangle configurations sorted such that '
                   'k1 >= k2 >= k3.')
+        if kfun is None:
+            kfun = tri[1,0] - tri[0,0]
+            print('Warning. kfun not specified. Using kfun = {}'.format(kfun))
 
         if self.RSD_model == 'VDG_infty':
             if W_damping is None:
@@ -2557,21 +2562,30 @@ class PTEmu:
             self.Bisp.set_tri(tri, ell, kfun, gl_deg, binning)
 
         if binning:
+            if de_model is None:
+                print("Bispectrum binning option only supported for "
+                      "`de_model = 'lambda'`, `'w0'`, or `'w0wa'`.")
+                return
             tri_unique = self.Bisp.tri_eff_unique
-            if not binning.get('effective', False) \
-                    and (tri_has_changed or binning_has_changed):
+            if len(np.atleast_1d(params['z'])) != self.Bisp.num_fiducials:
+                num_fiducials_has_changed = True
+            else:
+                num_fiducials_has_changed = False
+            do_binning_computation = tri_has_changed | binning_has_changed | \
+                                     num_fiducials_has_changed
+            if not binning.get('effective', False) and do_binning_computation:
                 self.Bisp.set_fiducial_cosmology(params)
                 Pdw_eff = self.Pdw(tri_unique, self.Bisp.fiducial_cosmology,
-                                   de_model, ell_for_recon)
+                                   de_model, 0.6, ell_for_recon)
                 self.Bisp.init_Pdw_eff(Pdw_eff)
                 if self.Bisp.generate_discrete_kernels:
                     # print('Recompute (binned) kernels!')
-                    Pdw = np.array([
+                    Pdw = np.swapaxes(np.array([
                         self.Pdw(self.Bisp.grid.kmu123[:,j],
                                  self.Bisp.fiducial_cosmology,
-                                 de_model, ell_for_recon)
+                                 de_model, 0.6, ell_for_recon)
                         for j in range(3)
-                    ]).T
+                    ]), 0, 1)
                     self.Bisp.init_Pdw(Pdw, ell)
                     self.Bisp.compute_kernels_shell_average(max(ell))
                 else:
@@ -2580,13 +2594,20 @@ class PTEmu:
         else:
             tri_unique = self.Bisp.tri_unique
 
-        Pdw = self.Pdw(tri_unique, params, de_model=de_model,
+        Pdw = self.Pdw(tri_unique, params, de_model=de_model, mu=0.6,
                        ell_for_recon=ell_for_recon)
 
         if self.real_space:
             neff = None
         else:
-            neff = tri_unique*self.Pdw_spline.derivative(n=1)(tri_unique)/Pdw
+            # making sure neff is of size ntri_unique x nparams
+            # this can be done nicer for sure...
+            neff = np.atleast_2d(
+                np.einsum(
+                    "ij,i...->i...", tri_unique[:,None],
+                    np.squeeze(self.Pdw_spline.eval_derivative(tri_unique))/Pdw
+                ).T
+            ).T
 
         if binning and self.RSD_model == 'VDG_infty':
             coeff = cnloB_mapping([self.params['avirB'],self.params['sv']])
