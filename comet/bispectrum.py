@@ -2025,18 +2025,13 @@ class Bispectrum:
                                 self.kernels[K])
             K_neff2 = np.einsum("abc,ab->abc",neff[self.tri_to_id[:,[1,2,0]]],
                                 self.kernels[K])
-            K_deriv_sum = 0.0
-            for i in range(3):
-                K_deriv_sum += self.kernels['d{}_dlnk{}'.format(K,i+1)]
-            return K_neff1, K_neff2, K_deriv_sum
+            return K_neff1, K_neff2
 
-        def add_product(var, IK, n123, KK, kernel_neff1, kernel_neff2,
-                        kernel_deriv_sum, coeff):
+        def add_product(var, IK, n123, KK, kernel_neff1, kernel_neff2, coeff):
             for i in range(self.nparams):
                 idI = Ellipsis if self.RSD_model == 'EFT' else (Ellipsis,i)
                 t1 = self.I[IK][n123][ell][idI] \
                      * ((1.0 + (q_tr[i]-q_lo[i])*sum(n123)) * self.kernels[KK] \
-                        + (1.0-q_tr[i]) * kernel_deriv_sum \
                         + (1.0-q_tr[i]) * (kernel_neff1[...,i] \
                                            + kernel_neff2[...,i]))
                 t2 = self.I[IK][n123[0]+2,n123[1],n123[2]][ell][idI] \
@@ -2053,23 +2048,20 @@ class Bispectrum:
                         - n123[2]*self.kernels[KK])
                 var[...,i] += coeff[i] * (t1+t2+t3+t4)
 
-        K_neff1, K_neff2, K_deriv_sum = get_aux_kernels(K)
+        K_neff1, K_neff2 = get_aux_kernels(K)
         if self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr':
             Kctr_neff1 = np.zeros((3,self.tri.shape[0],3,self.nparams))
             Kctr_neff2 = np.zeros((3,self.tri.shape[0],3,self.nparams))
-            Kctr_deriv_sum = np.zeros((3,self.tri.shape[0],3))
             for i in range(3):
-                Kctr_neff1[i], Kctr_neff2[i], Kctr_deriv_sum[i] \
-                    = get_aux_kernels('k{}sq{}'.format(i+1,K))
+                Kctr_neff1[i], Kctr_neff2[i] = get_aux_kernels(
+                    'k{}sq{}'.format(i+1,K))
             if self.cnlo_type == 'IvaPhiNis':
-                Kctr_k4_neff1, Kctr_k4_neff2, Kctr_k4_deriv_sum \
-                    = get_aux_kernels('k1sqk2sq{}'.format(K))
-                Kctr = 'k1sqk2sq{}'.format(K)
+                Kctr_k4_neff1, Kctr_k4_neff2 = get_aux_kernels(
+                    'k1sqk2sq{}'.format(K))
 
         DeltaB_K = np.zeros(self.kernels['F2'].shape + (self.nparams,))
         for n, n123 in enumerate(n123_tuples):
-            add_product(DeltaB_K, K, n123, K, K_neff1, K_neff2,
-                        K_deriv_sum, coeff[n])
+            add_product(DeltaB_K, K, n123, K, K_neff1, K_neff2, coeff[n])
 
             if (self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr') \
                     and self.cnlo_type == 'EggLeeSco':
@@ -2078,8 +2070,7 @@ class Bispectrum:
                     n123_j = np.copy(n123)
                     n123_j[j] += 2
                     add_product(DeltaB_K, K, tuple(n123_j), Kctr, Kctr_neff1[j],
-                                Kctr_neff2[j], Kctr_deriv_sum[j],
-                                coeff[n]*cnloB)
+                                Kctr_neff2[j], coeff[n]*cnloB)
             elif (self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr')\
                     and self.cnlo_type == 'IvaPhiNis':
                 # k^2 counterterms
@@ -2093,7 +2084,6 @@ class Bispectrum:
                             split_factor = 0.5 if n123[j] >= 2 else 1.0
                             add_product(DeltaB_K, K, tuple(n123_j), Kctr,
                                         Kctr_neff1[j], Kctr_neff2[j],
-                                        Kctr_deriv_sum[j],
                                         coeff[n]*cnloB[i]*split_factor)
                 # k^4 counterterms
                 if (K == 'k31' and n123 in [(1,0,1),(1,2,1)]) \
@@ -2109,7 +2099,6 @@ class Bispectrum:
                             n123_ij[1] += 2*(j+1)
                             add_product(DeltaB_K, K, tuple(n123_ij), Kctr_k4,
                                         Kctr_k4_neff1, Kctr_k4_neff2,
-                                        Kctr_k4_deriv_sum,
                                         coeff[n]*cnloB[i]*cnloB[j]*split_factor)
 
         return DeltaB_K
@@ -2255,7 +2244,7 @@ class Bispectrum:
 
     def join_kernel_mu123_shell_average(self, K, n123_tuples, ell, neff, coeff,
                                         q_tr, q_lo, cnloB=None):
-        def add_product(var, n123, KK, neff1, neff2, kernel_deriv_sum, coeff):
+        def add_product(var, n123, KK, neff1, neff2, coeff):
             n123p200 = tuple(np.array(n123)+np.array((2,0,0)))
             n123p020 = tuple(np.array(n123)+np.array((0,2,0)))
             n123p002 = tuple(np.array(n123)+np.array((0,0,2)))
@@ -2265,7 +2254,6 @@ class Bispectrum:
             for i in range(self.nparams):
                 t1 = (1.0 + (q_tr[i] - q_lo[i])*sum(n123)) \
                      * self.kernels_shell_average[KK][n123][ell][...,i] \
-                     + (1.0 - q_tr[i]) * kernel_deriv_sum[...,i] \
                      + (1.0 - q_tr[i]) * (neff1[...,i] + neff2[...,i]) \
                      * self.kernels_shell_average[KK][n123][ell][...,i]
                 t2 = (q_tr[i] - q_lo[i]) \
@@ -2286,59 +2274,9 @@ class Bispectrum:
         for i, n123 in enumerate(n123_tuples):
             neff1 = neff[self.tri_eff_to_id]
             neff2 = neff[self.tri_eff_to_id[:,[1,2,0]]]
-            K_deriv_sum = np.sum(
-                [self.kernels_shell_average['d{}_dlnk{}'.format(K,j)][n123][ell]
-                 for j in range(1,4)],axis=0)
+            add_product(DeltaB_K, n123, K, neff1, neff2, coeff[i])
 
-            if self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr':
-                if self.cnlo_type == 'EggLeeSco':
-                    Kctr_deriv_sum = np.zeros(
-                        (3,self.tri.shape[0],3,self.nparams))
-                    for j in range(3):
-                        Kctr = 'k{}sq{}'.format(j+1,K)
-                        n123_j = np.copy(n123)
-                        n123_j[j] += 2
-                        for k in range(3):
-                            Kctr_deriv_sum[j] += \
-                                self.kernels_shell_average[
-                                    'd{}_dlnk{}'.format(
-                                        Kctr,k+1)][tuple(n123_j)][ell]
-                elif self.cnlo_type == 'IvaPhiNis':
-                    Kctr_deriv_sum = np.zeros(
-                        (4,self.tri.shape[0],3,self.nparams))
-                    for j in range(2):
-                        if (K not in ['k31','k32'] and n123[j] < 2) \
-                                or (K in ['k31','k32'] and n123[j] < 3):
-                            Kctr = 'k{}sq{}'.format(j+1,K)
-                            n123_j = np.copy(n123)
-                            for n in range(2):
-                                n123_j[j] += 2
-                                for k in range(3):
-                                    Kctr_deriv_sum[2*j+n] += \
-                                        self.kernels_shell_average[
-                                            'd{}_dlnk{}'.format(
-                                                Kctr,k+1)][tuple(n123_j)][ell]
-                    if (K == 'k31' and n123 in [(1,0,1),(1,2,1)]) \
-                            or (K == 'k32' and n123 in [(0,1,1),(2,1,1)]) \
-                            or (K in ['F2','b2','K'] and n123 == (0,0,0)) \
-                            or (K == 'G2' and n123 == (0,0,2)):
-                        Kctr_k4_deriv_sum = np.zeros(
-                            (4,self.tri.shape[0],3,self.nparams))
-                        Kctr = 'k1sqk2sq{}'.format(K)
-                        for j in range(2):
-                            for n in range(2):
-                                n123_jn = np.copy(n123)
-                                n123_jn[0] += 2*(j+1)
-                                n123_jn[1] += 2*(n+1)
-                                for k in range(3):
-                                    Kctr_k4_deriv_sum[2*j+n] += \
-                                        self.kernels_shell_average[
-                                            'd{}_dlnk{}'.format(
-                                                Kctr,k+1)][tuple(n123_jn)][ell]
-
-            add_product(DeltaB_K, n123, K, neff1, neff2, K_deriv_sum, coeff[i])
-
-            # add bispectrum counterterm here!
+            # add bispectrum counterterms
             if (self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr') \
                     and self.cnlo_type == 'EggLeeSco':
                 for j in range(3):
@@ -2346,7 +2284,7 @@ class Bispectrum:
                     n123_j = np.copy(n123)
                     n123_j[j] += 2
                     add_product(DeltaB_K, tuple(n123_j), Kctr, neff1, neff2,
-                                Kctr_deriv_sum[j], coeff[i] * cnloB)
+                                coeff[i]*cnloB)
             elif (self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr')\
                     and self.cnlo_type == 'IvaPhiNis':
                 # k^2 counterterms
@@ -2359,8 +2297,8 @@ class Bispectrum:
                             n123_j[j] += 2
                             split_factor = 0.5 if n123[j] >= 2 else 1.0
                             add_product(DeltaB_K, tuple(n123_j), Kctr,
-                                        neff1, neff2, Kctr_deriv_sum[2*j+n],
-                                        coeff[i] * cnloB[n] * split_factor)
+                                        neff1, neff2,
+                                        coeff[i]*cnloB[n]*split_factor)
                 # k^4 counterterms
                 if (K == 'k31' and n123 in [(1,0,1),(1,2,1)]) \
                         or (K == 'k32' and n123 in [(0,1,1),(2,1,1)]) \
@@ -2374,7 +2312,7 @@ class Bispectrum:
                             n123_jn[0] += 2*(j+1)
                             n123_jn[1] += 2*(n+1)
                             add_product(DeltaB_K, tuple(n123_jn), Kctr,
-                                        neff1, neff2, Kctr_k4_deriv_sum[2*j+n],
+                                        neff1, neff2, None,
                                         coeff[i]*cnloB[j]*cnloB[n]*split_factor)
 
         return DeltaB_K
