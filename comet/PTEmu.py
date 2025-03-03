@@ -328,7 +328,7 @@ class PTEmu:
 
         # If redshift-space model is selected, then also load P6 table
         if not self.real_space:
-            self.s12_tilde_for_P6 = hdul['MODEL_Pell6'].header['SIG12_TILDE']
+            self.s12_for_P6 = hdul['MODEL_Pell6'].header['SIG12']
             self.P6 = hdul['MODEL_Pell6'].data['P_all']
             # better compute P6 table for full k-range...
             nkdiff = self.nk-self.nkloop
@@ -623,7 +623,7 @@ class PTEmu:
             expected_params = self.params_linear_list \
                 + self.de_model_params_list[de_model]
             if 'nonu' not in self.model:
-                expected_params.remove('s12_tilde')
+                expected_params.remove('s12')
             if 'Ok' not in params:
                 expected_params.remove('Ok')
             emu_params_updated = np.any([params[p] != self.params[p] for p
@@ -902,7 +902,7 @@ class PTEmu:
                             g21*f])
         bb_k4ctr = np.array([b1sq*f4, b1f*f4, f2*f4]) * cnlo
 
-        s12ratio = (self.params['s12_tilde'] / self.s12_tilde_for_P6)**2
+        s12ratio = (self.params['s12'] / self.s12_for_P6)**2
         bb_tree *= s12ratio
         bb_loop *= s12ratio**2
         bb_k4ctr *= s12ratio
@@ -1124,21 +1124,21 @@ class PTEmu:
 
                 else:
                     shape_all = self.emu['shape'].predict(params_shape)
-                    sigma12_tilde = self.training['SHAPE'].transform_inv(
-                        shape_all[:,-2], 's12_tilde').squeeze()
+                    sigma12 = self.training['SHAPE'].transform_inv(
+                        shape_all[:,-2], 's12').squeeze()
                     self.Pk_lin = self.training['SHAPE'].transform_inv(
                         shape_all[:,:self.nk], 'PL').T
                     self.Pk_nw = self.training['SHAPE'].transform_inv(
                         shape_all[:,self.nk:-2], 'PNW').T
-                    self.Pk_lin *= (self.params['s12_tilde'] /
-                                    sigma12_tilde)**2
-                    self.Pk_nw *= (self.params['s12_tilde'] / sigma12_tilde)**2
+                    self.Pk_lin *= (self.params['s12'] /
+                                    sigma12)**2
+                    self.Pk_nw *= (self.params['s12'] / sigma12)**2
                     if 'VDG_infty' in self.model:
                         self.params['sv'] = np.atleast_1d(
                             self.training['SHAPE'].transform_inv(
                                 shape_all[:,-1], 'sv').squeeze())
-                        self.params['sv'] *= (self.params['s12_tilde'] /
-                                              sigma12_tilde)
+                        self.params['sv'] *= (self.params['s12'] /
+                                              sigma12)
                         if not self.use_Mpc:
                             self.params['sv'] *= self.params['h']
 
@@ -1153,12 +1153,12 @@ class PTEmu:
                 shape_all = self.emu['shape'].predict(params_shape)
 
                 if 'nonu' not in self.model:
-                    sigma12_tilde = (self.training['SHAPE'].transform_inv(
-                                     shape_all, 's12_tilde').squeeze())
+                    sigma12 = (self.training['SHAPE'].transform_inv(
+                                     shape_all, 's12').squeeze())
                 else:
-                    sigma12_tilde = (
+                    sigma12 = (
                         self.training['SHAPE'].transform_inv(shape_all[:,-2],
-                        's12_tilde').squeeze())
+                        's12').squeeze())
 
                 # compute growth factors corresponding to fiducial and target
                 # parameters + growth rate
@@ -1181,11 +1181,11 @@ class PTEmu:
                 amplitude_scaling = np.sqrt(
                     self.params['As'] / self.emu_LCDM_params['As']) \
                     * np.diag(D) / Dfid[0]
-                self.params['s12_tilde'] = sigma12_tilde * amplitude_scaling
+                self.params['s12'] = sigma12 * amplitude_scaling
 
                 self.params['f'] = np.diag(f)
 
-                for p in list(set(['s12_tilde','f']) & set(self.params_list)):
+                for p in list(set(['s12','f']) & set(self.params_list)):
                     if np.any((self.params[p] < self.params_ranges[p][0]) |
                               (self.params[p] > self.params_ranges[p][1])):
                             print('Warning! Leaving emulator range ' + \
@@ -2393,7 +2393,7 @@ class PTEmu:
         P6X: numpy.ndarray
             Array containing the X contribution to the octopole :math:`P_6(k)`.
         """
-        s12ratio = (self.params['s12_tilde']/self.s12_tilde_for_P6)**2
+        s12ratio = (self.params['s12']/self.s12_for_P6)**2
         s12ratio_sq = s12ratio**2
         f = self.params['f']
         if X == 'P0L_b1b1':
