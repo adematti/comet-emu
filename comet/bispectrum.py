@@ -2644,5 +2644,4 @@ class Bispectrum:
                                 where=mask)
 
         cov *= (2*l1+1) * (2*l2+1) * volume / Ntri
-
         return cov
