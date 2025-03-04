@@ -2036,7 +2036,8 @@ class Bispectrum:
         def add_product(var, IK, n123, KK, kernel_neff1, kernel_neff2,
                         kernel_deriv_sum, coeff):
             for i in range(self.nparams):
-                idI = Ellipsis if self.RSD_model == 'EFT' else (Ellipsis,i)
+                idI = (Ellipsis,i) if self.RSD_model == 'VDG_infty' \
+                      else Ellipsis
                 t1 = self.I[IK][n123][ell][idI] \
                      * ((1.0 + (q_tr[i]-q_lo[i])*sum(n123)) * self.kernels[KK] \
                         + (1.0-q_tr[i]) * kernel_deriv_sum \
@@ -2192,9 +2193,10 @@ class Bispectrum:
                                          q_tr, q_lo, cnloB_stoch=0):
         def add_product(var, I, n123, kernel, kernel_neff, kernel_deriv, coeff):
             for i in range(self.nparams):
-                idI = Ellipsis if self.RSD_model == 'EFT' else (Ellipsis,i)
+                idI = (Ellipsis,i) if self.RSD_model == 'VDG_infty' \
+                      else Ellipsis
                 t1 = I[n123][ell][idI] \
-                     * (1.0 + (q_tr[i]-q_lo[i])*sum(n123)*kernel \
+                     * ((1.0 + (q_tr[i]-q_lo[i])*sum(n123))*kernel \
                         + (1.0-q_tr[i])*kernel_neff[...,i] \
                         + (1.0-q_tr[i])*kernel_deriv)
                 t2 = I[n123[0]+2,n123[1],n123[2]][ell][idI] \
