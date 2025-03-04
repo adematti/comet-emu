@@ -301,7 +301,8 @@ class Bispectrum:
                     self.kernel_names += kernel_names_k4ctr
             elif self.cnlo_type == 'EggLeeSco':
                 if 'k1sqk2sqF2' in self.kernel_names:
-                    for kk in self.kernel_names:
+                    temp_kernel_names = self.kernel_names.copy()
+                    for kk in temp_kernel_names:
                         if 'k1sqk2sq' in kk:
                             self.kernel_names.remove(kk)
             self._get_mu_tuples_for_discrete_average()
