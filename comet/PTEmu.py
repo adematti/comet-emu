@@ -3429,6 +3429,9 @@ class PTEmu:
         kfun = np.amin([self.data[oi].kfun for oi in obs_id])
         n_obs = len(obs_id)
 
+        # for now we will disable chi2_decomposition...
+        chi2_decomposition = False
+
         chi2 = 0.0
         if not chi2_decomposition:
             tri_has_changed, binning_has_changed = \
