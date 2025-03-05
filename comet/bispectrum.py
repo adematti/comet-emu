@@ -26,7 +26,7 @@ class Bispectrum:
             :math:`h^{-1}\mathrm{Mpc}` (**False**) units. Defaults to **True**.
         """
         self.real_space = real_space
-        self.RSD_model = model if not self.real_space else 'RS'
+        self.model = model
         self.use_Mpc = use_Mpc
         self.discrete_average = False
         self.use_effective_triangles = False
@@ -54,7 +54,7 @@ class Bispectrum:
             'k32':['B0L_b1b1b1', 'B0L_b1b1', 'B0L_b1b1', 'B0L_b1',
                    'B0L_b1', 'B0L_id']
         }
-        if self.RSD_model == 'EFT':
+        if 'EFT' in self.model:
             for kk in self.kernel_diagrams:
                 temp = np.copy(self.kernel_diagrams[kk])
                 for diagram in temp:
@@ -81,7 +81,7 @@ class Bispectrum:
                     kk_deriv = 'd{}_dlnk{}'.format(kk, i+1)
                     kernel_names_deriv.append(kk_deriv)
             self.kernel_names += kernel_names_deriv
-            if self.RSD_model == 'EFT':
+            if 'EFT' in self.model == 'EFT':
                 kernel_names_ctr = []
                 for kk in ['F2', 'G2', 'b2', 'K', 'k31', 'k32']:
                     for i in range(3):
@@ -134,7 +134,7 @@ class Bispectrum:
                 self.discrete_kernel_mu_tuples[kk_deriv] = list(set(
                     self.discrete_kernel_mu_tuples[kk_deriv]
                 ))
-        if self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr':
+        if 'EFT' in self.model or 'VDG_infty_ctr' in self.model:
             for kk in self.kernel_mu_tuples:
                 for i in range(3):
                     kk_ctr = 'k{}sq{}'.format(i+1, kk)
@@ -220,7 +220,7 @@ class Bispectrum:
             self.discrete_kernel_mu_tuples[kk] = list(set(
                 self.discrete_kernel_mu_tuples[kk]
             ))
-        if self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr':
+        if 'EFT' in self.model or 'VDG_infty_ctr' in self.model:
             for kk in self.kernel_mu_tuples:
                 for i in range(3):
                     kk_ctr = 'k{}sq{}'.format(i+1, kk)
@@ -249,7 +249,7 @@ class Bispectrum:
 
         self.discrete_stoch_kernel_mu_tuples = {}
         self.discrete_stoch_kernel_mu_tuples['id'] = self.n123_tuples_stoch_all
-        if self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr':
+        if 'EFT' in self.model or 'VDG_infty_ctr' in self.model:
             self.discrete_stoch_kernel_mu_tuples['ksq'] = []
             for n123 in self.discrete_stoch_kernel_mu_tuples['id']:
                 n123_ctr = np.copy(n123)
@@ -263,7 +263,7 @@ class Bispectrum:
             ])
 
     def change_RSD_model(self, model):
-        self.RSD_model = model
+        self.model = model
         if not self.real_space:
             self.kernel_names = ['F2', 'G2', 'b2', 'K', 'k31', 'k32']
             kernel_names_deriv = []
@@ -272,7 +272,7 @@ class Bispectrum:
                     kk_deriv = 'd{}_dlnk{}'.format(kk, i+1)
                     kernel_names_deriv.append(kk_deriv)
             self.kernel_names += kernel_names_deriv
-            if self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr':
+            if 'EFT' in self.model or 'VDG_infty_ctr' in self.model:
                 kernel_names_ctr = []
                 for kk in ['F2', 'G2', 'b2', 'K', 'k31', 'k32']:
                     for i in range(3):
@@ -461,14 +461,15 @@ class Bispectrum:
             if binning is None:
                 print('Recompute (non-binned) kernels!')
                 if not self.calibration_mode \
-                        and self.RSD_model == 'VDG_infty_ctr':
+                        and 'VDG_infty_ctr' in self.model:
                     self.pow_ctr = 2
-                    self.change_RSD_model('VDG_infty')
+                    new_model = self.model.replace('_ctr','')
+                    self.change_RSD_model(new_model)
                 self.discrete_average = False
                 self.use_effective_triangles = False
                 self.compute_kernels(self.tri)
                 if not self.real_space:
-                    if self.RSD_model == 'VDG_infty':
+                    if 'VDG_infty' in self.model:
                         self.compute_mu123_integrals(self.tri)
                         self.Gauss_Legendre_mu123_integrals(self.tri, gl_deg)
                     else:
@@ -478,9 +479,12 @@ class Bispectrum:
 
         if binning:
             binning_has_changed = self.binning != binning
-            if self.RSD_model == 'VDG_infty':
+            if self.model == 'VDG_infty' or self.model == 'VDG_infty_nonu':
                 self.pow_ctr = 1.75
-                self.change_RSD_model('VDG_infty_ctr')
+                idx = self.model.index('_nonu') if 'nonu' in self.model \
+                      else len(self.model)
+                new_model = self.model[:idx] + '_ctr' + self.model[idx:]
+                self.change_RSD_model(new_model)
             if tri_has_changed or binning_has_changed or self.binning_turned_on:
                 change_tri(tri)
                 self.binning = binning
@@ -795,7 +799,7 @@ class Bispectrum:
         kernels['dk32_dlnk2'] = -kernels['k32']
         kernels['dk32_dlnk3'] = kernels['k32']
 
-        if self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr':
+        if 'EFT' in self.model or 'VDG_infty_ctr' in self.model:
             k123sq = np.vstack((k1sq,k2sq,k3sq))**(self.pow_ctr/2)
             kernel_names = ['F2','G2','b2','K','k31','k32']
             for kk in kernel_names:
@@ -899,7 +903,7 @@ class Bispectrum:
             - :math:`d K/d \log{k_2}`
             - :math:`d K/d \log{k_3}`
         """
-        n_kernels = 24 if self.RSD_model == 'VDG_infty' else 96
+        n_kernels = 24 if 'VDG_infty' in self.model else 96
         if self.cnlo_type == 'IvaPhiNis':
             n_kernels += 24
         kernels = np.zeros([k1.size,n_kernels])
@@ -1539,7 +1543,7 @@ class Bispectrum:
         for kk in kernel_names:
             self.I[kk] = {}
             n123_tuples = self.kernel_mu_tuples[kk]
-            if self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr':
+            if 'EFT' in self.model or 'VDG_infty_ctr' in self.model:
                 # add tuples for bispectrum cnlo counterterm
                 if self.cnlo_type == 'EggLeeSco':
                     for n123 in n123_tuples:
@@ -1601,7 +1605,7 @@ class Bispectrum:
             for ell in [0,2,4]:
                 self.I_stoch[tuple(n123)][ell] = self.I['b2'][tuple(n123)][ell]
                 # n += 1
-            if self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr':
+            if 'EFT' in self.model or 'VDG_infty_ctr' in self.model:
                 n123_ctr = np.copy(n123)
                 n123_ctr[0] += 2
                 self.I_stoch_ctr[tuple(n123_ctr)] = {}
@@ -1745,7 +1749,7 @@ class Bispectrum:
                     np.einsum("ij,i...->ij...", kernels,
                               self.fiducial_Pdw_sq[id1:id2,i_perm])
                 )
-                if self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr':
+                if 'EFT' in self.model or 'VDG_infty_ctr' in self.model:
                     kernels_stoch = np.ones((id2-id1,3))
                     kernels_stoch[:,1] = \
                         self.grid.kmu123[id1:id2,i_perm]**self.pow_ctr
@@ -2041,7 +2045,7 @@ class Bispectrum:
         def add_product(var, IK, n123, KK, kernel_neff1, kernel_neff2,
                         kernel_deriv_sum, coeff):
             for i in range(self.nparams):
-                idI = (Ellipsis,i) if self.RSD_model == 'VDG_infty' \
+                idI = (Ellipsis,i) if 'VDG_infty' in self.model \
                       else Ellipsis
                 t1 = self.I[IK][n123][ell][idI] \
                      * ((1.0 + (q_tr[i]-q_lo[i])*sum(n123)) * self.kernels[KK] \
@@ -2063,7 +2067,7 @@ class Bispectrum:
                 var[...,i] += coeff[i] * (t1+t2+t3+t4)
 
         K_neff1, K_neff2 = get_aux_kernels(K, False)
-        if self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr':
+        if 'EFT' in self.model or 'VDG_infty_ctr' in self.model:
             Kctr_neff1 = np.zeros((3,self.tri.shape[0],3,self.nparams))
             Kctr_neff2 = np.zeros((3,self.tri.shape[0],3,self.nparams))
             Kctr_deriv_sum = np.zeros((3,self.tri.shape[0],3))
@@ -2078,7 +2082,7 @@ class Bispectrum:
         for n, n123 in enumerate(n123_tuples):
             add_product(DeltaB_K, K, n123, K, K_neff1, K_neff2, 0.0, coeff[n])
 
-            if (self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr') \
+            if ('EFT' in self.model or 'VDG_infty_ctr' in self.model) \
                     and self.cnlo_type == 'EggLeeSco':
                 for j in range(3):
                     Kctr = 'k{}sq{}'.format(j+1,K)
@@ -2087,7 +2091,7 @@ class Bispectrum:
                     add_product(DeltaB_K, K, tuple(n123_j), Kctr, Kctr_neff1[j],
                                 Kctr_neff2[j], Kctr_deriv_sum[j],
                                 coeff[n]*cnloB)
-            elif (self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr')\
+            elif ('EFT' in self.model or 'VDG_infty_ctr' in self.model)\
                     and self.cnlo_type == 'IvaPhiNis':
                 # k^2 counterterms
                 for j in range(2):
@@ -2129,7 +2133,7 @@ class Bispectrum:
         for i in range(3):
             K_deriv_sum += self.kernels['d{}_dlnk{}'.format(K,i+1)]
 
-        if self.RSD_model == 'EFT':
+        if 'EFT' in self.model:
             Kctr_neff1 = np.zeros((3,self.tri.shape[0],3))
             Kctr_neff2 = np.zeros((3,self.tri.shape[0],3))
             Kctr_deriv_sum = np.zeros((3,self.tri.shape[0],3))
@@ -2142,7 +2146,7 @@ class Bispectrum:
                     Kctr_deriv_sum[i] += \
                         self.kernels['d{}_dlnk{}'.format(Kctr,j+1)]
 
-        if self.RSD_model == 'EFT':
+        if 'EFT' in self.model:
             DeltaB_K = np.zeros([2*len(n123_tuples),
                                  self.kernels['F2'].shape[0],
                                  self.kernels['F2'].shape[1]])
@@ -2167,7 +2171,7 @@ class Bispectrum:
 
             DeltaB_K[i] = coeff[i] * (t1 + t2 + t3 + t4)
 
-            if self.RSD_model == 'EFT':
+            if 'EFT' in self.model:
                 for j in range(3):
                     Kctr = 'k{}sq{}'.format(j+1,K)
                     n123_j = np.copy(n123)
@@ -2198,7 +2202,7 @@ class Bispectrum:
                                          q_tr, q_lo, cnloB_stoch=0):
         def add_product(var, I, n123, kernel, kernel_neff, kernel_deriv, coeff):
             for i in range(self.nparams):
-                idI = (Ellipsis,i) if self.RSD_model == 'VDG_infty' \
+                idI = (Ellipsis,i) if 'VDG_infty' in self.model \
                       else Ellipsis
                 t1 = I[n123][ell][idI] \
                      * ((1.0 + (q_tr[i]-q_lo[i])*sum(n123))*kernel \
@@ -2213,7 +2217,7 @@ class Bispectrum:
                      * (q_tr[i] - q_lo[i]) * n123[2] * kernel
                 var[...,i] += coeff[i] * (t1+t2+t3+t4)
 
-        if self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr':
+        if 'EFT' in self.model or 'VDG_infty_ctr' in self.model:
             Kctr = 'k1sqb2'
             Kctr_neff = np.einsum("abc,ab->abc", neff[self.tri_to_id],
                                   self.kernels[Kctr])
@@ -2222,16 +2226,15 @@ class Bispectrum:
         for i, n123 in enumerate(n123_tuples):
             add_product(DeltaB_stoch, self.I_stoch, n123,
                         1.0, neff[self.tri_to_id], 0.0, coeff[i])
-            if self.RSD_model == 'VDG_infty_ctr' \
-                    or (self.RSD_model == 'EFT' \
-                        and self.cnlo_type == 'EggLeeSco'):
+            if 'VDG_infty_ctr' in self.model \
+                    or ('EFT' in self.model and self.cnlo_type == 'EggLeeSco'):
                 n123_ctr = np.copy(n123)
                 n123_ctr[0] += 2
                 add_product(DeltaB_stoch, self.I_stoch_ctr, tuple(n123_ctr),
                             self.kernels[Kctr], Kctr_neff,
                             self.kernels['d{}_dlnk1'.format(Kctr)],
                             coeff[i] * cnloB_stoch)
-            elif self.RSD_model == 'EFT' and self.cnlo_type == 'IvaPhiNis':
+            elif 'EFT' in self.model and self.cnlo_type == 'IvaPhiNis':
                 if n123 == (0,0,0):
                     n123_ctr = np.copy(n123)
                     for n in range(2):
@@ -2294,7 +2297,7 @@ class Bispectrum:
         for i, n123 in enumerate(n123_tuples):
             neff1 = neff[self.tri_eff_to_id]
             neff2 = neff[self.tri_eff_to_id[:,[1,2,0]]]
-            if self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr':
+            if 'EFT' in self.model or 'VDG_infty_ctr' in self.model:
                 if self.cnlo_type == 'EggLeeSco':
                     Kctr_deriv_sum = np.zeros(
                         (3,self.tri.shape[0],3,self.nparams))
@@ -2344,7 +2347,7 @@ class Bispectrum:
                         np.zeros(self.nparams), coeff[i])
 
             # add bispectrum counterterms
-            if (self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr') \
+            if ('EFT' in self.model or 'VDG_infty_ctr' in self.model) \
                     and self.cnlo_type == 'EggLeeSco':
                 for j in range(3):
                     Kctr = 'k{}sq{}'.format(j+1,K)
@@ -2352,7 +2355,7 @@ class Bispectrum:
                     n123_j[j] += 2
                     add_product(DeltaB_K, tuple(n123_j), Kctr, neff1, neff2,
                                 Kctr_deriv_sum[j], coeff[i]*cnloB)
-            elif (self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr')\
+            elif ('EFT' in self.model or 'VDG_infty_ctr' in self.model)\
                     and self.cnlo_type == 'IvaPhiNis':
                 # k^2 counterterms
                 for j in range(2):
@@ -2412,14 +2415,13 @@ class Bispectrum:
             self.stoch_kernels_shell_average['id'][0,0,0][0])
         for i, n123 in enumerate(n123_tuples):
             add_product(DeltaB_stoch, n123, 'id', coeff[i])
-            if self.RSD_model == 'VDG_infty_ctr' \
-                    or (self.RSD_model == 'EFT' \
-                        and self.cnlo_type == 'EggLeeSco'):
+            if 'VDG_infty_ctr' in self.model \
+                    or ('EFT' in self.model and self.cnlo_type == 'EggLeeSco'):
                 n123_ctr = np.copy(n123)
                 n123_ctr[0] += 2
                 add_product(DeltaB_stoch, tuple(n123_ctr), 'ksq',
                             coeff[i]*cnloB_stoch, 'dksq_dlnk')
-            elif self.RSD_model == 'EFT' and self.cnlo_type == 'IvaPhiNis':
+            elif 'EFT' in self.model and self.cnlo_type == 'IvaPhiNis':
                 if n123 == (0,0,0):
                     n123_ctr = np.copy(n123)
                     for n in range(2):
@@ -2480,20 +2482,20 @@ class Bispectrum:
                                                      2*f2, f4/b1f])
             params_kernels['k32'] = params_kernels['k31']
             params_stoch = params['MB0']/self.nbar * np.array([b1sq, b1f])
-            if (self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr') \
+            if ('EFT' in self.model or 'VDG_infty_ctr' in self.model) \
                     and self.cnlo_type == 'EggLeeSco':
                 cnloB = params['cnloB']*f2
-            elif (self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr')\
+            elif ('EFT' in self.model or 'VDG_infty_ctr' in self.model)\
                     and self.cnlo_type == 'IvaPhiNis':
                 cnloB = -np.array([params['cB1'], params['cB2']])/params['b1']
             else:
                 cnloB = None
-            if self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr':
+            if 'EFT' in self.model or 'VDG_infty_ctr' in self.model:
                 cnloB_stoch = cnloB
             else:
                 cnloB_stoch = 0.0
 
-            if self.RSD_model == 'VDG_infty' and not self.discrete_average:
+            if 'VDG_infty' in self.model and not self.discrete_average:
                 self.compute_damped_mu123_integrals(self.tri, W_damping)
 
             for l in np.arange(0, max(ell)+1, 2):
@@ -2600,8 +2602,7 @@ class Bispectrum:
             params_kernels['k32'] = params_kernels['k31']
             params_stoch = np.array([1.0, params['f']])
 
-            if self.RSD_model == 'VDG_infty':
-                if not self.discrete_average:
+            if 'VDG_infty' in self.model and not self.discrete_average:
                     self.compute_damped_mu123_integrals(self.tri, W_damping)
 
             for l in np.arange(0, max(ell)+1, 2):
