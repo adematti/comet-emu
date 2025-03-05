@@ -381,9 +381,12 @@ class Bispectrum:
                 tri_is_subset = len(intersection) == len(tri_test)
                 tri_has_changed = np.logical_not(tri_is_subset)
             else:
-                tri_is_subset = (isinstance(tri, list) \
-                    and any([self.ntri_ell[l] != len(tri[i]) \
-                             for i,l in enumerate(ell)]))
+                if isinstance(tri,list):
+                    tri_is_subset = any([self.ntri_ell[l] != len(tri[i])
+                                         for i,l in enumerate(ell)])
+                else:
+                    tri_is_subset = any([self.ntri_ell[l] != tri.shape[0]
+                                         for i,l in enumerate(ell)])
                 tri_has_changed = False
 
         self.binning_turned_on = binning is not None \
