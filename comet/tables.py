@@ -93,7 +93,7 @@ class Tables:
         self.nk = nk
         self.nkloop = nkloop
 
-        if 'MODEL_SHAPE' == table_hdu.header['EXTNAME']:
+        if table_hdu.header['EXTNAME'] in ['MODEL_SHAPE', 'MODEL_LINEAR']:
             if self.model is None:
                 self.model = {}
             for TYPE in [table_hdu.header['TTYPE{}'.format(i+1)]
@@ -184,7 +184,7 @@ class Tables:
         resc_table: numpy.ndarray
             Rescaled table.
         """
-        if data_type not in ['PL', 's12', 'sv']:
+        if data_type not in ['PL', 'PNW', 's12', 'sv']:
             self.flip[data_type], self.offset[data_type] = \
                 self.get_flip_and_offset(table.T)
         else:

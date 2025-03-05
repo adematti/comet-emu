@@ -464,26 +464,31 @@ class Cosmology:
 
                 return np.array([Dp, u1*Dp + u2*D])
 
-            a_eval = 1.0/(1.0 + z_eval)
-            a_min = np.amin(np.fmin(a_eval, 1E-4)*0.99)
-            a_max = np.amax(a_eval*1.01)
+            a_eval = 1.0 / (1.0 + z_eval)
+            a_min = np.amin(np.fmin(a_eval, 1E-4) * 0.99)
+            a_max = np.amax(a_eval * 1.01)
 
-            isort = np.argsort(a_eval)
+            a_eval_sorted_unique, unique_indices = np.unique(a_eval, return_inverse=True)
+
+            isort = np.argsort(a_eval_sorted_unique)
             isort_rev = np.zeros_like(isort)
             isort_rev[isort] = np.arange(isort.shape[0])
 
             dic = solve_ivp(derivatives_D, (a_min, a_max),
-                            np.array([a_min]*nparam + [1.0]*nparam),
-                            t_eval=a_eval[isort], atol=1E-6, rtol=1E-6,
-                            vectorized=True)
-            D = dic['y'][:nparam, isort_rev].T
+                            np.array([a_min]*nparam +[1.0]*nparam),
+                            t_eval=a_eval_sorted_unique[isort],
+                            atol=1E-6, rtol=1E-6, vectorized=True)
+
+            D_sorted = dic['y'][:nparam].T
+            D = D_sorted[unique_indices]
 
             if (dic['status'] != 0) or (D.shape[0] != a_eval.shape[0]):
                 raise Exception('The calculation of the growth factor failed.')
 
             if get_growth_rate:
-                Dp = dic['y'][nparam:, isort_rev].T
-                f = np.float64(a_eval[:,None]*Dp/D)
+                Dp_sorted = dic['y'][nparam:].T
+                Dp = Dp_sorted[unique_indices]
+                f = a_eval[:, None] * Dp / D  # a_eval retains its original shape and order
                 return [D, f]
             else:
                 return D

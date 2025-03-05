@@ -279,7 +279,6 @@ class Grid:
 
 
 class CtypedGrid:
-
     lib = ctypes.cdll.LoadLibrary('{}/discreteness/libgrid.so'.format(
         os.path.join(os.path.dirname(__file__))))
     lib.new_double_vector.restype = ctypes.c_void_p
