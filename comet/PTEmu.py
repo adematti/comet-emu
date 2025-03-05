@@ -181,6 +181,7 @@ class PTEmu:
         self.gl_x2 = self.gl_x**2
 
         self.data = {}
+        self.data_tri_id_ell = None
         self.grid = None
 
         self.splines_up_to_date = False
@@ -1281,8 +1282,10 @@ class PTEmu:
         k1 = tri[:,0].reshape((-1,1))
         k2 = tri[:,1].reshape((-1,1))
         k3 = tri[:,2].reshape((-1,1))
-        lsq = 0.5 * (self.params['f']/self.params['q_lo'])**2 \
-            * (np.outer(k1,mu1)**2 + (k2*mu2)**2 + (k3*mu3)**2)
+        lsq = 0.5 * np.einsum(
+            "...,ab->ab...", (self.params['f']/self.params['q_lo'])**2,
+            np.outer(k1,mu1)**2 + (k2*mu2)**2 + (k3*mu3)**2
+        )
         t = 1.0 + lsq*self.params['avirB']**2
         return 1.0/np.sqrt(t**3) * np.exp(-lsq*self.params['sv']**2/t)
 
@@ -2783,7 +2786,7 @@ class PTEmu:
 
     def Bell(self, tri, params, ell, de_model=None, kfun=None, binning=None,
              q_tr_lo=None, W_damping=None, ell_for_recon=None, gl_deg=8,
-             cnloB_mapping=lambda x: [0.5]):
+             cnloB_mapping=None):
         ell = [ell] if not isinstance(ell, list) else ell
         if tri.ndim == 1:
             tri = tri[None,:]
@@ -2792,6 +2795,9 @@ class PTEmu:
             tri = tri_sorted
             print('Warning. Triangle configurations sorted such that '
                   'k1 >= k2 >= k3.')
+        if kfun is None:
+            kfun = tri[1,0] - tri[0,0]
+            print('Warning. kfun not specified. Using kfun = {}'.format(kfun))
 
         if 'VDG_infty' in self.model:
             if W_damping is None:
@@ -2803,21 +2809,30 @@ class PTEmu:
             self.Bisp.set_tri(tri, ell, kfun, gl_deg, binning)
 
         if binning:
+            if de_model is None:
+                print("Bispectrum binning option only supported for "
+                      "`de_model = 'lambda'`, `'w0'`, or `'w0wa'`.")
+                return
             tri_unique = self.Bisp.tri_eff_unique
-            if not binning.get('effective', False) \
-                    and (tri_has_changed or binning_has_changed):
+            if len(np.atleast_1d(params['z'])) != self.Bisp.num_fiducials:
+                num_fiducials_has_changed = True
+            else:
+                num_fiducials_has_changed = False
+            do_binning_computation = tri_has_changed | binning_has_changed | \
+                                     num_fiducials_has_changed
+            if not binning.get('effective', False) and do_binning_computation:
                 self.Bisp.set_fiducial_cosmology(params)
                 Pdw_eff = self.Pdw(tri_unique, self.Bisp.fiducial_cosmology,
-                                   de_model, ell_for_recon)
+                                   de_model, 0.6, ell_for_recon)
                 self.Bisp.init_Pdw_eff(Pdw_eff)
                 if self.Bisp.generate_discrete_kernels:
                     # print('Recompute (binned) kernels!')
-                    Pdw = np.array([
+                    Pdw = np.swapaxes(np.array([
                         self.Pdw(self.Bisp.grid.kmu123[:,j],
                                  self.Bisp.fiducial_cosmology,
-                                 de_model, ell_for_recon)
+                                 de_model, 0.6, ell_for_recon)
                         for j in range(3)
-                    ]).T
+                    ]), 0, 1)
                     self.Bisp.init_Pdw(Pdw, ell)
                     self.Bisp.compute_kernels_shell_average(max(ell))
                 else:
@@ -2826,19 +2841,28 @@ class PTEmu:
         else:
             tri_unique = self.Bisp.tri_unique
 
-        Pdw = self.Pdw(tri_unique, params, de_model=de_model,
+        Pdw = self.Pdw(tri_unique, params, de_model=de_model, mu=0.6,
                        ell_for_recon=ell_for_recon)
 
         if self.real_space:
             neff = None
         else:
-            neff = tri_unique*self.Pdw_spline.derivative(n=1)(tri_unique)/Pdw
+            # making sure neff is of size ntri_unique x nparams
+            # this can be done more nicely for sure...
+            neff = np.atleast_2d(
+                np.einsum(
+                    "ij,i...->i...", tri_unique[:,None],
+                    np.squeeze(self.Pdw_spline.eval_derivative(tri_unique))/Pdw
+                ).T
+            ).T
 
         if binning and 'VDG_infty' in self.model:
-            coeff = cnloB_mapping([self.params['avirB'],self.params['sv']])
-            self.params['cnloB'] = \
-                - (coeff[0]*self.params['avirB']**self.Bisp.pow_ctr \
-                   + 0.5*self.params['sv']**self.Bisp.pow_ctr)
+            if cnloB_mapping is not None:
+                coeff = cnloB_mapping([self.params['avirB'],
+                                       self.params['sv'].squeeze()])
+                self.params['cnloB'] = \
+                    - (coeff[0]*self.params['avirB']**self.Bisp.pow_ctr \
+                       + 0.5*self.params['sv']**self.Bisp.pow_ctr)
 
         self._update_AP_params(params, de_model=de_model,
                                q_tr_lo=q_tr_lo)
@@ -3229,7 +3253,8 @@ class PTEmu:
                                         de_model=de_model,
                                         w0=self.params['w0'],
                                         wa=self.params['wa'])
-            volume = volfac*self.cosmo.comoving_volume(zmin, zmax, fsky)
+            volume = volfac*np.squeeze(
+                self.cosmo.comoving_volume(zmin, zmax, fsky))
             if not self.use_Mpc:
                 volume *= self.params['h']**3
         elif de_model is None and volume is None:
@@ -3636,74 +3661,160 @@ class PTEmu:
 
     def _chi2_bispectrum(self, obs_id, params, ell, de_model=None,
                          binning=None, convolve_window=False, q_tr_lo=None,
-                         W_damping=None, tri_has_changed=True,
-                         binning_has_changed=True, chi2_decomposition=False,
-                         compute_chi2_decomposition=True,
-                         ell_for_recon=None, cnloB_mapping=lambda x: [0.5]):
-        obs_id = obs_id[0]
+                         W_damping=None, chi2_decomposition=False,
+                         compute_chi2_decomposition=True, ell_for_recon=None,
+                         cnloB_mapping=None):
+        ell_joint = np.unique(np.hstack([ell[oi] for oi in obs_id])).tolist()
+        bins_kmax = [
+            np.unique(
+                np.vstack([self.data[oi].bins_kmax[i] for oi in obs_id \
+                           if l in self.data[oi].ell]), axis=0
+            )
+            for i,l in enumerate(ell_joint)
+        ]
+        kfun = np.amin([self.data[oi].kfun for oi in obs_id])
+        n_obs = len(obs_id)
+
         chi2 = 0.0
         if not chi2_decomposition:
+            tri_has_changed, binning_has_changed = \
+                self.Bisp.set_tri(bins_kmax, ell_joint, kfun, binning=binning)
+            if self.data_tri_id_ell is not None:
+                has_all_obs_id = np.all([oi in self.data_tri_id_ell.keys()
+                                for oi in obs_id])
+                if has_all_obs_id:
+                    generate_tri_ids = np.any(
+                        [[len(self.data_tri_id_ell[oi][i]) !=
+                          len(self.data[oi].bins_kmax[i]) for i in range(len(ell[oi]))] for oi in obs_id]
+                    )
+                else:
+                    generate_tri_ids = True
+            if self.data_tri_id_ell is None or tri_has_changed \
+                    or generate_tri_ids:
+                self.data_tri_id_ell = {}
+                tri_dtype = {'names':['f{}'.format(i) for i in range(3)],
+                             'formats':3 * [self.Bisp.tri.dtype]}
+                for oi in obs_id:
+                    self.data_tri_id_ell[oi] = [np.sort(
+                        np.intersect1d(
+                            bins_kmax[i].view(tri_dtype),
+                            np.ascontiguousarray(
+                                self.data[oi].bins_kmax[i]).view(tri_dtype),
+                            return_indices=True)[1]
+                        ) for i,l in enumerate(ell[oi])]
             if binning:
+                if de_model is None:
+                    print("Bispectrum binning option only supported for "
+                          "`de_model = 'lambda'`, `'w0'`, or `'w0wa'`.")
+                    return
                 tri_unique = self.Bisp.tri_eff_unique
+                if len(np.atleast_1d(params['z'])) != self.Bisp.num_fiducials:
+                    num_fiducials_has_changed = True
+                else:
+                    num_fiducials_has_changed = False
+                do_binning_computation = tri_has_changed | \
+                                         binning_has_changed | \
+                                         num_fiducials_has_changed
                 if not binning.get('effective', False) \
-                        and (tri_has_changed or binning_has_changed):
+                        and do_binning_computation:
                     self.Bisp.set_fiducial_cosmology(params)
                     Pdw_eff = self.Pdw(tri_unique, self.Bisp.fiducial_cosmology,
-                                       de_model, ell_for_recon)
+                                       de_model, 0.6, ell_for_recon)
                     self.Bisp.init_Pdw_eff(Pdw_eff)
                     if self.Bisp.generate_discrete_kernels:
                         # print('Recompute (binned) kernels!')
-                        Pdw = np.array([
+                        Pdw = np.swapaxes(np.array([
                             self.Pdw(self.Bisp.grid.kmu123[:,j],
                                      self.Bisp.fiducial_cosmology,
-                                     de_model, ell_for_recon)
+                                     de_model, 0.6, ell_for_recon)
                             for j in range(3)
-                        ]).T
-                        self.Bisp.init_Pdw(Pdw, ell[obs_id])
+                        ]), 0, 1)
+                        self.Bisp.init_Pdw(Pdw, ell_joint)
                         self.Bisp.compute_kernels_shell_average(
-                            max(ell[obs_id]))
+                            max(ell_joint))
                     else:
                         # print('Load (binned) kernels!')
                         self.Bisp.load_kernels_shell_average()
             else:
                 tri_unique = self.Bisp.tri_unique
 
-            Pdw = self.Pdw(tri_unique, params, de_model=de_model,
+            Pdw = self.Pdw(tri_unique, params, de_model=de_model, mu=0.6,
                            ell_for_recon=ell_for_recon)
             if self.real_space:
                 neff = None
             else:
-                neff = tri_unique * \
-                       self.Pdw_spline.derivative(n=1)(tri_unique)/Pdw
+                neff = np.atleast_2d(
+                    np.einsum(
+                        "ij,i...->i...", tri_unique[:,None],
+                        np.squeeze(self.Pdw_spline.eval_derivative(tri_unique))/Pdw
+                    ).T
+                ).T
             if binning and self.RSD_model == 'VDG_infty':
-                coeff = cnloB_mapping([self.params['avirB'][0],
-                                       self.params['sv'][0]])
-                self.params['cnloB'] = \
-                    - (coeff[0]*self.params['avirB']**self.Bisp.pow_ctr \
-                       + 0.5*self.params['sv']**self.Bisp.pow_ctr)
-            Bell = self.Bisp.Bell(Pdw, neff, self.params, ell,  W_damping)
+                if cnloB_mapping is not None:
+                    coeff = cnloB_mapping([self.params['avirB'],
+                                           self.params['sv'].squeeze()])
+                    self.params['cnloB'] = \
+                        - (coeff[0]*self.params['avirB']**self.Bisp.pow_ctr \
+                           + 0.5*self.params['sv']**self.Bisp.pow_ctr)
 
-            if self.data[obs_id].cov_is_block_diagonal:
-                diff = {}
-                for i,l in enumerate(Bell.keys()):
-                    n1 = sum(self.data[obs_id].nbins[:i])
-                    n2 = sum(self.data[obs_id].nbins[:i+1])
-                    diff[l] = Bell[l] - self.data[obs_id].signal_kmax[n1:n2]
-                Ldiff = np.zeros(sum(self.data[obs_id].nbins))
-                for i,l1 in enumerate(Bell.keys()):
-                    n1 = sum(self.data[obs_id].nbins[:i])
-                    n2 = sum(self.data[obs_id].nbins[:i+1])
-                    for j,l2 in enumerate(list(Bell.keys())[i:]):
-                        ids_i = self.data[obs_id].tri_id_ell2_in_ell1[l1+l2]
-                        ids_j = self.data[obs_id].tri_id_ell1_in_ell2[l1+l2]
-                        Ldiff[n1:n2][ids_i] += \
-                            self.data[obs_id].cholesky_diag[l1+l2] * \
-                                diff[l2][ids_j]
-            else:
-                Bell_list = np.hstack([Bell[m] for m in Bell.keys()])
-                diff = Bell_list - self.data[oi].signal_kmax
-                Ldiff = self.data[oi].inverse_cov_kmax_cholesky @ diff
-            chi2 += np.sum(Ldiff**2)
+            self.update_AP_params(params, de_model=de_model,
+                                  q_tr_lo=q_tr_lo)
+
+            Bell = self.Bisp.Bell(Pdw, neff, self.params, ell_joint,  W_damping)
+
+            for n,oi in enumerate(obs_id):
+                ids = self.data_tri_id_ell[oi]
+                if Bell['ell{}'.format(ell[oi][0])].ndim == 1: # N = 1
+                    if self.data[oi].cov_is_block_diagonal:
+                        diff = {}
+                        for i,l in enumerate(ell[oi]):
+                            n1 = sum(self.data[oi].nbins[:i])
+                            n2 = sum(self.data[oi].nbins[:i+1])
+                            diff[l] = Bell['ell{}'.format(l)][ids[i]] \
+                                      - self.data[oi].signal_kmax[n1:n2]
+                        Ldiff = np.zeros(sum(self.data[oi].nbins))
+                        for i,l1 in enumerate(ell[oi]):
+                            n1 = sum(self.data[oi].nbins[:i])
+                            n2 = sum(self.data[oi].nbins[:i+1])
+                            for j,l2 in enumerate(ell[oi][i:]):
+                                key = 'ell{}ell{}'.format(l1,l2)
+                                ids_i = self.data[oi].tri_id_ell2_in_ell1[key]
+                                ids_j = self.data[oi].tri_id_ell1_in_ell2[key]
+                                Ldiff[n1:n2][ids_i] += \
+                                    self.data[oi].cholesky_diag[key] \
+                                    * diff[l2][ids_j]
+                    else:
+                        Bell_list = np.hstack([Bell['ell{}'.format(l)][ids[i]]
+                                               for i,l in enumerate(ell[oi])])
+                        diff = Bell_list - self.data[oi].signal_kmax
+                        Ldiff = self.data[oi].inverse_cov_kmax_cholesky @ diff
+                else:
+                    if self.data[oi].cov_is_block_diagonal:
+                        diff = {}
+                        for i,l in enumerate(ell[oi]):
+                            n1 = sum(self.data[oi].nbins[:i])
+                            n2 = sum(self.data[oi].nbins[:i+1])
+                            diff[l] = Bell['ell{}'.format(l)][ids[i],n::n_obs] \
+                                      - self.data[oi].signal_kmax[n1:n2,None]
+                        Ldiff = np.zeros((sum(self.data[oi].nbins),
+                                          diff[list(diff.keys())[0]].shape[1]))
+                        for i,l1 in enumerate(ell[oi]):
+                            n1 = sum(self.data[oi].nbins[:i])
+                            n2 = sum(self.data[oi].nbins[:i+1])
+                            for j,l2 in enumerate(ell[oi][i:]):
+                                key = 'ell{}ell{}'.format(l1,l2)
+                                ids_i = self.data[oi].tri_id_ell2_in_ell1[key]
+                                ids_j = self.data[oi].tri_id_ell1_in_ell2[key]
+                                Ldiff[n1:n2][ids_i] += \
+                                    self.data[oi].cholesky_diag[key][:,None] \
+                                    * diff[l2][ids_j]
+                    else:
+                        Bell_list = np.vstack(
+                            [Bell['ell{}'.format(l)][ids[i],n::n_obs]
+                             for i,l in enumerate(ell[oi])])
+                        diff = Bell_list - self.data[oi].signal_kmax[:,None]
+                        Ldiff = self.data[oi].inverse_cov_kmax_cholesky @ diff
+                chi2 += np.einsum("a...,a...", Ldiff, Ldiff)
         else:
             if compute_chi2_decomposition:
                 Pdw = self.Pdw(self.Bisp.tri_unique,
@@ -3746,7 +3857,7 @@ class PTEmu:
     def chi2(self, obs_id, params, kmax, de_model=None, binning=None,
              convolve_window=False, q_tr_lo=None, W_damping=None,
              chi2_decomposition=False, AM_priors=None, ell_for_recon=None,
-             cnloB_mapping=lambda x: [0.5]):
+             cnloB_mapping=None):
         r"""Compute the :math:`\chi^2 for the given configurations`.
 
         Generates the selected power spectrum multipoles for the specified set
@@ -3824,10 +3935,6 @@ class PTEmu:
                         elif self.data[oi].stat == 'bispectrum':
                             self.Bisp_chi2_decomposition = None
             ell[oi] = self.data[oi].ell
-            if self.data[oi].stat == 'bispectrum':
-                tri_has_changed, binning_has_changed = \
-                    self.Bisp.set_tri(self.data[oi].bins_kmax, ell[oi],
-                                      self.data[oi].kfun, binning=binning[oi])
 
         obs_id_stat = {}
         for oi in obs_id:
@@ -3957,12 +4064,10 @@ class PTEmu:
             elif stat == 'bispectrum':
                 chi2 += self._chi2_bispectrum(
                     obs_id_stat[stat], params_eval,
-                    ell[obs_id_stat[stat][0]],
+                    {oi:ell[oi] for oi in obs_id_stat[stat]},
                     de_model=de_model, binning=binning[stat],
                     convolve_window=convolve_window,
                     q_tr_lo=q_tr_lo, W_damping=W_damping[stat],
-                    tri_has_changed=tri_has_changed,
-                    binning_has_changed=binning_has_changed,
                     chi2_decomposition=chi2_decomposition,
                     compute_chi2_decomposition=compute_Bisp_chi2_decomposition,
                     ell_for_recon=ell_for_recon, cnloB_mapping=cnloB_mapping

@@ -26,7 +26,7 @@ class Bispectrum:
             :math:`h^{-1}\mathrm{Mpc}` (**False**) units. Defaults to **True**.
         """
         self.real_space = real_space
-        self.RSD_model = model
+        self.RSD_model = model if not self.real_space else 'RS'
         self.use_Mpc = use_Mpc
         self.discrete_average = False
         self.use_effective_triangles = False
@@ -42,6 +42,7 @@ class Bispectrum:
         self.fiducial_Pdw_sq = None
         self.fiducial_Pdw_eff = None
         self.fiducial_cosmology = {}
+        self.num_fiducials = 1
 
         self.kernel_diagrams = {
             'F2':['B0L_b1b1b1', 'B0L_b1b1', 'B0L_b1b1', 'B0L_b1'],
@@ -300,7 +301,8 @@ class Bispectrum:
                     self.kernel_names += kernel_names_k4ctr
             elif self.cnlo_type == 'EggLeeSco':
                 if 'k1sqk2sqF2' in self.kernel_names:
-                    for kk in self.kernel_names:
+                    temp_kernel_names = self.kernel_names.copy()
+                    for kk in temp_kernel_names:
                         if 'k1sqk2sq' in kk:
                             self.kernel_names.remove(kk)
             self._get_mu_tuples_for_discrete_average()
@@ -379,9 +381,12 @@ class Bispectrum:
                 tri_is_subset = len(intersection) == len(tri_test)
                 tri_has_changed = np.logical_not(tri_is_subset)
             else:
-                tri_is_subset = (isinstance(tri, list) \
-                    and any([self.ntri_ell[l] != len(tri[i]) \
-                             for i,l in enumerate(ell)]))
+                if isinstance(tri,list):
+                    tri_is_subset = any([self.ntri_ell[l] != len(tri[i])
+                                         for i,l in enumerate(ell)])
+                else:
+                    tri_is_subset = any([self.ntri_ell[l] != tri.shape[0]
+                                         for i,l in enumerate(ell)])
                 tri_has_changed = False
 
         self.binning_turned_on = binning is not None \
@@ -464,6 +469,7 @@ class Bispectrum:
                 self.compute_kernels(self.tri)
                 if not self.real_space:
                     if self.RSD_model == 'VDG_infty':
+                        self.compute_mu123_integrals(self.tri)
                         self.Gauss_Legendre_mu123_integrals(self.tri, gl_deg)
                     else:
                         self.compute_mu123_integrals(self.tri)
@@ -578,13 +584,29 @@ class Bispectrum:
         return tri_has_changed, binning_has_changed
 
     def set_fiducial_cosmology(self, params):
+        #unique_z, index = np.unique(params['z'], return_index=True)
+        #self.num_fiducials = len(unique_z)
+        self.num_fiducials = len(np.atleast_1d(params['z']))
         if self.binning.get('fiducial_cosmology') is None:
             self.fiducial_cosmology = {
-                'h':0.6736, 'wc':0.12, 'wb':0.02237, 'ns':0.9649,
-                'As':2.0989031673, 'w0':-1.0, 'wa':0.0, 'z':params['z']
+                'h':np.repeat(0.6736, self.num_fiducials),
+                'wc':np.repeat(0.12, self.num_fiducials),
+                'wb':np.repeat(0.02237, self.num_fiducials),
+                'ns':np.repeat(0.9649, self.num_fiducials),
+                'As':np.repeat(2.0989031673, self.num_fiducials),
+                'w0':np.repeat(-1.0, self.num_fiducials),
+                'wa':np.repeat(0.0, self.num_fiducials),
+                'z':np.atleast_1d(params['z']) #unique_z[index.argsort()]
             }
         else:
             self.fiducial_cosmology = self.binning.get('fiducial_cosmology')
+            if 'z' not in self.fiducial_cosmology:
+                if len(np.atleast_1d(self.fiducial_cosmology['wc'])) != \
+                        self.num_fiducials:
+                    for p in self.fiducial_cosmology:
+                        self.fiducial_cosmology[p] = np.repeat(
+                            self.fiducial_cosmology[p], self.num_fiducials)
+                self.fiducial_cosmology['z'] = np.atleast_1d(params['z'])
 
     def init_Pdw(self, Pdw, ell):
         self.fiducial_Pdw = Pdw
@@ -1410,10 +1432,6 @@ class Bispectrum:
                 kernels = self.kernels_redshift_space(*k123_perm)
                 for kk in self.kernel_names:
                     self.kernels[kk][:,i] = kernels[kk]
-                # self.kernels['b2'] = 1.0
-                # self.kernels['db2_dlnk1'] = 0.0
-                # self.kernels['db2_dlnk2'] = 0.0
-                # self.kernels['db2_dlnk3'] = 0.0
 
     def Gauss_Legendre_mu123_integrals(self, tri, deg):
         def muphi_to_mu123(mu_ij, phi_ij, k1, k2, k3):
@@ -1593,28 +1611,31 @@ class Bispectrum:
 
     def compute_damped_mu123_integrals(self, tri, W_damping):
         gl_W3p_damping = W_damping(tri, self.gl_mu1, self.gl_mu2, self.gl_mu3)
-        gl_W2p_damping = np.zeros((3, tri.shape[0], self.gl_mu1.shape[0]))
+        gl_W2p_damping = np.zeros((3, tri.shape[0],
+                                   self.gl_mu1.shape[0], self.nparams))
         gl_W2p_damping[0] = W_damping(tri, self.gl_mu1, 0.0, 0.0)
         gl_W2p_damping[1] = W_damping(tri, 0.0, self.gl_mu2, 0.0)
         gl_W2p_damping[2] = W_damping(tri, 0.0, 0.0, self.gl_mu3)
 
-        I_damped = 0.25 * np.sum(self.gl_I_weights*gl_W3p_damping, axis=2)
+        I_damped = 0.25 * np.einsum("abc,bc...->ab...",
+                                    self.gl_I_weights, gl_W3p_damping)
         for kk in self.I_tuples_dict:
             for n123 in self.I_tuples_dict[kk]:
                 for ell in [0,2,4]:
                     ids = self.I_tuples_dict[kk][n123][ell]
-                    self.I[kk][n123][ell] = I_damped[ids].T
+                    self.I[kk][n123][ell] = np.swapaxes(I_damped[ids],0,1)
 
         self.I['b2'] = self.I['F2']
         self.I['K'] = self.I['F2']
 
         n = 0
-        I_stoch_damped = 0.25 * np.sum(self.gl_I_stoch_weights*gl_W2p_damping,
-                                       axis=3)
+        I_stoch_damped = 0.25 * np.einsum(
+            "abcd,bcd...->abc...", self.gl_I_stoch_weights, gl_W2p_damping)
         for n123 in self.n123_tuples_stoch_all:
             self.I_stoch[tuple(n123)] = {}
             for ell in [0,2,4]:
-                self.I_stoch[tuple(n123)][ell] = I_stoch_damped[n].T
+                self.I_stoch[tuple(n123)][ell] = np.swapaxes(
+                    I_stoch_damped[n],0,1)
                 n += 1
 
     def compute_kernels_shell_average(self, max_ell):
@@ -1629,7 +1650,7 @@ class Bispectrum:
                 self.kernels_shell_average[kk][tuple(n123)] = {}
                 for ell in ell_req:
                     self.kernels_shell_average[kk][tuple(n123)][ell] = \
-                        np.zeros((self.tri.shape[0],3))
+                        np.zeros((self.tri.shape[0],3,self.num_fiducials))
                     for i in range(3):
                         n123_perm_even = np.roll(np.array(n123), i)
                         n123_perm_even[0] += ell
@@ -1642,7 +1663,7 @@ class Bispectrum:
                 self.stoch_kernels_shell_average[kk][tuple(n123)] = {}
                 for ell in ell_req:
                     self.stoch_kernels_shell_average[kk][tuple(n123)][ell] = \
-                        np.zeros((self.tri.shape[0],3))
+                        np.zeros((self.tri.shape[0],3,self.num_fiducials))
 
         self.I_tuples_dict = {}
         for kk in self.kernels_shell_average:
@@ -1684,12 +1705,13 @@ class Bispectrum:
 
         @nb.njit(parallel=True)
         def _perform_average(kernels, kernel_ids, I_all, I_ids,
-                             weights, weights_sum, i_perm):
-            out = np.zeros(len(kernel_ids))
-            for i in nb.prange(len(kernel_ids)):
-                t = np.sum(kernels[:,kernel_ids[i]] * I_all[:,I_ids[i]]
-                           * weights)/weights_sum
-                out[i] = t
+                             weights, weights_sum, i_perm, num_fiducials):
+            out = np.zeros((len(kernel_ids), num_fiducials))
+            for j in nb.prange(num_fiducials):
+                for i in nb.prange(len(kernel_ids)):
+                    t = np.sum(kernels[:,kernel_ids[i],j] * I_all[:,I_ids[i]]
+                               * weights)/weights_sum
+                    out[i,j] = t
             return out
 
         # loop over triangle configurations
@@ -1719,16 +1741,22 @@ class Bispectrum:
                         self.grid.kmu123[id1:id2,(i_perm+1)%3],
                         self.grid.kmu123[id1:id2,(i_perm+2)%3]
                     )
-                kernels *= self.fiducial_Pdw_sq[id1:id2,i_perm][:,None]
+                kernels = np.atleast_3d(
+                    np.einsum("ij,i...->ij...", kernels,
+                              self.fiducial_Pdw_sq[id1:id2,i_perm])
+                )
                 if self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr':
                     kernels_stoch = np.ones((id2-id1,3))
                     kernels_stoch[:,1] = \
                         self.grid.kmu123[id1:id2,i_perm]**self.pow_ctr
                     kernels_stoch[:,2] = self.pow_ctr * kernels_stoch[:,1]
-                    kernels_stoch *= self.fiducial_Pdw[id1:id2,i_perm][:,None]
+                    kernels_stoch = np.atleast_3d(
+                        np.einsum("ij,i...->ij...", kernels_stoch,
+                                  self.fiducial_Pdw[id1:id2,i_perm])
+                    )
                 else:
                     kernels_stoch = np.atleast_2d(
-                        self.fiducial_Pdw[id1:id2,i_perm]).T
+                        self.fiducial_Pdw[id1:id2,i_perm].T).T[:,None,:]
 
                 I_ids = []
                 kernel_ids = []
@@ -1753,11 +1781,12 @@ class Bispectrum:
                 kernel_stoch_ids = np.array(kernel_stoch_ids)
 
                 avg = _perform_average(kernels, kernel_ids, I_all, I_ids,
-                                       self.grid.weights[id1:id2], wsum, i_perm)
+                                       self.grid.weights[id1:id2], wsum, i_perm,
+                                       self.num_fiducials)
                 avg_stoch = _perform_average(kernels_stoch, kernel_stoch_ids,
                                              I_all, I_stoch_ids,
-                                             self.grid.weights[id1:id2], wsum,
-                                             i_perm)
+                                             self.grid.weights[id1:id2],
+                                             wsum, i_perm, self.num_fiducials)
 
                 count = 0
                 for kk in self.kernels_shell_average:
@@ -1775,7 +1804,7 @@ class Bispectrum:
                             count += 1
 
         for n,tri_id in enumerate(self.tri_ids_eff):
-            P2 = np.zeros(3)
+            P2 = np.zeros((3,self.num_fiducials))
             for i in range(3):
                 i1 = self.tri_eff_to_id[tri_id][i%3]
                 i2 = self.tri_eff_to_id[tri_id][(i+1)%3]
@@ -1804,7 +1833,6 @@ class Bispectrum:
                                                             [tri_id] = \
                                 self.I_stoch_ctr[n123][ell][n] \
                                 * self.kernels['dk1sqb2_dlnk1'] * P
-
 
         # dump kernels
         if self.binning.get('filename_root_kernels'):
@@ -1997,51 +2025,58 @@ class Bispectrum:
 
     def join_kernel_mu123_integral(self, K, n123_tuples, ell, neff, coeff,
                                    q_tr, q_lo, cnloB=None):
-        K_neff1 = neff[self.tri_to_id]*self.kernels[K]
-        K_neff2 = neff[self.tri_to_id[:,[1,2,0]]]*self.kernels[K]
-        K_deriv_sum = 0.0
-        for i in range(3):
-            K_deriv_sum += self.kernels['d{}_dlnk{}'.format(K,i+1)]
+        def get_aux_kernels(K, get_K_deriv_sum=True):
+            K_neff1 = np.einsum("abc,ab->abc", neff[self.tri_to_id],
+                                self.kernels[K])
+            K_neff2 = np.einsum("abc,ab->abc",neff[self.tri_to_id[:,[1,2,0]]],
+                                self.kernels[K])
+            if get_K_deriv_sum:
+                K_deriv_sum = 0.0
+                for i in range(3):
+                    K_deriv_sum += self.kernels['d{}_dlnk{}'.format(K,i+1)]
+                return K_neff1, K_neff2, K_deriv_sum
+            else:
+                return K_neff1, K_neff2
 
+        def add_product(var, IK, n123, KK, kernel_neff1, kernel_neff2,
+                        kernel_deriv_sum, coeff):
+            for i in range(self.nparams):
+                idI = (Ellipsis,i) if self.RSD_model == 'VDG_infty' \
+                      else Ellipsis
+                t1 = self.I[IK][n123][ell][idI] \
+                     * ((1.0 + (q_tr[i]-q_lo[i])*sum(n123)) * self.kernels[KK] \
+                        + (1.0-q_tr[i]) * kernel_deriv_sum \
+                        + (1.0-q_tr[i]) * (kernel_neff1[...,i] \
+                                           + kernel_neff2[...,i]))
+                t2 = self.I[IK][n123[0]+2,n123[1],n123[2]][ell][idI] \
+                     * (q_tr[i] - q_lo[i]) \
+                     * (self.kernels['d{}_dlnk1'.format(KK)] \
+                        + kernel_neff1[...,i] - n123[0]*self.kernels[KK])
+                t3 = self.I[IK][n123[0],n123[1]+2,n123[2]][ell][idI] \
+                     * (q_tr[i] - q_lo[i]) \
+                     * (self.kernels['d{}_dlnk2'.format(KK)] \
+                        + kernel_neff2[...,i] - n123[1]*self.kernels[KK])
+                t4 = self.I[IK][n123[0],n123[1],n123[2]+2][ell][idI] \
+                     * (q_tr[i] - q_lo[i]) \
+                     * (self.kernels['d{}_dlnk3'.format(KK)] \
+                        - n123[2]*self.kernels[KK])
+                var[...,i] += coeff[i] * (t1+t2+t3+t4)
+
+        K_neff1, K_neff2 = get_aux_kernels(K, False)
         if self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr':
-            Kctr_neff1 = np.zeros((3,self.tri.shape[0],3))
-            Kctr_neff2 = np.zeros((3,self.tri.shape[0],3))
+            Kctr_neff1 = np.zeros((3,self.tri.shape[0],3,self.nparams))
+            Kctr_neff2 = np.zeros((3,self.tri.shape[0],3,self.nparams))
             Kctr_deriv_sum = np.zeros((3,self.tri.shape[0],3))
             for i in range(3):
-                Kctr = 'k{}sq{}'.format(i+1,K)
-                Kctr_neff1[i] = neff[self.tri_to_id]*self.kernels[Kctr]
-                Kctr_neff2[i] = neff[self.tri_to_id[:,[1,2,0]]] \
-                                * self.kernels[Kctr]
-                for j in range(3):
-                    Kctr_deriv_sum[i] += \
-                        self.kernels['d{}_dlnk{}'.format(Kctr,j+1)]
+                Kctr_neff1[i], Kctr_neff2[i], Kctr_deriv_sum[i] \
+                    = get_aux_kernels('k{}sq{}'.format(i+1,K))
             if self.cnlo_type == 'IvaPhiNis':
-                Kctr = 'k1sqk2sq{}'.format(K)
-                K_k4ctr_neff1 = neff[self.tri_to_id]*self.kernels[Kctr]
-                K_k4ctr_neff2 = neff[self.tri_to_id[:,[1,2,0]]] \
-                                * self.kernels[Kctr]
-                K_k4ctr_deriv_sum = 0.0
-                for i in range(3):
-                    K_k4ctr_deriv_sum += \
-                        self.kernels['d{}_dlnk{}'.format(Kctr,i+1)]
+                Kctr_k4_neff1, Kctr_k4_neff2, Kctr_k4_deriv_sum \
+                    = get_aux_kernels('k1sqk2sq{}'.format(K))
 
-        DeltaB_K = 0.0
+        DeltaB_K = np.zeros(self.kernels['F2'].shape + (self.nparams,))
         for n, n123 in enumerate(n123_tuples):
-            t1 = self.I[K][n123][ell] * ((1.0 + (q_tr-q_lo)*sum(n123)) * \
-                                         self.kernels[K] \
-                                         + (1.0-q_tr) * K_deriv_sum \
-                                         + (1.0-q_tr) * (K_neff1 + K_neff2))
-            t2 = self.I[K][n123[0]+2,n123[1],n123[2]][ell] * (q_tr - q_lo) \
-                 * (self.kernels['d{}_dlnk1'.format(K)] + K_neff1 \
-                    - n123[0]*self.kernels[K])
-            t3 = self.I[K][n123[0],n123[1]+2,n123[2]][ell] * (q_tr - q_lo) \
-                 * (self.kernels['d{}_dlnk2'.format(K)] + K_neff2 \
-                    - n123[1]*self.kernels[K])
-            t4 = self.I[K][n123[0],n123[1],n123[2]+2][ell] * (q_tr - q_lo) \
-                 * (self.kernels['d{}_dlnk3'.format(K)] \
-                    - n123[2]*self.kernels[K])
-
-            DeltaB_K += coeff[n] * (t1 + t2 + t3 + t4)
+            add_product(DeltaB_K, K, n123, K, K_neff1, K_neff2, 0.0, coeff[n])
 
             if (self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr') \
                     and self.cnlo_type == 'EggLeeSco':
@@ -2049,25 +2084,9 @@ class Bispectrum:
                     Kctr = 'k{}sq{}'.format(j+1,K)
                     n123_j = np.copy(n123)
                     n123_j[j] += 2
-                    tctr1 = self.I[K][tuple(n123_j)][ell] \
-                        * ((1.0 + (q_tr-q_lo)*sum(n123_j))*self.kernels[Kctr] \
-                           + (1.0-q_tr) * Kctr_deriv_sum[j] \
-                           + (1.0-q_tr) * (Kctr_neff1[j] + Kctr_neff2[j]))
-                    tctr2 = self.I[K][n123_j[0]+2,n123_j[1],n123_j[2]][ell] \
-                        * (q_tr - q_lo) \
-                        * (self.kernels['d{}_dlnk1'.format(Kctr)] \
-                           + Kctr_neff1[j] - n123_j[0]*self.kernels[Kctr])
-                    tctr3 = self.I[K][n123_j[0],n123_j[1]+2,n123_j[2]][ell] \
-                        * (q_tr - q_lo) \
-                        * (self.kernels['d{}_dlnk2'.format(Kctr)] \
-                           + Kctr_neff2[j] - n123_j[1]*self.kernels[Kctr])
-                    tctr4 = self.I[K][n123_j[0],n123_j[1],n123_j[2]+2][ell] \
-                        * (q_tr - q_lo) \
-                        * (self.kernels['d{}_dlnk3'.format(Kctr)] \
-                           - n123_j[2]*self.kernels[Kctr])
-
-                    DeltaB_K += coeff[n] * cnloB * (tctr1 + tctr2 + tctr3 \
-                                                    + tctr4)
+                    add_product(DeltaB_K, K, tuple(n123_j), Kctr, Kctr_neff1[j],
+                                Kctr_neff2[j], Kctr_deriv_sum[j],
+                                coeff[n]*cnloB)
             elif (self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr')\
                     and self.cnlo_type == 'IvaPhiNis':
                 # k^2 counterterms
@@ -2079,31 +2098,10 @@ class Bispectrum:
                         for i in range(2):
                             n123_j[j] += 2
                             split_factor = 0.5 if n123[j] >= 2 else 1.0
-                            tctr1 = self.I[K][tuple(n123_j)][ell] \
-                                * ((1.0 + (q_tr-q_lo)*sum(n123_j)) \
-                                * self.kernels[Kctr] \
-                                + (1.0-q_tr) * Kctr_deriv_sum[j] \
-                                + (1.0-q_tr) * (Kctr_neff1[j] + Kctr_neff2[j]))
-                            tctr2 = self.I[K][n123_j[0]+2,n123_j[1],
-                                              n123_j[2]][ell] \
-                                * (q_tr - q_lo) \
-                                * (self.kernels['d{}_dlnk1'.format(Kctr)] \
-                                   + Kctr_neff1[j] \
-                                   - n123_j[0]*self.kernels[Kctr])
-                            tctr3 = self.I[K][n123_j[0],n123_j[1]+2,
-                                              n123_j[2]][ell] \
-                                * (q_tr - q_lo) \
-                                * (self.kernels['d{}_dlnk2'.format(Kctr)] \
-                                   + Kctr_neff2[j] \
-                                   - n123_j[1]*self.kernels[Kctr])
-                            tctr4 = self.I[K][n123_j[0],n123_j[1],
-                                              n123_j[2]+2][ell] \
-                                * (q_tr - q_lo) \
-                                * (self.kernels['d{}_dlnk3'.format(Kctr)] \
-                                   - n123_j[2]*self.kernels[Kctr])
-
-                            DeltaB_K += coeff[n] * cnloB[i] * split_factor \
-                                        * (tctr1 + tctr2 + tctr3 + tctr4)
+                            add_product(DeltaB_K, K, tuple(n123_j), Kctr,
+                                        Kctr_neff1[j], Kctr_neff2[j],
+                                        Kctr_deriv_sum[j],
+                                        coeff[n]*cnloB[i]*split_factor)
                 # k^4 counterterms
                 if (K == 'k31' and n123 in [(1,0,1),(1,2,1)]) \
                         or (K == 'k32' and n123 in [(0,1,1),(2,1,1)]) \
@@ -2112,36 +2110,15 @@ class Bispectrum:
                     split_factor = 0.5 if n123 in [(1,2,1),(2,1,1)] else 1.0
                     for i in range(2):
                         for j in range(2):
-                            Kctr = 'k1sqk2sq{}'.format(K)
+                            Kctr_k4 = 'k1sqk2sq{}'.format(K)
                             n123_ij = np.copy(n123)
                             n123_ij[0] += 2*(i+1)
                             n123_ij[1] += 2*(j+1)
-                            tctr1 = self.I[K][tuple(n123_ij)][ell] \
-                                * ((1.0 + (q_tr-q_lo)*sum(n123_ij)) \
-                                * self.kernels[Kctr] \
-                                + (1.0-q_tr) * K_k4ctr_deriv_sum \
-                                + (1.0-q_tr) * (K_k4ctr_neff1 + K_k4ctr_neff2))
-                            tctr2 = self.I[K][n123_ij[0]+2,n123_ij[1],
-                                              n123_ij[2]][ell] \
-                                * (q_tr - q_lo) \
-                                * (self.kernels['d{}_dlnk1'.format(Kctr)] \
-                                   + K_k4ctr_neff1 \
-                                   - n123_ij[0]*self.kernels[Kctr])
-                            tctr3 = self.I[K][n123_ij[0],n123_ij[1]+2,
-                                              n123_ij[2]][ell] \
-                                * (q_tr - q_lo) \
-                                * (self.kernels['d{}_dlnk2'.format(Kctr)] \
-                                   + K_k4ctr_neff2 \
-                                   - n123_ij[1]*self.kernels[Kctr])
-                            tctr4 = self.I[K][n123_ij[0],n123_ij[1],
-                                              n123_ij[2]+2][ell] \
-                                * (q_tr - q_lo) \
-                                * (self.kernels['d{}_dlnk3'.format(Kctr)] \
-                                   - n123_ij[2]*self.kernels[Kctr])
+                            add_product(DeltaB_K, K, tuple(n123_ij), Kctr_k4,
+                                        Kctr_k4_neff1, Kctr_k4_neff2,
+                                        Kctr_k4_deriv_sum,
+                                        coeff[n]*cnloB[i]*cnloB[j]*split_factor)
 
-                            DeltaB_K += coeff[n] * cnloB[i] * cnloB[j] \
-                                        * split_factor \
-                                        * (tctr1 + tctr2 + tctr3 + tctr4)
         return DeltaB_K
 
     def join_kernel_mu123_integral_indv(self, K, n123_tuples, ell, neff, coeff,
@@ -2219,64 +2196,51 @@ class Bispectrum:
 
     def join_stoch_kernel_mu123_integral(self, n123_tuples, ell, neff, coeff,
                                          q_tr, q_lo, cnloB_stoch=0):
+        def add_product(var, I, n123, kernel, kernel_neff, kernel_deriv, coeff):
+            for i in range(self.nparams):
+                idI = (Ellipsis,i) if self.RSD_model == 'VDG_infty' \
+                      else Ellipsis
+                t1 = I[n123][ell][idI] \
+                     * ((1.0 + (q_tr[i]-q_lo[i])*sum(n123))*kernel \
+                        + (1.0-q_tr[i])*kernel_neff[...,i] \
+                        + (1.0-q_tr[i])*kernel_deriv)
+                t2 = I[n123[0]+2,n123[1],n123[2]][ell][idI] \
+                     * (q_tr[i] - q_lo[i]) \
+                     * (kernel_deriv + kernel_neff[...,i] - n123[0]*kernel)
+                t3 = - I[n123[0],n123[1]+2,n123[2]][ell][idI] \
+                     * (q_tr[i] - q_lo[i]) * n123[1] * kernel
+                t4 = - I[n123[0],n123[1],n123[2]+2][ell][idI] \
+                     * (q_tr[i] - q_lo[i]) * n123[2] * kernel
+                var[...,i] += coeff[i] * (t1+t2+t3+t4)
+
         if self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr':
             Kctr = 'k1sqb2'
-            Kctr_neff = neff[self.tri_to_id]*self.kernels[Kctr]
+            Kctr_neff = np.einsum("abc,ab->abc", neff[self.tri_to_id],
+                                  self.kernels[Kctr])
 
-        DeltaB_stoch = 0.0
+        DeltaB_stoch = np.zeros(self.kernels['F2'].shape + (self.nparams,))
         for i, n123 in enumerate(n123_tuples):
-            t1 = self.I_stoch[n123][ell] * (1.0 + (q_tr-q_lo)*sum(n123) \
-                                            + (1.0-q_tr)*neff[self.tri_to_id])
-            t2 = self.I_stoch[n123[0]+2,n123[1],n123[2]][ell] * (q_tr - q_lo) \
-                 * (neff[self.tri_to_id] - n123[0])
-            t3 = - self.I_stoch[n123[0],n123[1]+2,n123[2]][ell] \
-                 * (q_tr - q_lo) * n123[1]
-            t4 = - self.I_stoch[n123[0],n123[1],n123[2]+2][ell] \
-                 * (q_tr - q_lo) * n123[2]
-            DeltaB_stoch += coeff[i] * (t1 + t2 + t3 + t4)
-
+            add_product(DeltaB_stoch, self.I_stoch, n123,
+                        1.0, neff[self.tri_to_id], 0.0, coeff[i])
             if self.RSD_model == 'VDG_infty_ctr' \
                     or (self.RSD_model == 'EFT' \
                         and self.cnlo_type == 'EggLeeSco'):
                 n123_ctr = np.copy(n123)
                 n123_ctr[0] += 2
-                n123_ctr_p200 = tuple(n123_ctr+np.array((2,0,0)))
-                n123_ctr_p020 = tuple(n123_ctr+np.array((0,2,0)))
-                n123_ctr_p002 = tuple(n123_ctr+np.array((0,0,2)))
-                n123_ctr = tuple(n123_ctr)
-                t1 = self.I_stoch_ctr[n123_ctr][ell] \
-                     * ((1.0 + (q_tr-q_lo)*sum(n123_ctr))*self.kernels[Kctr] \
-                        + (1.0-q_tr)*Kctr_neff \
-                        + (1.0-q_tr)*self.kernels['d{}_dlnk1'.format(Kctr)])
-                t2 = self.I_stoch_ctr[n123_ctr_p200][ell] * (q_tr - q_lo) \
-                     * (self.kernels['d{}_dlnk1'.format(Kctr)] + Kctr_neff \
-                        - n123_ctr[0]*self.kernels[Kctr])
-                t3 = - self.I_stoch_ctr[n123_ctr_p020][ell] \
-                     * (q_tr - q_lo) * n123_ctr[1]*self.kernels[Kctr]
-                t4 = - self.I_stoch_ctr[n123_ctr_p002][ell] \
-                     * (q_tr - q_lo) * n123_ctr[2]*self.kernels[Kctr]
-                DeltaB_stoch += coeff[i] * cnloB_stoch * (t1 + t2 + t3 + t4)
+                add_product(DeltaB_stoch, self.I_stoch_ctr, tuple(n123_ctr),
+                            self.kernels[Kctr], Kctr_neff,
+                            self.kernels['d{}_dlnk1'.format(Kctr)],
+                            coeff[i] * cnloB_stoch)
             elif self.RSD_model == 'EFT' and self.cnlo_type == 'IvaPhiNis':
                 if n123 == (0,0,0):
                     n123_ctr = np.copy(n123)
                     for n in range(2):
                         n123_ctr[0] += 2
-                        n123_ctr_p200 = tuple(n123_ctr+np.array((2,0,0)))
-                        n123_ctr_p020 = tuple(n123_ctr+np.array((0,2,0)))
-                        n123_ctr_p002 = tuple(n123_ctr+np.array((0,0,2)))
-                        t1 = self.I_stoch_ctr[tuple(n123_ctr)][ell] \
-                            * ((1.0 + (q_tr-q_lo)*sum(n123_ctr)) \
-                            * self.kernels[Kctr] + (1.0-q_tr)*Kctr_neff \
-                            + (1.0-q_tr)*self.kernels['d{}_dlnk1'.format(Kctr)])
-                        t2 = self.I_stoch_ctr[n123_ctr_p200][ell]*(q_tr-q_lo) \
-                            * (self.kernels['d{}_dlnk1'.format(Kctr)] \
-                               + Kctr_neff - n123_ctr[0]*self.kernels[Kctr])
-                        t3 = - self.I_stoch_ctr[n123_ctr_p020][ell] \
-                             * (q_tr - q_lo) * n123_ctr[1]*self.kernels[Kctr]
-                        t4 = - self.I_stoch_ctr[n123_ctr_p002][ell] \
-                             * (q_tr - q_lo) * n123_ctr[2]*self.kernels[Kctr]
-                        DeltaB_stoch += coeff[i] * cnloB_stoch[n] \
-                                        * (t1 + t2 + t3 + t4)
+                        add_product(DeltaB_stoch, self.I_stoch_ctr,
+                                    tuple(n123_ctr), self.kernels[Kctr],
+                                    Kctr_neff,
+                                    self.kernels['d{}_dlnk1'.format(Kctr)],
+                                    coeff[i] * cnloB_stoch[n])
 
         return DeltaB_stoch
 
@@ -2299,17 +2263,41 @@ class Bispectrum:
 
     def join_kernel_mu123_shell_average(self, K, n123_tuples, ell, neff, coeff,
                                         q_tr, q_lo, cnloB=None):
-        DeltaB_K = 0.0
+        def add_product(var, n123, KK, neff1, neff2, kernel_deriv_sum, coeff):
+            n123p200 = tuple(np.array(n123)+np.array((2,0,0)))
+            n123p020 = tuple(np.array(n123)+np.array((0,2,0)))
+            n123p002 = tuple(np.array(n123)+np.array((0,0,2)))
+            KK1 = 'd{}_dlnk1'.format(KK)
+            KK2 = 'd{}_dlnk2'.format(KK)
+            KK3 = 'd{}_dlnk3'.format(KK)
+            for i in range(self.nparams):
+                t1 = (1.0 + (q_tr[i] - q_lo[i])*sum(n123)) \
+                     * self.kernels_shell_average[KK][n123][ell][...,i] \
+                     + (1.0 - q_tr[i]) * kernel_deriv_sum[...,i] \
+                     + (1.0 - q_tr[i]) * (neff1[...,i] + neff2[...,i]) \
+                     * self.kernels_shell_average[KK][n123][ell][...,i]
+                t2 = (q_tr[i] - q_lo[i]) \
+                     * (self.kernels_shell_average[KK1][n123p200][ell][...,i] \
+                        + (neff1[...,i]-n123[0]) \
+                        * self.kernels_shell_average[KK][n123p200][ell][...,i])
+                t3 = (q_tr[i] - q_lo[i]) \
+                     * (self.kernels_shell_average[KK2][n123p020][ell][...,i] \
+                        + (neff2[...,i]-n123[1]) \
+                        * self.kernels_shell_average[KK][n123p020][ell][...,i])
+                t4 = (q_tr[i] - q_lo[i]) \
+                     * (self.kernels_shell_average[KK3][n123p002][ell][...,i] \
+                        - self.kernels_shell_average[KK][n123p002][ell][...,i] \
+                        * n123[2])
+                var[...,i] += coeff[i] * (t1+t2+t3+t4)
+
+        DeltaB_K = np.zeros_like(self.kernels_shell_average['F2'][0,0,0][0])
         for i, n123 in enumerate(n123_tuples):
             neff1 = neff[self.tri_eff_to_id]
             neff2 = neff[self.tri_eff_to_id[:,[1,2,0]]]
-            K_deriv_sum = np.sum(
-                [self.kernels_shell_average['d{}_dlnk{}'.format(K,j)][n123][ell]
-                 for j in range(1,4)])
-
             if self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr':
                 if self.cnlo_type == 'EggLeeSco':
-                    Kctr_deriv_sum = np.zeros((3,self.tri.shape[0],3))
+                    Kctr_deriv_sum = np.zeros(
+                        (3,self.tri.shape[0],3,self.nparams))
                     for j in range(3):
                         Kctr = 'k{}sq{}'.format(j+1,K)
                         n123_j = np.copy(n123)
@@ -2320,7 +2308,8 @@ class Bispectrum:
                                     'd{}_dlnk{}'.format(
                                         Kctr,k+1)][tuple(n123_j)][ell]
                 elif self.cnlo_type == 'IvaPhiNis':
-                    Kctr_deriv_sum = np.zeros((4,self.tri.shape[0],3))
+                    Kctr_deriv_sum = np.zeros(
+                        (4,self.tri.shape[0],3,self.nparams))
                     for j in range(2):
                         if (K not in ['k31','k32'] and n123[j] < 2) \
                                 or (K in ['k31','k32'] and n123[j] < 3):
@@ -2337,7 +2326,8 @@ class Bispectrum:
                             or (K == 'k32' and n123 in [(0,1,1),(2,1,1)]) \
                             or (K in ['F2','b2','K'] and n123 == (0,0,0)) \
                             or (K == 'G2' and n123 == (0,0,2)):
-                        K_k4ctr_deriv_sum = np.zeros((4,self.tri.shape[0],3))
+                        Kctr_k4_deriv_sum = np.zeros(
+                            (4,self.tri.shape[0],3,self.nparams))
                         Kctr = 'k1sqk2sq{}'.format(K)
                         for j in range(2):
                             for n in range(2):
@@ -2345,71 +2335,26 @@ class Bispectrum:
                                 n123_jn[0] += 2*(j+1)
                                 n123_jn[1] += 2*(n+1)
                                 for k in range(3):
-                                    K_k4ctr_deriv_sum[2*j+n] += \
+                                    Kctr_k4_deriv_sum[2*j+n] += \
                                         self.kernels_shell_average[
                                             'd{}_dlnk{}'.format(
                                                 Kctr,k+1)][tuple(n123_jn)][ell]
 
-            n123p200 = tuple(np.array(n123)+np.array((2,0,0)))
-            n123p020 = tuple(np.array(n123)+np.array((0,2,0)))
-            n123p002 = tuple(np.array(n123)+np.array((0,0,2)))
+            add_product(DeltaB_K, n123, K, neff1, neff2,
+                        np.zeros(self.nparams), coeff[i])
 
-            kk1 = 'd{}_dlnk1'.format(K)
-            kk2 = 'd{}_dlnk2'.format(K)
-            kk3 = 'd{}_dlnk3'.format(K)
-
-            t1 = (1.0 + (q_tr - q_lo)*sum(n123)) \
-                 * self.kernels_shell_average[K][n123][ell] \
-                 + (1.0 - q_tr) * K_deriv_sum \
-                 + (1.0 - q_tr) * (neff1 + neff2) \
-                 * self.kernels_shell_average[K][n123][ell]
-            t2 = (q_tr - q_lo) \
-                 * (self.kernels_shell_average[kk1][n123p200][ell] \
-                 + (neff1-n123[0])*self.kernels_shell_average[K][n123p200][ell])
-            t3 = (q_tr - q_lo) \
-                 * (self.kernels_shell_average[kk2][n123p020][ell] \
-                 + (neff2-n123[1])*self.kernels_shell_average[K][n123p020][ell])
-            t4 = (q_tr - q_lo) \
-                 * (self.kernels_shell_average[kk3][n123p002][ell] \
-                 - n123[2]*self.kernels_shell_average[K][n123p002][ell])
-            DeltaB_K += coeff[i] * (t1 + t2 + t3 + t4)
-
-            # add bispectrum counterterm here!
+            # add bispectrum counterterms
             if (self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr') \
                     and self.cnlo_type == 'EggLeeSco':
                 for j in range(3):
                     Kctr = 'k{}sq{}'.format(j+1,K)
                     n123_j = np.copy(n123)
                     n123_j[j] += 2
-
-                    n123_j_p200 = tuple(n123_j+np.array((2,0,0)))
-                    n123_j_p020 = tuple(n123_j+np.array((0,2,0)))
-                    n123_j_p002 = tuple(n123_j+np.array((0,0,2)))
-
-                    tctr1 = (1.0 + (q_tr - q_lo)*sum(n123_j)
-                             + (1.0 - q_tr) * (neff1 + neff2)) \
-                        * self.kernels_shell_average[Kctr][tuple(n123_j)][ell] \
-                        + (1.0 - q_tr) * Kctr_deriv_sum[j]
-                    tctr2 = (q_tr - q_lo) \
-                        * (self.kernels_shell_average[
-                            'd{}_dlnk1'.format(Kctr)][n123_j_p200][ell] \
-                           + (neff1 - n123_j[0]) \
-                           * self.kernels_shell_average[Kctr][n123_j_p200][ell])
-                    tctr3 = (q_tr - q_lo) \
-                        * (self.kernels_shell_average[
-                            'd{}_dlnk2'.format(Kctr)][n123_j_p020][ell] \
-                           + (neff2 - n123_j[1]) \
-                           * self.kernels_shell_average[Kctr][n123_j_p020][ell])
-                    tctr4 = (q_tr - q_lo) \
-                        * (self.kernels_shell_average[
-                            'd{}_dlnk3'.format(Kctr)][n123_j_p002][ell] \
-                           - n123_j[2] \
-                           * self.kernels_shell_average[Kctr][n123_j_p002][ell])
-
-                    DeltaB_K += coeff[i] * cnloB * (tctr1 + tctr2 + tctr3 \
-                                                    + tctr4)
+                    add_product(DeltaB_K, tuple(n123_j), Kctr, neff1, neff2,
+                                Kctr_deriv_sum[j], coeff[i]*cnloB)
             elif (self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr')\
                     and self.cnlo_type == 'IvaPhiNis':
+                # k^2 counterterms
                 for j in range(2):
                     if (K not in ['k31','k32'] and n123[j] < 2) \
                             or (K in ['k31','k32'] and n123[j] < 3):
@@ -2418,38 +2363,9 @@ class Bispectrum:
                         for n in range(2):
                             n123_j[j] += 2
                             split_factor = 0.5 if n123[j] >= 2 else 1.0
-
-                            t_n123_j = tuple(n123_j)
-                            n123_j_p200 = tuple(n123_j+np.array((2,0,0)))
-                            n123_j_p020 = tuple(n123_j+np.array((0,2,0)))
-                            n123_j_p002 = tuple(n123_j+np.array((0,0,2)))
-
-                            tctr1 = (1.0 + (q_tr - q_lo)*sum(n123_j)
-                                     + (1.0 - q_tr) * (neff1 + neff2)) \
-                                * self.kernels_shell_average[Kctr] \
-                                  [tuple(n123_j)][ell] \
-                                + (1.0 - q_tr) * Kctr_deriv_sum[2*j+n]
-                            tctr2 = (q_tr - q_lo) \
-                                * (self.kernels_shell_average[
-                                   'd{}_dlnk1'.format(Kctr)][n123_j_p200][ell] \
-                                   + (neff1 - n123_j[0]) \
-                                   * self.kernels_shell_average[Kctr] \
-                                     [n123_j_p200][ell])
-                            tctr3 = (q_tr - q_lo) \
-                                * (self.kernels_shell_average[
-                                   'd{}_dlnk2'.format(Kctr)][n123_j_p020][ell] \
-                                   + (neff2 - n123_j[1]) \
-                                   * self.kernels_shell_average[Kctr] \
-                                     [n123_j_p020][ell])
-                            tctr4 = (q_tr - q_lo) \
-                                * (self.kernels_shell_average[
-                                   'd{}_dlnk3'.format(Kctr)][n123_j_p002][ell] \
-                                   - n123_j[2] \
-                                   * self.kernels_shell_average[Kctr] \
-                                     [n123_j_p002][ell])
-
-                            DeltaB_K += coeff[i] * cnloB[n] * split_factor \
-                                        * (tctr1 + tctr2 + tctr3 + tctr4)
+                            add_product(DeltaB_K, tuple(n123_j), Kctr,
+                                        neff1, neff2, Kctr_deriv_sum[2*j+n],
+                                        coeff[i]*cnloB[n]*split_factor)
                 # k^4 counterterms
                 if (K == 'k31' and n123 in [(1,0,1),(1,2,1)]) \
                         or (K == 'k32' and n123 in [(0,1,1),(2,1,1)]) \
@@ -2462,122 +2378,61 @@ class Bispectrum:
                             n123_jn = np.copy(n123)
                             n123_jn[0] += 2*(j+1)
                             n123_jn[1] += 2*(n+1)
-
-                            t_n123_jn = tuple(n123_jn)
-                            n123_jn_p200 = tuple(n123_jn+np.array((2,0,0)))
-                            n123_jn_p020 = tuple(n123_jn+np.array((0,2,0)))
-                            n123_jn_p002 = tuple(n123_jn+np.array((0,0,2)))
-
-                            tctr1 = (1.0 + (q_tr - q_lo)*sum(n123_jn)
-                                     + (1.0 - q_tr) * (neff1 + neff2)) \
-                                * self.kernels_shell_average[Kctr] \
-                                  [tuple(n123_jn)][ell] \
-                                + (1.0 - q_tr) * K_k4ctr_deriv_sum[2*j+n]
-                            tctr2 = (q_tr - q_lo) \
-                                * (self.kernels_shell_average[
-                                   'd{}_dlnk1'.format(Kctr)][n123_jn_p200][ell]\
-                                   + (neff1 - n123_jn[0]) \
-                                   * self.kernels_shell_average[Kctr] \
-                                     [n123_jn_p200][ell])
-                            tctr3 = (q_tr - q_lo) \
-                                * (self.kernels_shell_average[
-                                   'd{}_dlnk2'.format(Kctr)][n123_jn_p020][ell]\
-                                   + (neff2 - n123_jn[1]) \
-                                   * self.kernels_shell_average[Kctr] \
-                                     [n123_jn_p020][ell])
-                            tctr4 = (q_tr - q_lo) \
-                                * (self.kernels_shell_average[
-                                   'd{}_dlnk3'.format(Kctr)][n123_jn_p002][ell]\
-                                   - n123_jn[2] \
-                                   * self.kernels_shell_average[Kctr] \
-                                     [n123_jn_p002][ell])
-
-                            DeltaB_K += coeff[i] * cnloB[j] * cnloB[n] \
-                                        * split_factor \
-                                        * (tctr1 + tctr2 + tctr3 + tctr4)
+                            add_product(DeltaB_K, tuple(n123_jn), Kctr,
+                                        neff1, neff2, Kctr_k4_deriv_sum[2*j+n],
+                                        coeff[i]*cnloB[j]*cnloB[n]*split_factor)
 
         return DeltaB_K
 
     def join_stoch_kernel_mu123_shell_average(self, n123_tuples, ell, neff,
                                               coeff, q_tr, q_lo, cnloB_stoch=0):
-        DeltaB_stoch = 0.0
-        for i, n123 in enumerate(n123_tuples):
+        def add_product(var, n123, IK, coeff, IK_deriv=None):
             n123p200 = tuple(np.array(n123)+np.array((2,0,0)))
             n123p020 = tuple(np.array(n123)+np.array((0,2,0)))
             n123p002 = tuple(np.array(n123)+np.array((0,0,2)))
-            t1 = self.stoch_kernels_shell_average['id'][n123][ell] \
-                 * (1.0 + (q_tr-q_lo)*sum(n123) + (1.0-q_tr) \
-                    *neff[self.tri_eff_to_id])
-            t2 = self.stoch_kernels_shell_average['id'][n123p200][ell] \
-                 * (q_tr - q_lo) * (neff[self.tri_eff_to_id] - n123[0])
-            t3 = - self.stoch_kernels_shell_average['id'][n123p020][ell] \
-                 * (q_tr - q_lo) * n123[1]
-            t4 = - self.stoch_kernels_shell_average['id'][n123p002][ell] \
-                 * (q_tr - q_lo) * n123[2]
-            DeltaB_stoch += coeff[i] * (t1 + t2 + t3 + t4)
+            for i in range(self.nparams):
+                t1 = self.stoch_kernels_shell_average[IK][n123][ell][...,i] \
+                     * (1.0 + (q_tr[i]-q_lo[i])*sum(n123) + (1.0-q_tr[i]) \
+                        * neff[self.tri_eff_to_id][...,i])
+                t2 = self.stoch_kernels_shell_average[IK][n123p200][ell][...,i]\
+                     * (q_tr[i] - q_lo[i]) \
+                     * (neff[self.tri_eff_to_id][...,i] - n123[0])
+                t3 = - self.stoch_kernels_shell_average[IK][n123p020] \
+                       [ell][...,i] * (q_tr[i] - q_lo[i]) * n123[1]
+                t4 = - self.stoch_kernels_shell_average[IK][n123p002] \
+                       [ell][...,i] * (q_tr[i] - q_lo[i]) * n123[2]
+                if IK_deriv is not None:
+                    t1 += self.stoch_kernels_shell_average[IK_deriv][n123] \
+                          [ell][...,i] * (1.0-q_tr[i])
+                    t2 += self.stoch_kernels_shell_average[IK_deriv][n123p200] \
+                          [ell][...,i] * (q_tr[i]-q_lo[i])
+                var[...,i] += coeff[i] * (t1+t2+t3+t4)
 
+        DeltaB_stoch = np.zeros_like(
+            self.stoch_kernels_shell_average['id'][0,0,0][0])
+        for i, n123 in enumerate(n123_tuples):
+            add_product(DeltaB_stoch, n123, 'id', coeff[i])
             if self.RSD_model == 'VDG_infty_ctr' \
                     or (self.RSD_model == 'EFT' \
                         and self.cnlo_type == 'EggLeeSco'):
                 n123_ctr = np.copy(n123)
                 n123_ctr[0] += 2
-                n123_ctr_p200 = tuple(n123_ctr+np.array((2,0,0)))
-                n123_ctr_p020 = tuple(n123_ctr+np.array((0,2,0)))
-                n123_ctr_p002 = tuple(n123_ctr+np.array((0,0,2)))
-                n123_ctr = tuple(n123_ctr)
-                t1 = self.stoch_kernels_shell_average['ksq'][n123_ctr][ell] \
-                     * (1.0 + (q_tr-q_lo)*sum(n123_ctr) + (1.0-q_tr) \
-                        *neff[self.tri_eff_to_id]) + (1.0-q_tr) \
-                     * self.stoch_kernels_shell_average['dksq_dlnk'] \
-                                                       [n123_ctr][ell]
-                t2 = self.stoch_kernels_shell_average['ksq'] \
-                                                     [n123_ctr_p200][ell] \
-                     * (q_tr - q_lo) * (neff[self.tri_eff_to_id] - n123_ctr[0])\
-                     + (q_tr - q_lo) \
-                     * self.stoch_kernels_shell_average['dksq_dlnk'] \
-                                                       [n123_ctr_p200][ell]
-                t3 = - self.stoch_kernels_shell_average['ksq'] \
-                                                       [n123_ctr_p020][ell] \
-                     * (q_tr - q_lo) * n123_ctr[1]
-                t4 = - self.stoch_kernels_shell_average['ksq'] \
-                                                       [n123_ctr_p002][ell] \
-                     * (q_tr - q_lo) * n123_ctr[2]
-                DeltaB_stoch += coeff[i] * cnloB_stoch * (t1 + t2 + t3 + t4)
+                add_product(DeltaB_stoch, tuple(n123_ctr), 'ksq',
+                            coeff[i]*cnloB_stoch, 'dksq_dlnk')
             elif self.RSD_model == 'EFT' and self.cnlo_type == 'IvaPhiNis':
                 if n123 == (0,0,0):
                     n123_ctr = np.copy(n123)
                     for n in range(2):
                         n123_ctr[0] += 2
-                        n123_ctr_p200 = tuple(n123_ctr+np.array((2,0,0)))
-                        n123_ctr_p020 = tuple(n123_ctr+np.array((0,2,0)))
-                        n123_ctr_p002 = tuple(n123_ctr+np.array((0,0,2)))
-                        t1 = self.stoch_kernels_shell_average['ksq'] \
-                                 [tuple(n123_ctr)][ell] \
-                             * (1.0 + (q_tr-q_lo)*sum(n123_ctr) + (1.0-q_tr) \
-                                * neff[self.tri_eff_to_id]) + (1.0-q_tr) \
-                             * self.stoch_kernels_shell_average['dksq_dlnk'] \
-                                 [tuple(n123_ctr)][ell]
-                        t2 = self.stoch_kernels_shell_average['ksq'] \
-                                 [n123_ctr_p200][ell] \
-                             * (q_tr - q_lo) * (neff[self.tri_eff_to_id] \
-                                                - n123_ctr[0]) \
-                             + (q_tr - q_lo) \
-                             * self.stoch_kernels_shell_average['dksq_dlnk'] \
-                                 [n123_ctr_p200][ell]
-                        t3 = - self.stoch_kernels_shell_average['ksq'] \
-                                 [n123_ctr_p020][ell] \
-                             * (q_tr - q_lo) * n123_ctr[1]
-                        t4 = - self.stoch_kernels_shell_average['ksq'] \
-                                 [n123_ctr_p002][ell] \
-                             * (q_tr - q_lo) * n123_ctr[2]
-                        DeltaB_stoch += coeff[i] * cnloB_stoch[n] \
-                                        * (t1 + t2 + t3 + t4)
+                        add_product(DeltaB_stoch, tuple(n123_ctr), 'ksq',
+                                    coeff[i]*cnloB_stoch[n], 'dksq_dlnk')
 
         return DeltaB_stoch
 
     def Bell(self, PL_dw, neff, params, ell=[0], W_damping=None):
         kernel = {}
         kernel_stoch = {}
+        self.nparams = len(np.atleast_1d(params['wc']))
         if self.real_space:
             b1sq = params['b1']**2
             params_kernels = {}
@@ -2586,18 +2441,27 @@ class Bispectrum:
             params_kernels['K'] = 2*params['g2']*b1sq
             params_stoch = params['MB0']*b1sq/self.nbar
             if self.discrete_average:
-                kernel[0] = np.zeros_like(
-                    self.kernels_shell_average['F2'][0,0,0][0])
+                kernel[0] = np.zeros(
+                    self.kernels_shell_average['F2'][0,0,0][0].shape)
                 for KK in self.kernel_names:
-                    kernel[0] += params_kernels[KK] \
-                                 * self.kernels_shell_average[KK][0,0,0][0]
-                kernel_stoch[0] = params_stoch \
-                    * self.stoch_kernels_shell_average['id'][0,0,0][0]
+                    kernel[0] += np.einsum(
+                        "abc,c->abc",
+                        self.kernels_shell_average[KK][0,0,0][0],
+                        params_kernels[KK]
+                    )
+                kernel_stoch[0] = np.einsum(
+                    "abc,c->abc",
+                    self.stoch_kernels_shell_average['id'][0,0,0][0],
+                    params_stoch
+                )
             else:
-                kernel[0] = np.zeros_like(self.kernels['F2'])
+                kernel[0] = np.zeros(self.kernels['F2'].shape + (self.nparams,))
                 for KK in self.kernel_names:
-                    kernel[0] += params_kernels[KK]*self.kernels[KK]
-                kernel_stoch[0] = params_stoch
+                    kernel[0] += np.einsum("ab,c->abc", self.kernels[KK],
+                                           params_kernels[KK])
+                kernel_stoch[0] = np.full(
+                    self.kernels['F2'].shape + (self.nparams,),
+                    params_stoch)
         else:
             b1sq = params['b1']**2
             b1f = params['b1']*params['f']
@@ -2648,7 +2512,8 @@ class Bispectrum:
                             params['q_tr'], params['q_lo'], cnloB_stoch
                         )
                 else:
-                    kernel[l] = np.zeros(self.kernels['F2'].shape)
+                    kernel[l] = np.zeros(
+                        self.kernels['F2'].shape + (self.nparams,))
                     for KK in ['F2','b2','K','G2','k31','k32']:
                         kernel[l] += self.join_kernel_mu123_integral(
                             KK, self.kernel_mu_tuples[KK], l, neff,
@@ -2669,10 +2534,8 @@ class Bispectrum:
                 kernel_stoch[2] = 2.5 * (3*kernel_stoch[2] - kernel_stoch[0])
 
         if self.discrete_average:
-            P2 = PL_dw[self.ki_eff]*PL_dw[self.kj_eff] \
-                 / (self.fiducial_Pdw_eff[self.ki_eff] \
-                    * self.fiducial_Pdw_eff[self.kj_eff])
             P = PL_dw/self.fiducial_Pdw_eff
+            P2 = P[self.ki_eff] * P[self.kj_eff]
             tri_to_id = self.tri_eff_to_id
             tri_to_id_sq = self.tri_eff_to_id_sq
         elif self.use_effective_triangles:
@@ -2690,18 +2553,14 @@ class Bispectrum:
         Bell_dict = {}
         for l in ell:
             ids = self.tri_id_ell[l]
-            B_SPT = np.einsum("ij,ij->i", kernel[l][ids],
+            B_SPT = np.einsum("ij...,ij...->i...", kernel[l][ids],
                               P2[tri_to_id_sq][ids])
-            if self.real_space and not self.discrete_average:
-                B_stoch = kernel_stoch[l]*np.sum(P[self.tri_to_id][ids],
-                                                 axis=1)
-            else:
-                B_stoch = np.einsum("ij,ij->i", kernel_stoch[l][ids],
-                                    P[tri_to_id][ids])
+            B_stoch = np.einsum("ij...,ij...->i...", kernel_stoch[l][ids],
+                                P[tri_to_id][ids])
             if l == 0:
                 B_stoch += params['NB0']/self.nbar**2
 
-            Bell_dict['ell{}'.format(l)] = (B_SPT + B_stoch) / q6
+            Bell_dict['ell{}'.format(l)] = np.squeeze((B_SPT + B_stoch) / q6)
 
         return Bell_dict
 
@@ -2852,5 +2711,4 @@ class Bispectrum:
                                 where=mask)
 
         cov *= (2*l1+1) * (2*l2+1) * volume / Ntri
-
         return cov
