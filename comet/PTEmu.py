@@ -1352,7 +1352,7 @@ class PTEmu:
         PL = np.squeeze(self.PL_spline.eval(np.atleast_1d(k)))
         return PL
 
-    def sigmaR(self, R, params, use_Mpc, de_model):
+    def sigmaR(self, R, params, de_model):
         r"""Compute the rms density fluctuations within a given radius.
 
         Parameters
@@ -1364,9 +1364,6 @@ class PTEmu:
             internally used by the emulator. The keyword/value pairs of the
             dictionary specify the names and the values of the parameters,
             respectively.
-        use_Mpc: bool
-            Flag to decided whether to use Mpc or Mpc/h units to compute the
-            rms density fluctuations.
         de_model: str
             String that determines the dark energy equation of state. Can be
             chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`].
@@ -1376,9 +1373,9 @@ class PTEmu:
         sigmaR: float or numpy.ndarray
             Rms density fluctuations at a scale :math:`R`.
         """
-        PL_spline = Splines(use_Mpc=use_Mpc, ncol=0)
+        PL_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
         self._eval_emulator(params, ell=[], de_model=de_model)
-        h = None if use_Mpc else params['h']
+        h = None if self.use_Mpc else params['h']
         PL_spline.build(self.k_table, self.Pk_lin, h=h)
         def W(x):
             return 3.0 * (np.sin(x) - x*np.cos(x)) / x**3
