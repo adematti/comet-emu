@@ -2540,7 +2540,7 @@ class PTEmu:
 
     def Bell(self, tri, params, ell, de_model=None, kfun=None, binning=None,
              q_tr_lo=None, W_damping=None, ell_for_recon=None, gl_deg=8,
-             cnloB_mapping=lambda x: [0.5]):
+             cnloB_mapping=None):
         ell = [ell] if not isinstance(ell, list) else ell
         if tri.ndim == 1:
             tri = tri[None,:]
@@ -2611,10 +2611,12 @@ class PTEmu:
             ).T
 
         if binning and self.RSD_model == 'VDG_infty':
-            coeff = cnloB_mapping([self.params['avirB'],self.params['sv']])
-            self.params['cnloB'] = \
-                - (coeff[0]*self.params['avirB']**self.Bisp.pow_ctr \
-                   + 0.5*self.params['sv']**self.Bisp.pow_ctr)
+            if cnloB_mapping is not None:
+                coeff = cnloB_mapping([self.params['avirB'],
+                                       self.params['sv'].squeeze()])
+                self.params['cnloB'] = \
+                    - (coeff[0]*self.params['avirB']**self.Bisp.pow_ctr \
+                       + 0.5*self.params['sv']**self.Bisp.pow_ctr)
 
         self.update_AP_params(params, de_model=de_model,
                               q_tr_lo=q_tr_lo)
@@ -3415,7 +3417,7 @@ class PTEmu:
                          binning=None, convolve_window=False, q_tr_lo=None,
                          W_damping=None, chi2_decomposition=False,
                          compute_chi2_decomposition=True, ell_for_recon=None,
-                         cnloB_mapping=lambda x: [0.5]):
+                         cnloB_mapping=None):
         ell_joint = np.unique(np.hstack([ell[oi] for oi in obs_id])).tolist()
         bins_kmax = [
             np.unique(
@@ -3502,10 +3504,12 @@ class PTEmu:
                     ).T
                 ).T
             if binning and self.RSD_model == 'VDG_infty':
-                coeff = cnloB_mapping([self.params['avirB'],self.params['sv']])
-                self.params['cnloB'] = \
-                    - (coeff[0]*self.params['avirB']**self.Bisp.pow_ctr \
-                       + 0.5*self.params['sv']**self.Bisp.pow_ctr)
+                if cnloB_mapping is not None:
+                    coeff = cnloB_mapping([self.params['avirB'],
+                                           self.params['sv'].squeeze()])
+                    self.params['cnloB'] = \
+                        - (coeff[0]*self.params['avirB']**self.Bisp.pow_ctr \
+                           + 0.5*self.params['sv']**self.Bisp.pow_ctr)
 
             self.update_AP_params(params, de_model=de_model,
                                   q_tr_lo=q_tr_lo)
@@ -3607,7 +3611,7 @@ class PTEmu:
     def chi2(self, obs_id, params, kmax, de_model=None, binning=None,
              convolve_window=False, q_tr_lo=None, W_damping=None,
              chi2_decomposition=False, AM_priors=None, ell_for_recon=None,
-             cnloB_mapping=lambda x: [0.5]):
+             cnloB_mapping=None):
         r"""Compute the :math:`\chi^2 for the given configurations`.
 
         Generates the selected power spectrum multipoles for the specified set

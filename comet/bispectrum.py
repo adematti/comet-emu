@@ -2262,7 +2262,7 @@ class Bispectrum:
 
     def join_kernel_mu123_shell_average(self, K, n123_tuples, ell, neff, coeff,
                                         q_tr, q_lo, cnloB=None):
-        def add_product(var, n123, KK, neff1, neff2, kernel_deirv_sum, coeff):
+        def add_product(var, n123, KK, neff1, neff2, kernel_deriv_sum, coeff):
             n123p200 = tuple(np.array(n123)+np.array((2,0,0)))
             n123p020 = tuple(np.array(n123)+np.array((0,2,0)))
             n123p002 = tuple(np.array(n123)+np.array((0,0,2)))
@@ -2340,7 +2340,7 @@ class Bispectrum:
                                                 Kctr,k+1)][tuple(n123_jn)][ell]
 
             add_product(DeltaB_K, n123, K, neff1, neff2,
-                        np.zeros_like(self.nparams), coeff[i])
+                        np.zeros(self.nparams), coeff[i])
 
             # add bispectrum counterterms
             if (self.RSD_model == 'EFT' or self.RSD_model == 'VDG_infty_ctr') \
