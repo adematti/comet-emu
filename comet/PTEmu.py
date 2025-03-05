@@ -2612,10 +2612,10 @@ class PTEmu:
 
         if binning and self.RSD_model == 'VDG_infty':
             if cnloB_mapping is not None:
-                coeff = cnloB_mapping([self.params['avirB'],
-                                       self.params['sv'].squeeze()])
+                coeff = cnloB_mapping(np.stack(
+                    (self.params['avirB'],self.params['sv']),-1))
                 self.params['cnloB'] = \
-                    - (coeff[0]*self.params['avirB']**self.Bisp.pow_ctr \
+                    - (coeff*self.params['avirB']**self.Bisp.pow_ctr \
                        + 0.5*self.params['sv']**self.Bisp.pow_ctr)
 
         self.update_AP_params(params, de_model=de_model,
@@ -3505,10 +3505,10 @@ class PTEmu:
                 ).T
             if binning and self.RSD_model == 'VDG_infty':
                 if cnloB_mapping is not None:
-                    coeff = cnloB_mapping([self.params['avirB'],
-                                           self.params['sv'].squeeze()])
+                    coeff = cnloB_mapping(np.stack(
+                        (self.params['avirB'],self.params['sv']),-1))
                     self.params['cnloB'] = \
-                        - (coeff[0]*self.params['avirB']**self.Bisp.pow_ctr \
+                        - (coeff*self.params['avirB']**self.Bisp.pow_ctr \
                            + 0.5*self.params['sv']**self.Bisp.pow_ctr)
 
             self.update_AP_params(params, de_model=de_model,
