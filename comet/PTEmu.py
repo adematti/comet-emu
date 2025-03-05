@@ -2858,10 +2858,10 @@ class PTEmu:
 
         if binning and 'VDG_infty' in self.model:
             if cnloB_mapping is not None:
-                coeff = cnloB_mapping([self.params['avirB'],
-                                       self.params['sv'].squeeze()])
+                coeff = cnloB_mapping(np.stack(
+                    (self.params['avirB'],self.params['sv']),-1))
                 self.params['cnloB'] = \
-                    - (coeff[0]*self.params['avirB']**self.Bisp.pow_ctr \
+                    - (coeff*self.params['avirB']**self.Bisp.pow_ctr \
                        + 0.5*self.params['sv']**self.Bisp.pow_ctr)
 
         self._update_AP_params(params, de_model=de_model,
@@ -3675,6 +3675,9 @@ class PTEmu:
         kfun = np.amin([self.data[oi].kfun for oi in obs_id])
         n_obs = len(obs_id)
 
+        # for now we will disable chi2_decomposition...
+        chi2_decomposition = False
+
         chi2 = 0.0
         if not chi2_decomposition:
             tri_has_changed, binning_has_changed = \
@@ -3751,10 +3754,10 @@ class PTEmu:
                 ).T
             if binning and self.RSD_model == 'VDG_infty':
                 if cnloB_mapping is not None:
-                    coeff = cnloB_mapping([self.params['avirB'],
-                                           self.params['sv'].squeeze()])
+                    coeff = cnloB_mapping(np.stack(
+                        (self.params['avirB'],self.params['sv']),-1))
                     self.params['cnloB'] = \
-                        - (coeff[0]*self.params['avirB']**self.Bisp.pow_ctr \
+                        - (coeff*self.params['avirB']**self.Bisp.pow_ctr \
                            + 0.5*self.params['sv']**self.Bisp.pow_ctr)
 
             self.update_AP_params(params, de_model=de_model,
