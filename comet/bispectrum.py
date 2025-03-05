@@ -469,6 +469,7 @@ class Bispectrum:
                 self.compute_kernels(self.tri)
                 if not self.real_space:
                     if self.RSD_model == 'VDG_infty':
+                        self.compute_mu123_integrals(self.tri)
                         self.Gauss_Legendre_mu123_integrals(self.tri, gl_deg)
                     else:
                         self.compute_mu123_integrals(self.tri)
