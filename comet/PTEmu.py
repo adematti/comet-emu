@@ -546,7 +546,8 @@ class PTEmu:
         else:
             # Compute omnuh2
             wnu = (params_fid['Mnu'] / self.neutrino_mass_fac
-                   if 'Mnu' in params_fid.keys() else np.array([0.0]))
+                   if 'Mnu' in params_fid.keys()
+                   else np.zeros_like(params_fid['wc']))
             # Compute fractional matter content, and set the other parameters
             Om0 = np.atleast_1d(
                 (params_fid['wc'] + params_fid['wb'] + wnu) /
