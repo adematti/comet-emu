@@ -71,12 +71,17 @@ class PTEmu:
         Type of parametrisation for the galaxy bias expansion. Must be
         specified from the following list:
         ['EggScoSmi', 'AssBauGre', AmiGleKok]. Defaults to 'EggScoSmi'.
+    counterterm_basis: str, optional
+        Identifier for the counterterm basis convention, possible choices
+        are "Comet" (default) and "ClassPT".
     """
 
-    def __init__(self, model, use_Mpc=True, bias_basis='EggScoSmi'):
+    def __init__(self, model, use_Mpc=True, bias_basis='EggScoSmi',
+                 counterterm_basis='Comet'):
 
         self.model = model
         self.bias_basis = bias_basis
+        self.counterterm_basis = counterterm_basis
 
         if self.bias_basis == 'EggScoSmi':
             self.bias_params_list = ['b1', 'b2', 'g2', 'g21', 'c0', 'c2', 'c4',
@@ -153,13 +158,14 @@ class PTEmu:
                                       'B0L_b1b1g2cnloB', 'B0L_b1g2cnloB',
                                       'B0L_g2cnloB', 'B0L_id', 'B0L_cnloB',
                                       'Bnoise_MB0b1b1', 'Bnoise_MB0b1',
-                                      'Bnoise_NB0']
+                                      'Bnoise_NP0','Bnoise_NB0']
         else:
             self.Bisp_diagrams_all = ['B0L_b1b1b1', 'B0L_b1b1', 'B0L_b1',
                                       'B0L_b1b1b2', 'B0L_b1b2', 'B0L_b2',
                                       'B0L_b1b1g2', 'B0L_b1g2', 'B0L_g2',
                                       'B0L_id', 'Bnoise_MB0b1b1',
-                                      'Bnoise_MB0b1', 'Bnoise_NB0']
+                                      'Bnoise_MB0b1', 'Bnoise_NP0',
+                                      'Bnoise_NB0']
 
         self.use_Mpc = use_Mpc
         self.nbar = 1.0  # in units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
@@ -448,6 +454,17 @@ class PTEmu:
             self.splines_up_to_date = False
             self.dw_spline_up_to_date = False
 
+    def change_counterterm_basis(self, counterterm_basis):
+        if counterterm_basis in ['Comet','ClassPT']:
+            if self.counterterm_basis != counterterm_basis:
+                self.counterterm_basis = counterterm_basis
+                self.init_params_dict()
+                self.splines_up_to_date = False
+                self.dw_splines_up_to_date = False
+        else:
+            print('Warning. Counterterm basis not recognised, choose between '
+                  '"Comet" (default), or "ClassPT".')
+
     def change_gauss_legendre_degree(self, degree):
         self.gl_x, self.gl_weights = np.polynomial.legendre.leggauss(degree)
         self.gl_x = 0.5 * self.gl_x + 0.5
@@ -499,6 +516,9 @@ class PTEmu:
         else:
             self.data[obs_id].update(**kwargs)
 
+        self.chi2_decomposition = None
+        self.Bisp_chi2_decomposition = None
+
     def stack_mixing_matrices(self, obs_id_list, obs_id_stacked, nparams):
         if np.all([self.data[oi].mixing_matrix_exists for oi in obs_id_list]):
             W_stacked = np.stack([self.data[oi].W_mixing_matrix
@@ -510,7 +530,7 @@ class PTEmu:
                 bins_mixing_matrix=self.data[obs_id_list[0]].bins_mixing_matrix,
                 W_mixing_matrix=W_stacked)
 
-    def define_fiducial_cosmology(self, HDm_fid=None, params_fid=None,
+    def define_fiducial_cosmology(self, params_fid=None, HDm_fid=None,
                                   de_model='lambda'):
         r"""Define fiducial cosmology.
 
@@ -520,6 +540,11 @@ class PTEmu:
 
         Parameters
         ----------
+        params_fid: dict, optional
+            Dictionary containing the parameters of the fiducial cosmology,
+            used to compute the expansion factor :math:`H(z)` and angular
+            diameter distance :math:`D_\mathrm{A}(z)`, in the units defined
+            by the class attribute **use_Mpc**. Defaults to **None**.
         HDm_fid: list or numpy.ndarray, optional
             List containing the fiducial expansion factor :math:`H(z)` and
             angular diameter distance :math:`D_\mathrm{A}(z)`, in the units
@@ -527,11 +552,6 @@ class PTEmu:
             method expects to find a dictionary containing the parameters
             of the fiducial cosmology (see **params_fid** below). Defaults to
             **None**.
-        params_fid: dict, optional
-            Dictionary containing the parameters of the fiducial cosmology,
-            used to compute the expansion factor :math:`H(z)` and angular
-            diameter distance :math:`D_\mathrm{A}(z)`, in the units defined
-            by the class attribute **use_Mpc**. Defaults to **None**.
         de_model: str, optional
             String that determines the dark energy equation of state. Can be
             chosen form the list [`"lambda"`, `"w0"`, `"w0wa"`].
@@ -729,7 +749,7 @@ class PTEmu:
                                             - self.params['b2t'])
             self.params['g21'] = -2.0/147.0 * (11*self.params['b1t']
                                                - 18*self.params['b2t']
-                                               + 9*self.params['b3t'])
+                                               + 7*self.params['b3t'])
 
     def _update_AP_params(self, params, de_model=None, q_tr_lo=None):
         r"""Update AP parameters.
@@ -1000,6 +1020,7 @@ class PTEmu:
         cnloB = self.params['cnloB']*self.params['f']**2
         MB0 = self.params['MB0']
         NB0 = self.params['NB0']
+        NP0 = self.params['NP0']
         b1sq = b1**2
 
         if 'EFT' in self.model:
@@ -1008,13 +1029,14 @@ class PTEmu:
                                     b1sq*b2*cnloB, b1*b2*cnloB, b2*cnloB,
                                     b1sq*g2, b1*g2, g2, b1sq*g2*cnloB,
                                     b1*g2*cnloB, g2*cnloB, np.ones_like(b1),
-                                    cnloB, MB0*b1sq/self.nbar, MB0*b1/self.nbar,
+                                    cnloB, MB0*b1sq/self.nbar,
+                                    (MB0+NP0)*b1/self.nbar, NP0/self.nbar,
                                     NB0/self.nbar**2])
         else:
             params_comb = np.array([b1sq*b1, b1sq, b1, b1sq*b2, b1*b2, b2,
                                     b1sq*g2, b1*g2, g2, np.ones_like(b1),
-                                    MB0*b1sq/self.nbar, MB0*b1/self.nbar,
-                                    NB0/self.nbar**2])
+                                    MB0*b1sq/self.nbar, (MB0+NP0)*b1/self.nbar,
+                                    NP0/self.nbar, NB0/self.nbar**2])
 
         return params_comb
 
@@ -1233,7 +1255,17 @@ class PTEmu:
             ratios_all = self.emu['ratios'].predict(params_all)
             for i,m in enumerate(ell):
                 self.Pk_ratios[m] = self.training['FULL'].transform_inv(
-                    ratios_all[:,i*self.emu_output_length:(i+1)*self.emu_output_length], m).T
+                    ratios_all[:,i*self.emu_output_length:(i+1) \
+                               *self.emu_output_length], m).T
+
+        if self.counterterm_basis == 'ClassPT':
+            self.params['c2'] = 2.0/3.0 * self.params['f'] * self.params['c2']
+            self.params['c4'] = 8.0/35.0 * self.params['f']**2 \
+                                * self.params['c4']
+            self.params['cnlo'] = - self.params['cnlo']
+            self.params['NP20'] = self.params['NP20'] + 1.0/3.0 \
+                                  * self.params['NP22']
+            self.params['NP22'] = 2.0/3.0 * self.params['NP22']
 
     def _W_kurt(self, k, mu):
         r"""Large scale limit of the velocity difference generating function.
@@ -1277,6 +1309,41 @@ class PTEmu:
         t1 = (self.params['f']*k*mu)**2
         t2 = 1.0 + t1*self.params['avir']**2
         return 1.0/np.sqrt(t2)*np.exp(-t1*self.params['sv']**2/t2)
+
+    def get_kmu_products(self, tri, mu1, mu2, mu3):
+        r"""Computes the products k1*mu1, k2*mu2, and k3*mu3.
+
+        The method returns the products in a format needed for the computation
+        of the bispectrum damping function. It also applies Alcock-Paczynski
+        distortions to the wave modes and cosines.
+
+        Parameters
+        ----------
+        tri: numpy.ndarray
+            Wavemodes :math:`k_1`, :math:`k_2`, :math:`k_3`.
+        mu1: numpy.ndarray
+            Cosines of the angle between :math:`k_1` and the LOS.
+        mu2: numpy.ndarray
+            Cosines of the angle between :math:`k_2` and the LOS.
+        mu3: numpy.ndarray
+            Cosines of the angle between :math:`k_3` and the LOS.
+
+        Returns
+        -------
+        kmu1: numpy.ndarray
+            Product of k1 and mu1.
+        kmu2: numpy.ndarray
+            Product of k2 and mu2.
+        kmu2: numpy.ndarray
+            Product of k3 and mu3.
+        """
+        k1 = tri[:,0].reshape((-1,1))
+        k2 = tri[:,1].reshape((-1,1))
+        k3 = tri[:,2].reshape((-1,1))
+        kmu1 = np.outer(k1,mu1)/self.params['q_lo']
+        kmu2 = k2*mu2/self.params['q_lo']
+        kmu3 = k3*mu3/self.params['q_lo']
+        return kmu1, kmu2, kmu3
 
     def _WB_kurt(self, tri, mu1, mu2, mu3):
         # including AP effect!
@@ -1423,89 +1490,89 @@ class PTEmu:
         return Pnw
 
     # TODO
-    def Pdw_2d(self, k, mu, params, de_model=None, ell_for_recon=None):
-        r"""Compute the anisotropic leading order IR-resummed power spectrum.
-
-        Evaluates the emulator calling **_eval_emulator**, and returns the
-        anisotropic leading order IR-resummed power spectrum
-        :math:`P_\mathrm{IR-res}^\mathrm{LO}(k,\mu)`, defined as
-
-        .. math::
-            P_\mathrm{IR-res}^\mathrm{LO}(k,\mu) = P_\mathrm{nw}(k) + \
-            e^{-k^2\Sigma^2(f,\mu)}P_\mathrm{w}(k),
-
-        where :math:`P_\mathrm{nw}` and :math:`P_\mathrm{w}` are the no-wiggle
-        and wiggle-only component of the linear matter power spectrum, and
-        :math:`\Sigma(f,\mu)` is the anisotropic BAO damping factor due to
-        infrared modes.
-
-        Notice how this function does not include the leading order Kaiser
-        effect due to the impact of the velocity field on the amplitude of
-        the power spectrum.
-
-        Parameters
-        ----------
-        k: float or numpy.ndarray
-            Value of the requested wavemodes :math:`k`.
-        mu: float or numpy.ndarray
-            Value of the cosine :math:`\mu` of the angle between
-            the pair separation and the line of sight.
-        params: dict
-            Dictionary containing the list of total model parameters which are
-            internally used by the emulator. The keyword/value pairs of the
-            dictionary specify the names and the values of the parameters,
-            respectively.
-        de_model: str, optional
-            String that determines the dark energy equation of state. Can be
-            chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
-            the standard cosmological parameters, or be left undefined to use
-            only :math:`\sigma_{12}`. Defaults to **None**.
-        ell_for_recon: list, optional
-            List of :math:`\ell` values used for the reconstruction of the
-            2d leading-order IR-resummed power spectrum. If **None**, all the
-            even multipoles up to :math:`\ell=6` are used in the
-            reconstruction. Defaults to **None**.
-
-        Returns
-        -------
-        Pdw_2d: numpy.ndarray
-            Leading-order infrared resummed power spectrum
-            :math:`P_\mathrm{IR-res}^\mathrm{LO}(k,\mu)` evaluated at the
-            input wavemodes :math:`k` and angles :math:`\mu`.
-        """
-        if ell_for_recon is None:
-            ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
-        ell_eval_emu = ell_for_recon.copy()
-        if 6 in ell_eval_emu:
-            ell_eval_emu.remove(6)
-
-        self._eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
-
-        Pdw_ell = np.zeros([self.nk, len(ell_for_recon)])
-        for i, ell in enumerate(ell_for_recon):
-            if ell != 6:
-                Pdw_ell[:, i] = self.Pk_ratios[ell][:self.nk]
-            else:
-                Pdw_ell[:, i] = self.P6[:, 0]
-        Pdw_ell[:, :len(ell_eval_emu)] = (Pdw_ell[:, :len(ell_eval_emu)].T *
-                                          self.Pk_lin).T
-
-        Pdw_spline = {}
-        for i, ell in enumerate(ell_for_recon):
-            if self.use_Mpc:
-                Pdw_spline[ell] = UnivariateSpline(self.k_table, Pdw_ell[:, i],
-                                                   k=3, s=0)
-            else:
-                Pdw_spline[ell] = UnivariateSpline(
-                    self.k_table/self.params['h'],
-                    Pdw_ell[:, i]*self.params['h']**3,
-                    k=3, s=0)
-
-        Pdw_2d = 0.0
-        for ell in ell_for_recon:
-            Pdw_2d += np.outer(Pdw_spline[ell](k), eval_legendre(ell, mu))
-
-        return Pdw_2d
+    # def Pdw_2d(self, k, mu, params, de_model=None, ell_for_recon=None):
+    #     r"""Compute the anisotropic leading order IR-resummed power spectrum.
+    #
+    #     Evaluates the emulator calling **_eval_emulator**, and returns the
+    #     anisotropic leading order IR-resummed power spectrum
+    #     :math:`P_\mathrm{IR-res}^\mathrm{LO}(k,\mu)`, defined as
+    #
+    #     .. math::
+    #         P_\mathrm{IR-res}^\mathrm{LO}(k,\mu) = P_\mathrm{nw}(k) + \
+    #         e^{-k^2\Sigma^2(f,\mu)}P_\mathrm{w}(k),
+    #
+    #     where :math:`P_\mathrm{nw}` and :math:`P_\mathrm{w}` are the no-wiggle
+    #     and wiggle-only component of the linear matter power spectrum, and
+    #     :math:`\Sigma(f,\mu)` is the anisotropic BAO damping factor due to
+    #     infrared modes.
+    #
+    #     Notice how this function does not include the leading order Kaiser
+    #     effect due to the impact of the velocity field on the amplitude of
+    #     the power spectrum.
+    #
+    #     Parameters
+    #     ----------
+    #     k: float or numpy.ndarray
+    #         Value of the requested wavemodes :math:`k`.
+    #     mu: float or numpy.ndarray
+    #         Value of the cosine :math:`\mu` of the angle between
+    #         the pair separation and the line of sight.
+    #     params: dict
+    #         Dictionary containing the list of total model parameters which are
+    #         internally used by the emulator. The keyword/value pairs of the
+    #         dictionary specify the names and the values of the parameters,
+    #         respectively.
+    #     de_model: str, optional
+    #         String that determines the dark energy equation of state. Can be
+    #         chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
+    #         the standard cosmological parameters, or be left undefined to use
+    #         only :math:`\sigma_{12}`. Defaults to **None**.
+    #     ell_for_recon: list, optional
+    #         List of :math:`\ell` values used for the reconstruction of the
+    #         2d leading-order IR-resummed power spectrum. If **None**, all the
+    #         even multipoles up to :math:`\ell=6` are used in the
+    #         reconstruction. Defaults to **None**.
+    #
+    #     Returns
+    #     -------
+    #     Pdw_2d: numpy.ndarray
+    #         Leading-order infrared resummed power spectrum
+    #         :math:`P_\mathrm{IR-res}^\mathrm{LO}(k,\mu)` evaluated at the
+    #         input wavemodes :math:`k` and angles :math:`\mu`.
+    #     """
+    #     if ell_for_recon is None:
+    #         ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
+    #     ell_eval_emu = ell_for_recon.copy()
+    #     if 6 in ell_eval_emu:
+    #         ell_eval_emu.remove(6)
+    #
+    #     self._eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
+    #
+    #     Pdw_ell = np.zeros([self.nk, len(ell_for_recon)])
+    #     for i, ell in enumerate(ell_for_recon):
+    #         if ell != 6:
+    #             Pdw_ell[:, i] = self.Pk_ratios[ell][:self.nk]
+    #         else:
+    #             Pdw_ell[:, i] = self.P6[:, 0]
+    #     Pdw_ell[:, :len(ell_eval_emu)] = (Pdw_ell[:, :len(ell_eval_emu)].T *
+    #                                       self.Pk_lin).T
+    #
+    #     Pdw_spline = {}
+    #     for i, ell in enumerate(ell_for_recon):
+    #         if self.use_Mpc:
+    #             Pdw_spline[ell] = UnivariateSpline(self.k_table, Pdw_ell[:, i],
+    #                                                k=3, s=0)
+    #         else:
+    #             Pdw_spline[ell] = UnivariateSpline(
+    #                 self.k_table/self.params['h'],
+    #                 Pdw_ell[:, i]*self.params['h']**3,
+    #                 k=3, s=0)
+    #
+    #     Pdw_2d = 0.0
+    #     for ell in ell_for_recon:
+    #         Pdw_2d += np.outer(Pdw_spline[ell](k), eval_legendre(ell, mu))
+    #
+    #     return Pdw_2d
 
     def Pdw(self, k, params, de_model=None, mu=0.0, ell_for_recon=None):
         r"""Compute the real space leading order IR-resummed power spectrum.
@@ -1645,273 +1712,273 @@ class PTEmu:
         return Pell
 
     # TODO
-    def _Pell_quad(self, k, params, ell, de_model=None, binning=None,
-                  obs_id=None, q_tr_lo=None, W_damping=None,
-                  ell_for_recon=None):
-        r"""Compute the power spectrum multipoles.
-
-        Main method to compute the galaxy power spectrum multipoles.
-        Returns the specified multipole at the given wavemodes :math:`k`.
-
-        Parameters
-        ----------
-        k: float or list or numpy.ndarray
-            Wavemodes :math:`k` at which to evaluate the multipoles. If a list
-            is passed, it has to match the size of `ell`, and in that case
-            each wavemode refer to a given multipole.
-        params: dict
-            Dictionary containing the list of total model parameters which are
-            internally used by the emulator. The keyword/value pairs of the
-            dictionary specify the names and the values of the parameters,
-            respectively.
-        ell: int or list
-            Specific multipole order :math:`\ell`.
-            Can be chosen from the list [0,2,4,6], whose entries correspond to
-            monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`),
-            hexadecapole (:math:`\ell=4`) and octopole (:math:`\ell=6`).
-        de_model: str, optional
-            String that determines the dark energy equation of state. Can be
-            chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
-            the standard cosmological parameters, or be left undefined to use
-            only :math:`\sigma_{12}`. Defaults to **None**.
-        binning: dict, optional
-
-        obs_id: str, optional
-            If not **None** the returned power spectrum will be convolved with
-            a survey window function. In that case the string must be a valid
-            data set identifier and the window function mixing matrix must
-            have been loaded beforehand. Defaults to **None**.
-        q_tr_lo: list or numpy.ndarray, optional
-            List containing the user-provided AP parameters, in the form
-            :math:`(q_\perp, q_\parallel)`. If provided, prevents
-            computation from correct formulas (ratios of angular diameter
-            distances and expansion factors wrt to the corresponding quantities
-            of the fiducial cosmology). Defaults to **None**.
-        W_damping: Callable[[float, float], float], optional
-            Function returning the shape of the pairwise velocity generating
-            function in the large scale limit, :math:`r\rightarrow\infty`. The
-            function accepts two floats as arguments, corresponding to the
-            wavemode :math:`k` and the cosinus of the angle between pair
-            separation and line of sight :math:`\mu`, and returns a float. This
-            function is used only with the **VDG_infty** model. If **None**, it
-            uses the free kurtosis distribution defined by **_W_kurt**.
-            Defaults to **None**.
-        ell_for_recon: list, optional
-            List of :math:`\ell` values used for the reconstruction of the
-            2d leading-order IR-resummed power spectrum. If **None**, all the
-            even multipoles up to :math:`\ell=6` are used in the
-            reconstruction. Defaults to **None**.
-
-        Returns
-        -------
-        Pell_dict: dict
-            Dictionary containing all the requested power spectrum multipoles
-            of order :math:`\ell` at the specified :math:`k`.
-        """
-        if ell_for_recon is None:
-            ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
-
-        ell = [ell] if not isinstance(ell, list) else ell
-
-        if isinstance(k, list):
-            if len(k) != len(ell):
-                raise ValueError("If 'k' is given as a list, it must match the"
-                                 " length of 'ell'.")
-            else:
-                k_list = k
-                k = np.unique(np.hstack(k_list))
-        else:
-            k_list = [k]*len(ell)
-            k = np.unique(np.hstack(k_list))
-
-        use_effective_modes = False
-        if binning is not None:
-            if self.grid is None:
-                self.grid = Grid(binning['kfun'], binning['dk'])
-            else:
-                self.grid.update(binning['kfun'], binning['dk'])
-            self.grid.find_discrete_modes(k, **binning)
-            if binning.get('effective') is not None:
-                use_effective_modes = binning['effective']
-                if use_effective_modes:
-                    self.grid.compute_effective_modes(k, **binning)
-
-        keff = self.grid.keff if use_effective_modes else k
-
-        def P2d(q, mu):
-            t = 0.0
-            for m in ell_for_recon:
-                t += eval_legendre(m, mu) * self.eval_Pell_spline(q, m)
-            return t
-
-        def P2d_stoch(q, mu):
-            t = self.params['NP0'] + q**2 * (self.params['NP20'] \
-                + self.params['NP22']*eval_legendre(2,mu))
-            return t/self.nbar
-
-        def damping_zerr(q, mu):
-            sigma_r = \
-                self.cosmo.light_speed / self.H_fid * self.params['sigma_z']
-            t = np.exp(-(q * mu * sigma_r)**2)
-            return t
-
-        if 'EFT' in self.model:
-
-            if binning is None or use_effective_modes:
-                def integrand(mu):
-                    mu2 = mu**2
-                    APfac = np.sqrt(mu2/self.params['q_lo']**2 +
-                                    (1.0 - mu2)/self.params['q_tr']**2)
-                    kp = keff*APfac
-                    mup = mu/self.params['q_lo']/APfac
-                    P2d_tot = P2d(kp, mup) * damping_zerr(kp, mup) \
-                        * (1.0 - self.params['f_out'])**2 + P2d_stoch(kp, mup)
-                    return np.outer(P2d_tot, eval_legendre(ell, mu))
-            else:
-                def shell_average():
-                    mu2 = self.grid.mu**2
-                    APfac = np.sqrt(mu2/self.params['q_lo']**2 +
-                                    (1.0 - mu2)/self.params['q_tr']**2)
-                    kp = self.grid.k*APfac
-                    mup = self.grid.mu/self.params['q_lo']/APfac
-                    legendre = np.array([eval_legendre(l, self.grid.mu)
-                                         for l in ell])
-                    prod = (P2d(kp, mup) * damping_zerr(kp, mup)
-                            * (1.0 - self.params['f_out'])**2
-                            + P2d_stoch(kp, mup)) * legendre
-                    avg = np.zeros([len(self.grid.nmodes)-1, len(ell)])
-                    for i in range(len(self.grid.nmodes)-1):
-                        n1 = self.grid.nmodes[i]
-                        n2 = self.grid.nmodes[i+1]
-                        avg[i] = np.average(prod[:,n1:n2], axis=1,
-                                            weights=self.grid.weights[n1:n2])
-                    return avg
-
-        elif 'VDG_infty' in self.model:
-            if W_damping is None:
-                W_damping = self._W_kurt
-
-            if binning is None or use_effective_modes:
-                def integrand(mu):
-                    mu2 = mu**2
-                    APfac = np.sqrt(mu2/self.params['q_lo']**2 +
-                                    (1.0 - mu2)/self.params['q_tr']**2)
-                    kp = keff*APfac
-                    mup = mu/self.params['q_lo']/APfac
-                    P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
-                    P2d_tot = P2d_damped * damping_zerr(kp, mup) \
-                        * (1.0 - self.params['f_out'])**2 + P2d_stoch(kp, mup)
-                    return np.outer(P2d_tot, eval_legendre(ell, mu))
-            else:
-                def  shell_average():
-                    mu2 = self.grid.mu**2
-                    APfac = np.sqrt(mu2/self.params['q_lo']**2 +
-                                    (1.0 - mu2)/self.params['q_tr']**2)
-                    kp = self.grid.k*APfac
-                    mup = self.grid.mu/self.params['q_lo']/APfac
-                    legendre = np.array([eval_legendre(l, self.grid.mu)
-                                         for l in ell])
-                    P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
-                    prod = (P2d_damped * damping_zerr(kp, mup)
-                            * (1.0 - self.params['f_out'])**2
-                            + P2d_stoch(kp, mup)) * legendre
-                    avg = np.zeros([len(self.grid.nmodes)-1, len(ell)])
-                    for i in range(len(self.grid.nmodes)-1):
-                        n1 = self.grid.nmodes[i]
-                        n2 = self.grid.nmodes[i+1]
-                        avg[i] = np.average(prod[:,n1:n2], axis=1,
-                                            weights=self.grid.weights[n1:n2])
-                    return avg
-
-        else:
-            raise ValueError('Unsupported RSD model.')
-
-        if obs_id is None:
-            params_updated = [params[p] != self.params[p] for p in
-                              params.keys()]
-            params_nonzero = [x for x in self.bias_params_list +
-                              self.RSD_params_list +
-                              self.obs_syst_params_list if self.params[x] != 0]
-
-            if (any(params_updated) or
-                    any(p not in params.keys() for p in params_nonzero) or
-                    not self.splines_up_to_date):
-                Pell = self.Pell_fid_ktable(params, ell=ell_for_recon,
-                                            de_model=de_model)
-                for i, m in enumerate(ell_for_recon):
-                    self.build_Pell_spline(Pell[:, i], m)
-                self.splines_up_to_date = True
-                # self.X_splines_up_to_date = {X: False for X in self.diagrams_all}
-                # self.chi2_decomposition = None
-
-            self._update_AP_params(params, de_model=de_model,
-                                   q_tr_lo=q_tr_lo)
-            q3 = self.params['q_tr']**2 * self.params['q_lo']
-
-            if binning is None or use_effective_modes:
-                Pell_model = quad_vec(integrand, 0.0, 1.0)[0]
-            else:
-                Pell_model = shell_average()
-            Pell_model *= (2.0*np.array(ell)+1.0) / q3
-
-            Pell_dict = {}
-            for i, m in enumerate(ell):
-                ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
-                Pell_dict['ell{}'.format(m)] = Pell_model[ids, i]
-        else:
-            mixing_matrix_exists = True
-            try:
-                self.data[obs_id].bins_mixing_matrix
-            except AttributeError:
-                mixing_matrix_exists = False
-            try:
-                self.data[obs_id].W_mixing_matrix
-            except AttributeError:
-                mixing_matrix_exists = False
-            if mixing_matrix_exists:
-                ell_for_mixing_matrix = [0,2,4] if not self.real_space else [0]
-                Pell_model = self.Pell(
-                    self.data[obs_id].bins_mixing_matrix_compressed,
-                    params, ell_for_mixing_matrix, de_model, obs_id=None,
-                    q_tr_lo=q_tr_lo, W_damping=W_damping,
-                    ell_for_recon=ell_for_recon)
-                Pell_list = []
-                for l in ell_for_mixing_matrix:
-                    spline = UnivariateSpline(
-                        self.data[obs_id].bins_mixing_matrix_compressed,
-                        Pell_model['ell{}'.format(l)], k=3, s=0)
-                    Pell_list = np.hstack(
-                        [Pell_list,
-                         spline(self.data[obs_id].bins_mixing_matrix[1])])
-                Pell_convolved = np.dot(self.data[obs_id].W_mixing_matrix,
-                                        Pell_list)
-                nb = len(self.data[obs_id].bins_mixing_matrix[0])
-
-                Pell_dict = {}
-                if k.size != np.intersect1d(
-                    k, self.data[obs_id].bins_mixing_matrix[0]).size:
-                        for i, m in enumerate(ell):
-                            spline = UnivariateSpline(
-                                self.data[obs_id].bins_mixing_matrix[0],
-                                Pell_convolved[int(m/2)*nb:(int(m/2)+1)*nb],
-                                k=3, s=0)
-                            Pell_dict['ell{}'.format(m)] = spline(k_list[i])
-                else:
-                    for i, m in enumerate(ell):
-                        ids = np.intersect1d(
-                            k_list[i],
-                            self.data[obs_id].bins_mixing_matrix[0],
-                            return_indices=True)[1]
-                        Pell_dict['ell{}'.format(m)] = Pell_convolved[ids +
-                            int(m/2)*nb]
-            else:
-                print('Warning! Bins for mixing matrix and/or mixing matrix '
-                      'itself not provided. Returning unconvolved power '
-                      'spectrum.')
-                Pell_dict = self.Pell(k, params, ell, de_model, binning, None,
-                                      q_tr_lo, W_damping, ell_for_recon)
-
-        return Pell_dict
+    # def _Pell_quad(self, k, params, ell, de_model=None, binning=None,
+    #               obs_id=None, q_tr_lo=None, W_damping=None,
+    #               ell_for_recon=None):
+    #     r"""Compute the power spectrum multipoles.
+    #
+    #     Main method to compute the galaxy power spectrum multipoles.
+    #     Returns the specified multipole at the given wavemodes :math:`k`.
+    #
+    #     Parameters
+    #     ----------
+    #     k: float or list or numpy.ndarray
+    #         Wavemodes :math:`k` at which to evaluate the multipoles. If a list
+    #         is passed, it has to match the size of `ell`, and in that case
+    #         each wavemode refer to a given multipole.
+    #     params: dict
+    #         Dictionary containing the list of total model parameters which are
+    #         internally used by the emulator. The keyword/value pairs of the
+    #         dictionary specify the names and the values of the parameters,
+    #         respectively.
+    #     ell: int or list
+    #         Specific multipole order :math:`\ell`.
+    #         Can be chosen from the list [0,2,4,6], whose entries correspond to
+    #         monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`),
+    #         hexadecapole (:math:`\ell=4`) and octopole (:math:`\ell=6`).
+    #     de_model: str, optional
+    #         String that determines the dark energy equation of state. Can be
+    #         chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
+    #         the standard cosmological parameters, or be left undefined to use
+    #         only :math:`\sigma_{12}`. Defaults to **None**.
+    #     binning: dict, optional
+    #
+    #     obs_id: str, optional
+    #         If not **None** the returned power spectrum will be convolved with
+    #         a survey window function. In that case the string must be a valid
+    #         data set identifier and the window function mixing matrix must
+    #         have been loaded beforehand. Defaults to **None**.
+    #     q_tr_lo: list or numpy.ndarray, optional
+    #         List containing the user-provided AP parameters, in the form
+    #         :math:`(q_\perp, q_\parallel)`. If provided, prevents
+    #         computation from correct formulas (ratios of angular diameter
+    #         distances and expansion factors wrt to the corresponding quantities
+    #         of the fiducial cosmology). Defaults to **None**.
+    #     W_damping: Callable[[float, float], float], optional
+    #         Function returning the shape of the pairwise velocity generating
+    #         function in the large scale limit, :math:`r\rightarrow\infty`. The
+    #         function accepts two floats as arguments, corresponding to the
+    #         wavemode :math:`k` and the cosinus of the angle between pair
+    #         separation and line of sight :math:`\mu`, and returns a float. This
+    #         function is used only with the **VDG_infty** model. If **None**, it
+    #         uses the free kurtosis distribution defined by **_W_kurt**.
+    #         Defaults to **None**.
+    #     ell_for_recon: list, optional
+    #         List of :math:`\ell` values used for the reconstruction of the
+    #         2d leading-order IR-resummed power spectrum. If **None**, all the
+    #         even multipoles up to :math:`\ell=6` are used in the
+    #         reconstruction. Defaults to **None**.
+    #
+    #     Returns
+    #     -------
+    #     Pell_dict: dict
+    #         Dictionary containing all the requested power spectrum multipoles
+    #         of order :math:`\ell` at the specified :math:`k`.
+    #     """
+    #     if ell_for_recon is None:
+    #         ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
+    #
+    #     ell = [ell] if not isinstance(ell, list) else ell
+    #
+    #     if isinstance(k, list):
+    #         if len(k) != len(ell):
+    #             raise ValueError("If 'k' is given as a list, it must match the"
+    #                              " length of 'ell'.")
+    #         else:
+    #             k_list = k
+    #             k = np.unique(np.hstack(k_list))
+    #     else:
+    #         k_list = [k]*len(ell)
+    #         k = np.unique(np.hstack(k_list))
+    #
+    #     use_effective_modes = False
+    #     if binning is not None:
+    #         if self.grid is None:
+    #             self.grid = Grid(binning['kfun'], binning['dk'])
+    #         else:
+    #             self.grid.update(binning['kfun'], binning['dk'])
+    #         self.grid.find_discrete_modes(k, **binning)
+    #         if binning.get('effective') is not None:
+    #             use_effective_modes = binning['effective']
+    #             if use_effective_modes:
+    #                 self.grid.compute_effective_modes(k, **binning)
+    #
+    #     keff = self.grid.keff if use_effective_modes else k
+    #
+    #     def P2d(q, mu):
+    #         t = 0.0
+    #         for m in ell_for_recon:
+    #             t += eval_legendre(m, mu) * self.eval_Pell_spline(q, m)
+    #         return t
+    #
+    #     def P2d_stoch(q, mu):
+    #         t = self.params['NP0'] + q**2 * (self.params['NP20'] \
+    #             + self.params['NP22']*eval_legendre(2,mu))
+    #         return t/self.nbar
+    #
+    #     def damping_zerr(q, mu):
+    #         sigma_r = \
+    #             self.cosmo.light_speed / self.H_fid * self.params['sigma_z']
+    #         t = np.exp(-(q * mu * sigma_r)**2)
+    #         return t
+    #
+    #     if 'EFT' in self.model:
+    #
+    #         if binning is None or use_effective_modes:
+    #             def integrand(mu):
+    #                 mu2 = mu**2
+    #                 APfac = np.sqrt(mu2/self.params['q_lo']**2 +
+    #                                 (1.0 - mu2)/self.params['q_tr']**2)
+    #                 kp = keff*APfac
+    #                 mup = mu/self.params['q_lo']/APfac
+    #                 P2d_tot = P2d(kp, mup) * damping_zerr(kp, mup) \
+    #                     * (1.0 - self.params['f_out'])**2 + P2d_stoch(kp, mup)
+    #                 return np.outer(P2d_tot, eval_legendre(ell, mu))
+    #         else:
+    #             def shell_average():
+    #                 mu2 = self.grid.mu**2
+    #                 APfac = np.sqrt(mu2/self.params['q_lo']**2 +
+    #                                 (1.0 - mu2)/self.params['q_tr']**2)
+    #                 kp = self.grid.k*APfac
+    #                 mup = self.grid.mu/self.params['q_lo']/APfac
+    #                 legendre = np.array([eval_legendre(l, self.grid.mu)
+    #                                      for l in ell])
+    #                 prod = (P2d(kp, mup) * damping_zerr(kp, mup)
+    #                         * (1.0 - self.params['f_out'])**2
+    #                         + P2d_stoch(kp, mup)) * legendre
+    #                 avg = np.zeros([len(self.grid.nmodes)-1, len(ell)])
+    #                 for i in range(len(self.grid.nmodes)-1):
+    #                     n1 = self.grid.nmodes[i]
+    #                     n2 = self.grid.nmodes[i+1]
+    #                     avg[i] = np.average(prod[:,n1:n2], axis=1,
+    #                                         weights=self.grid.weights[n1:n2])
+    #                 return avg
+    #
+    #     elif 'VDG_infty' in self.model:
+    #         if W_damping is None:
+    #             W_damping = self._W_kurt
+    #
+    #         if binning is None or use_effective_modes:
+    #             def integrand(mu):
+    #                 mu2 = mu**2
+    #                 APfac = np.sqrt(mu2/self.params['q_lo']**2 +
+    #                                 (1.0 - mu2)/self.params['q_tr']**2)
+    #                 kp = keff*APfac
+    #                 mup = mu/self.params['q_lo']/APfac
+    #                 P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
+    #                 P2d_tot = P2d_damped * damping_zerr(kp, mup) \
+    #                     * (1.0 - self.params['f_out'])**2 + P2d_stoch(kp, mup)
+    #                 return np.outer(P2d_tot, eval_legendre(ell, mu))
+    #         else:
+    #             def  shell_average():
+    #                 mu2 = self.grid.mu**2
+    #                 APfac = np.sqrt(mu2/self.params['q_lo']**2 +
+    #                                 (1.0 - mu2)/self.params['q_tr']**2)
+    #                 kp = self.grid.k*APfac
+    #                 mup = self.grid.mu/self.params['q_lo']/APfac
+    #                 legendre = np.array([eval_legendre(l, self.grid.mu)
+    #                                      for l in ell])
+    #                 P2d_damped = P2d(kp, mup) * W_damping(kp, mup)
+    #                 prod = (P2d_damped * damping_zerr(kp, mup)
+    #                         * (1.0 - self.params['f_out'])**2
+    #                         + P2d_stoch(kp, mup)) * legendre
+    #                 avg = np.zeros([len(self.grid.nmodes)-1, len(ell)])
+    #                 for i in range(len(self.grid.nmodes)-1):
+    #                     n1 = self.grid.nmodes[i]
+    #                     n2 = self.grid.nmodes[i+1]
+    #                     avg[i] = np.average(prod[:,n1:n2], axis=1,
+    #                                         weights=self.grid.weights[n1:n2])
+    #                 return avg
+    #
+    #     else:
+    #         raise ValueError('Unsupported RSD model.')
+    #
+    #     if obs_id is None:
+    #         params_updated = [params[p] != self.params[p] for p in
+    #                           params.keys()]
+    #         params_nonzero = [x for x in self.bias_params_list +
+    #                           self.RSD_params_list +
+    #                           self.obs_syst_params_list if self.params[x] != 0]
+    #
+    #         if (any(params_updated) or
+    #                 any(p not in params.keys() for p in params_nonzero) or
+    #                 not self.splines_up_to_date):
+    #             Pell = self.Pell_fid_ktable(params, ell=ell_for_recon,
+    #                                         de_model=de_model)
+    #             for i, m in enumerate(ell_for_recon):
+    #                 self.build_Pell_spline(Pell[:, i], m)
+    #             self.splines_up_to_date = True
+    #             # self.X_splines_up_to_date = {X: False for X in self.diagrams_all}
+    #             # self.chi2_decomposition = None
+    #
+    #         self._update_AP_params(params, de_model=de_model,
+    #                                q_tr_lo=q_tr_lo)
+    #         q3 = self.params['q_tr']**2 * self.params['q_lo']
+    #
+    #         if binning is None or use_effective_modes:
+    #             Pell_model = quad_vec(integrand, 0.0, 1.0)[0]
+    #         else:
+    #             Pell_model = shell_average()
+    #         Pell_model *= (2.0*np.array(ell)+1.0) / q3
+    #
+    #         Pell_dict = {}
+    #         for i, m in enumerate(ell):
+    #             ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
+    #             Pell_dict['ell{}'.format(m)] = Pell_model[ids, i]
+    #     else:
+    #         mixing_matrix_exists = True
+    #         try:
+    #             self.data[obs_id].bins_mixing_matrix
+    #         except AttributeError:
+    #             mixing_matrix_exists = False
+    #         try:
+    #             self.data[obs_id].W_mixing_matrix
+    #         except AttributeError:
+    #             mixing_matrix_exists = False
+    #         if mixing_matrix_exists:
+    #             ell_for_mixing_matrix = [0,2,4] if not self.real_space else [0]
+    #             Pell_model = self.Pell(
+    #                 self.data[obs_id].bins_mixing_matrix_compressed,
+    #                 params, ell_for_mixing_matrix, de_model, obs_id=None,
+    #                 q_tr_lo=q_tr_lo, W_damping=W_damping,
+    #                 ell_for_recon=ell_for_recon)
+    #             Pell_list = []
+    #             for l in ell_for_mixing_matrix:
+    #                 spline = UnivariateSpline(
+    #                     self.data[obs_id].bins_mixing_matrix_compressed,
+    #                     Pell_model['ell{}'.format(l)], k=3, s=0)
+    #                 Pell_list = np.hstack(
+    #                     [Pell_list,
+    #                      spline(self.data[obs_id].bins_mixing_matrix[1])])
+    #             Pell_convolved = np.dot(self.data[obs_id].W_mixing_matrix,
+    #                                     Pell_list)
+    #             nb = len(self.data[obs_id].bins_mixing_matrix[0])
+    #
+    #             Pell_dict = {}
+    #             if k.size != np.intersect1d(
+    #                 k, self.data[obs_id].bins_mixing_matrix[0]).size:
+    #                     for i, m in enumerate(ell):
+    #                         spline = UnivariateSpline(
+    #                             self.data[obs_id].bins_mixing_matrix[0],
+    #                             Pell_convolved[int(m/2)*nb:(int(m/2)+1)*nb],
+    #                             k=3, s=0)
+    #                         Pell_dict['ell{}'.format(m)] = spline(k_list[i])
+    #             else:
+    #                 for i, m in enumerate(ell):
+    #                     ids = np.intersect1d(
+    #                         k_list[i],
+    #                         self.data[obs_id].bins_mixing_matrix[0],
+    #                         return_indices=True)[1]
+    #                     Pell_dict['ell{}'.format(m)] = Pell_convolved[ids +
+    #                         int(m/2)*nb]
+    #         else:
+    #             print('Warning! Bins for mixing matrix and/or mixing matrix '
+    #                   'itself not provided. Returning unconvolved power '
+    #                   'spectrum.')
+    #             Pell_dict = self.Pell(k, params, ell, de_model, binning, None,
+    #                                   q_tr_lo, W_damping, ell_for_recon)
+    #
+    #     return Pell_dict
 
     def Pell(self, k, params, ell, de_model=None, binning=None, obs_id=None,
              q_tr_lo=None, W_damping=None, ell_for_recon=None):
@@ -2158,219 +2225,219 @@ class PTEmu:
         return Pell_dict
 
     # TODO
-    def _Pell_fixed_cosmo_boost(self, k, params, ell, de_model=None,
-                                binning=None, obs_id=None, q_tr_lo=None,
-                                W_damping=None, ell_for_recon=None):
-        r"""Compute the power spectrum multipoles (fast for fixed cosmology).
-
-        Main method to compute the galaxy power spectrum multipoles.
-        Returns the specified multipole at the given wavemodes :math:`k`.
-        Differently from **Pell**, if the cosmology has not been varied from
-        the last call, this method simply reconstruct the final multipoles by
-        multiplying the stored model ingredients (which, at fixed cosmology
-        are the same) by the new bias parameters.
-
-        Parameters
-        ----------
-        k: float or list or numpy.ndarray
-            Wavemodes :math:`k` at which to evaluate the multipoles. If a list
-            is passed, it has to match the size of `ell`, and in that case
-            each wavemode refer to a given multipole.
-        params: dict
-            Dictionary containing the list of total model parameters which are
-            internally used by the emulator. The keyword/value pairs of the
-            dictionary specify the names and the values of the parameters,
-            respectively.
-        ell: int or list
-            pecific multipole order :math:`\ell`.
-            Can be chosen from the list [0,2,4,6], whose entries correspond to
-            monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`),
-            hexadecapole (:math:`\ell=4`) and octopole (:math:`\ell=6`).
-        de_model: str, optional
-            String that determines the dark energy equation of state. Can be
-            chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
-            the standard cosmological parameters, or be left undefined to use
-            only :math:`\sigma_{12}`. Defaults to **None**.
-        binning: dict, optional
-
-        obs_id: str, optional
-            If not **None** the returned power spectrum will be convolved with
-            a survey window function. In that case the string must be a valid
-            data set identifier and the window function mixing matrix must
-            have been loaded beforehand. Defaults to **None**.
-        q_tr_lo: list or numpy.ndarray, optional
-            List containing the user-provided AP parameters, in the form
-            :math:`(q_\perp, q_\parallel)`. If provided, prevents
-            computation from correct formulas (ratios of angular diameter
-            distances and expansion factors wrt to the corresponding quantities
-            of the fiducial cosmology). Defaults to **None**.
-        W_damping: Callable[[float, float], float], optional
-            Function returning the shape of the pairwise velocity generating
-            function in the large scale limit, :math:`r\rightarrow\infty`. The
-            function accepts two floats as arguments, corresponding to the
-            wavemode :math:`k` and the cosinus of the angle between pair
-            separation and line of sight :math:`\mu`, and returns a float. This
-            function is used only with the **VDG_infty** model. If **None**, it
-            uses the free kurtosis distribution defined by **_W_kurt**.
-            Defaults to **None**.
-        ell_for_recon: list, optional
-            List of :math:`\ell` values used for the reconstruction of the
-            2d leading-order IR-resummed power spectrum. If **None**, all the
-            even multipoles up to :math:`\ell=6` are used in the
-            reconstruction. Defaults to **None**.
-
-        Returns
-        -------
-        Pell_dict: dict
-            Dictionary containing all the requested power spectrum multipoles
-            of order :math:`\ell` at the specified :math:`k`.
-        """
-        ell = [ell] if not isinstance(ell, list) else ell
-
-        if isinstance(k, list):
-            if len(k) != len(ell):
-                raise ValueError("If 'k' is given as a list, it must match the"
-                                 " length of 'ell'.")
-            else:
-                k_list = k
-                k = np.unique(np.hstack(k_list))
-        else:
-            k_list = [k]*len(ell)
-
-        if de_model is None and self.use_Mpc:
-            check_params = (self.params_list + self.RSD_params_list +
-                            self.obs_syst_params_list)
-        elif de_model is None and not self.use_Mpc:
-            check_params = (self.params_list + ['h'] + self.RSD_params_list +
-                            self.obs_syst_params_list)
-        else:
-            check_params = self.params_shape_list \
-                           + self.de_model_params_list[de_model] \
-                           + self.RSD_params_list + self.obs_syst_params_list
-            if 'Ok' not in params:
-                check_params.remove('Ok')
-
-        for p in self.RSD_params_list+self.obs_syst_params_list:
-            if p not in params:
-                check_params.remove(p)
-
-        if obs_id != self.X_obs_id:
-            self.X_splines_up_to_date = {X: False for X in self.diagrams_all}
-            self.X_obs_id = obs_id
-
-        if binning != self.X_binning:
-            self.X_splines_up_to_date = {X: False for X in self.diagrams_all}
-            self.X_binning = binning
-
-        if (any(params[p] != self.params[p] for p in check_params) or
-                not all(self.X_splines_up_to_date.values())):
-            self.PX_ell_list = {
-                'ell{}'.format(m): np.zeros(
-                    [k_list[i].shape[0], len(self.diagrams_all)])
-                for i, m in enumerate(ell)}
-            for i, X in enumerate(self.diagrams_all):
-                PX_ell = self.PX_ell(k_list, params, ell, X, de_model=de_model,
-                                     binning=self.X_binning,
-                                     obs_id=self.X_obs_id,
-                                     q_tr_lo=q_tr_lo,
-                                     W_damping=W_damping,
-                                     ell_for_recon=ell_for_recon)
-                for m in PX_ell.keys():
-                    self.PX_ell_list[m][:, i] = PX_ell[m]
-
-        for p in self.bias_params_list:
-            if p in params.keys():
-                self.params[p] = params[p]
-            else:
-                self.params[p] = 0.0
-        # self.splines_up_to_date = False
-        # self.dw_spline_up_to_date = False
-        bX = self._get_bias_coeff_for_chi2_decomposition()
-
-        Pell_dict = {}
-        for i, m in enumerate(ell):
-            Pell_dict['ell{}'.format(m)] = np.dot(
-                self.PX_ell_list['ell{}'.format(m)], bX)
-
-        return Pell_dict
+    # def _Pell_fixed_cosmo_boost(self, k, params, ell, de_model=None,
+    #                             binning=None, obs_id=None, q_tr_lo=None,
+    #                             W_damping=None, ell_for_recon=None):
+    #     r"""Compute the power spectrum multipoles (fast for fixed cosmology).
+    #
+    #     Main method to compute the galaxy power spectrum multipoles.
+    #     Returns the specified multipole at the given wavemodes :math:`k`.
+    #     Differently from **Pell**, if the cosmology has not been varied from
+    #     the last call, this method simply reconstruct the final multipoles by
+    #     multiplying the stored model ingredients (which, at fixed cosmology
+    #     are the same) by the new bias parameters.
+    #
+    #     Parameters
+    #     ----------
+    #     k: float or list or numpy.ndarray
+    #         Wavemodes :math:`k` at which to evaluate the multipoles. If a list
+    #         is passed, it has to match the size of `ell`, and in that case
+    #         each wavemode refer to a given multipole.
+    #     params: dict
+    #         Dictionary containing the list of total model parameters which are
+    #         internally used by the emulator. The keyword/value pairs of the
+    #         dictionary specify the names and the values of the parameters,
+    #         respectively.
+    #     ell: int or list
+    #         pecific multipole order :math:`\ell`.
+    #         Can be chosen from the list [0,2,4,6], whose entries correspond to
+    #         monopole (:math:`\ell=0`), quadrupole (:math:`\ell=2`),
+    #         hexadecapole (:math:`\ell=4`) and octopole (:math:`\ell=6`).
+    #     de_model: str, optional
+    #         String that determines the dark energy equation of state. Can be
+    #         chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
+    #         the standard cosmological parameters, or be left undefined to use
+    #         only :math:`\sigma_{12}`. Defaults to **None**.
+    #     binning: dict, optional
+    #
+    #     obs_id: str, optional
+    #         If not **None** the returned power spectrum will be convolved with
+    #         a survey window function. In that case the string must be a valid
+    #         data set identifier and the window function mixing matrix must
+    #         have been loaded beforehand. Defaults to **None**.
+    #     q_tr_lo: list or numpy.ndarray, optional
+    #         List containing the user-provided AP parameters, in the form
+    #         :math:`(q_\perp, q_\parallel)`. If provided, prevents
+    #         computation from correct formulas (ratios of angular diameter
+    #         distances and expansion factors wrt to the corresponding quantities
+    #         of the fiducial cosmology). Defaults to **None**.
+    #     W_damping: Callable[[float, float], float], optional
+    #         Function returning the shape of the pairwise velocity generating
+    #         function in the large scale limit, :math:`r\rightarrow\infty`. The
+    #         function accepts two floats as arguments, corresponding to the
+    #         wavemode :math:`k` and the cosinus of the angle between pair
+    #         separation and line of sight :math:`\mu`, and returns a float. This
+    #         function is used only with the **VDG_infty** model. If **None**, it
+    #         uses the free kurtosis distribution defined by **_W_kurt**.
+    #         Defaults to **None**.
+    #     ell_for_recon: list, optional
+    #         List of :math:`\ell` values used for the reconstruction of the
+    #         2d leading-order IR-resummed power spectrum. If **None**, all the
+    #         even multipoles up to :math:`\ell=6` are used in the
+    #         reconstruction. Defaults to **None**.
+    #
+    #     Returns
+    #     -------
+    #     Pell_dict: dict
+    #         Dictionary containing all the requested power spectrum multipoles
+    #         of order :math:`\ell` at the specified :math:`k`.
+    #     """
+    #     ell = [ell] if not isinstance(ell, list) else ell
+    #
+    #     if isinstance(k, list):
+    #         if len(k) != len(ell):
+    #             raise ValueError("If 'k' is given as a list, it must match the"
+    #                              " length of 'ell'.")
+    #         else:
+    #             k_list = k
+    #             k = np.unique(np.hstack(k_list))
+    #     else:
+    #         k_list = [k]*len(ell)
+    #
+    #     if de_model is None and self.use_Mpc:
+    #         check_params = (self.params_list + self.RSD_params_list +
+    #                         self.obs_syst_params_list)
+    #     elif de_model is None and not self.use_Mpc:
+    #         check_params = (self.params_list + ['h'] + self.RSD_params_list +
+    #                         self.obs_syst_params_list)
+    #     else:
+    #         check_params = self.params_shape_list \
+    #                        + self.de_model_params_list[de_model] \
+    #                        + self.RSD_params_list + self.obs_syst_params_list
+    #         if 'Ok' not in params:
+    #             check_params.remove('Ok')
+    #
+    #     for p in self.RSD_params_list+self.obs_syst_params_list:
+    #         if p not in params:
+    #             check_params.remove(p)
+    #
+    #     if obs_id != self.X_obs_id:
+    #         self.X_splines_up_to_date = {X: False for X in self.diagrams_all}
+    #         self.X_obs_id = obs_id
+    #
+    #     if binning != self.X_binning:
+    #         self.X_splines_up_to_date = {X: False for X in self.diagrams_all}
+    #         self.X_binning = binning
+    #
+    #     if (any(params[p] != self.params[p] for p in check_params) or
+    #             not all(self.X_splines_up_to_date.values())):
+    #         self.PX_ell_list = {
+    #             'ell{}'.format(m): np.zeros(
+    #                 [k_list[i].shape[0], len(self.diagrams_all)])
+    #             for i, m in enumerate(ell)}
+    #         for i, X in enumerate(self.diagrams_all):
+    #             PX_ell = self.PX_ell(k_list, params, ell, X, de_model=de_model,
+    #                                  binning=self.X_binning,
+    #                                  obs_id=self.X_obs_id,
+    #                                  q_tr_lo=q_tr_lo,
+    #                                  W_damping=W_damping,
+    #                                  ell_for_recon=ell_for_recon)
+    #             for m in PX_ell.keys():
+    #                 self.PX_ell_list[m][:, i] = PX_ell[m]
+    #
+    #     for p in self.bias_params_list:
+    #         if p in params.keys():
+    #             self.params[p] = params[p]
+    #         else:
+    #             self.params[p] = 0.0
+    #     # self.splines_up_to_date = False
+    #     # self.dw_spline_up_to_date = False
+    #     bX = self._get_bias_coeff_for_chi2_decomposition()
+    #
+    #     Pell_dict = {}
+    #     for i, m in enumerate(ell):
+    #         Pell_dict['ell{}'.format(m)] = np.dot(
+    #             self.PX_ell_list['ell{}'.format(m)], bX)
+    #
+    #     return Pell_dict
 
     # TODO
-    def _PX(self, k, mu, params, X, de_model=None):
-        r"""Compute the individual contribution X to the galaxy power spectrum.
-
-        Returns the individual anisotropic contribution X to the galaxy power
-        spectrum :math:`P_\mathrm{gg}(k,\mu)`.
-
-        Parameters
-        ----------
-        k: float or list or numpy.ndarray
-            Wavemodes :math:`k` at which to evaluate the X contribution.
-        mu: float or list or numpy.ndarray
-            Cosinus :math:`\mu` between the pair separation and the line of
-            sight at which to evaluate the X contribution.
-        params: dict
-            Dictionary containing the list of total model parameters which are
-            internally used by the emulator. The keyword/value pairs of the
-            dictionary specify the names and the values of the parameters,
-            respectively.
-        X: str
-            Identifier of the contribution to the galaxy power spectrum. Can
-            be chosen from the list [`"P0L_b1b1"`, `"PNL_b1"`, `"PNL_id"`,
-            `"Pctr_c0"`, `"Pctr_c2"`, `"Pctr_c4"`,
-            `"Pctr_b1b1cnlo"`, `"Pctr_b1cnlo"`, `"Pctr_cnlo"`,
-            `"P1L_b1b1"`, `"P1L_b1b2"`, `"P1L_b1g2"`, `"P1L_b1g21"`,
-            `"P1L_b2b2"`, `"P1L_b2g2"`, `"P1L_g2g2"`, `"P1L_b2"`, `"P1L_g2"`,
-            `"P1L_g21"`].
-        de_model: str, optional
-            String that determines the dark energy equation of state. Can be
-            chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
-            the standard cosmological parameters, or be left undefined to use
-            only :math:`\sigma_{12}`. Defaults to **None**.
-
-        Returns
-        -------
-        PX_2d: numpy.ndarray
-            2-d array containing the X contribution to the galaxy power
-            spectrum at the specified :math:`k` and :math:`\mu`.
-        """
-        ids = None
-        for n, diagram in enumerate(self.diagrams_emulated):
-            if diagram == X:
-                if n < 9:
-                    ids = [n*self.nk, (n+1)*self.nk]
-                else:
-                    ids = [9*self.nk + (n-9)*self.nkloop,
-                           9*self.nk + (n-8)*self.nkloop]
-
-        if ids is not None:
-            ell_for_recon = [0, 2, 4] if not self.real_space else [0]
-            self._eval_emulator(params, ell=ell_for_recon, de_model=de_model)
-
-            PX_ell = np.zeros([self.nk, 3])
-            for i, ell in enumerate(ell_for_recon):
-                PX_ell[self.nk - (ids[1]-ids[0]):, i] = \
-                    self.Pk_ratios[ell][ids[0]:ids[1]]
-            PX_ell = (PX_ell.T*self.Pk_lin).T
-
-            PX_spline = {}
-            for i, ell in enumerate(ell_for_recon):
-                if self.use_Mpc:
-                    PX_spline[ell] = UnivariateSpline(self.k_table,
-                                                      PX_ell[:, i],
-                                                      k=3, s=0)
-                else:
-                    PX_spline[ell] = UnivariateSpline(
-                        self.k_table/self.params['h'],
-                        PX_ell[:, i]*self.params['h']**3,
-                        k=3, s=0)
-
-            PX_2d = 0.0
-            for ell in ell_for_recon:
-                PX_2d += np.outer(PX_spline[ell](k), eval_legendre(ell, mu))
-        else:
-            raise ValueError('{}: invalid identifier.'.format(X))
-
-        return PX_2d
+    # def _PX(self, k, mu, params, X, de_model=None):
+    #     r"""Compute the individual contribution X to the galaxy power spectrum.
+    #
+    #     Returns the individual anisotropic contribution X to the galaxy power
+    #     spectrum :math:`P_\mathrm{gg}(k,\mu)`.
+    #
+    #     Parameters
+    #     ----------
+    #     k: float or list or numpy.ndarray
+    #         Wavemodes :math:`k` at which to evaluate the X contribution.
+    #     mu: float or list or numpy.ndarray
+    #         Cosinus :math:`\mu` between the pair separation and the line of
+    #         sight at which to evaluate the X contribution.
+    #     params: dict
+    #         Dictionary containing the list of total model parameters which are
+    #         internally used by the emulator. The keyword/value pairs of the
+    #         dictionary specify the names and the values of the parameters,
+    #         respectively.
+    #     X: str
+    #         Identifier of the contribution to the galaxy power spectrum. Can
+    #         be chosen from the list [`"P0L_b1b1"`, `"PNL_b1"`, `"PNL_id"`,
+    #         `"Pctr_c0"`, `"Pctr_c2"`, `"Pctr_c4"`,
+    #         `"Pctr_b1b1cnlo"`, `"Pctr_b1cnlo"`, `"Pctr_cnlo"`,
+    #         `"P1L_b1b1"`, `"P1L_b1b2"`, `"P1L_b1g2"`, `"P1L_b1g21"`,
+    #         `"P1L_b2b2"`, `"P1L_b2g2"`, `"P1L_g2g2"`, `"P1L_b2"`, `"P1L_g2"`,
+    #         `"P1L_g21"`].
+    #     de_model: str, optional
+    #         String that determines the dark energy equation of state. Can be
+    #         chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
+    #         the standard cosmological parameters, or be left undefined to use
+    #         only :math:`\sigma_{12}`. Defaults to **None**.
+    #
+    #     Returns
+    #     -------
+    #     PX_2d: numpy.ndarray
+    #         2-d array containing the X contribution to the galaxy power
+    #         spectrum at the specified :math:`k` and :math:`\mu`.
+    #     """
+    #     ids = None
+    #     for n, diagram in enumerate(self.diagrams_emulated):
+    #         if diagram == X:
+    #             if n < 9:
+    #                 ids = [n*self.nk, (n+1)*self.nk]
+    #             else:
+    #                 ids = [9*self.nk + (n-9)*self.nkloop,
+    #                        9*self.nk + (n-8)*self.nkloop]
+    #
+    #     if ids is not None:
+    #         ell_for_recon = [0, 2, 4] if not self.real_space else [0]
+    #         self._eval_emulator(params, ell=ell_for_recon, de_model=de_model)
+    #
+    #         PX_ell = np.zeros([self.nk, 3])
+    #         for i, ell in enumerate(ell_for_recon):
+    #             PX_ell[self.nk - (ids[1]-ids[0]):, i] = \
+    #                 self.Pk_ratios[ell][ids[0]:ids[1]]
+    #         PX_ell = (PX_ell.T*self.Pk_lin).T
+    #
+    #         PX_spline = {}
+    #         for i, ell in enumerate(ell_for_recon):
+    #             if self.use_Mpc:
+    #                 PX_spline[ell] = UnivariateSpline(self.k_table,
+    #                                                   PX_ell[:, i],
+    #                                                   k=3, s=0)
+    #             else:
+    #                 PX_spline[ell] = UnivariateSpline(
+    #                     self.k_table/self.params['h'],
+    #                     PX_ell[:, i]*self.params['h']**3,
+    #                     k=3, s=0)
+    #
+    #         PX_2d = 0.0
+    #         for ell in ell_for_recon:
+    #             PX_2d += np.outer(PX_spline[ell](k), eval_legendre(ell, mu))
+    #     else:
+    #         raise ValueError('{}: invalid identifier.'.format(X))
+    #
+    #     return PX_2d
 
     def PX_ell6_novir_noAP(self, X):
         r"""Compute the individual contribution X to the octopole.
@@ -3370,16 +3437,6 @@ class PTEmu:
         if any(do_analytic_marginalisation.values()):
             chi2_decomposition = False
 
-        # lista=self.diagrams_all
-        # ####FOR CHI2 DEC
-        # Removing_templ={}
-        # for index, value in enumerate(self.diagrams_all):
-        #     Removing_templ[value]=index
-        #
-        # z=np.array([Removing_templ[a] for a in ctr2_shot])
-        #
-        # lista = [ele for ele in lista if ele not in ctr2_shot]
-
         chi2 = 0.0
         if not chi2_decomposition:
             convolve_obs_id = obs_id if convolve_window else None
@@ -3551,111 +3608,6 @@ class PTEmu:
             chi2 += self.chi2_decomposition['DD']
 
         return chi2
-
-    # def _chi2_powerspectrum(self, obs_id, params, ell, de_model=None,
-    #                         binning=None, convolve_window=False, q_tr_lo=None,
-    #                         W_damping=None, chi2_decomposition=False,
-    #                         compute_chi2_decomposition=True,
-    #                         params_to_marg=None, G_priors_marg
-    #                         ell_for_recon=None):
-    #     ell_joint = np.unique(np.hstack([ell[oi] for oi in obs_id])).tolist()
-    #     bins_kmax = [np.unique(np.hstack([self.data[oi].bins_kmax[i]
-    #                                       for oi in obs_id \
-    #                                       if l in self.data[oi].ell]))
-    #                  for i,l in enumerate(ell_joint)]
-    #     n_obs = len(obs_id)
-    #     chi2 = 0.0
-    #     if not chi2_decomposition:
-    #         convolve_obs_id = obs_id if convolve_window else None
-    #         Pell = self.Pell(bins_kmax, params, ell_joint,
-    #                          de_model=de_model, binning=binning,
-    #                          obs_id=convolve_obs_id, q_tr_lo=q_tr_lo,
-    #                          W_damping=W_damping, ell_for_recon=ell_for_recon)
-    #
-    #         for n,oi in enumerate(obs_id):
-    #             ids = [np.intersect1d(bins_kmax[i], self.data[oi].bins_kmax[i],
-    #                                   return_indices=True)[1]
-    #                    for i,l in enumerate(ell[oi])]
-    #             if Pell['ell{}'.format(ell[oi][0])].ndim == 1:
-    #                 Pell_list = np.hstack(
-    #                     [Pell['ell{}'.format(l)][ids[i]]
-    #                      for i,l in enumerate(ell[oi])])
-    #                 diff = Pell_list - self.data[oi].signal_kmax
-    #             else:
-    #                 Pell_list = np.vstack(
-    #                     [Pell['ell{}'.format(l)][ids[i],n::n_obs]
-    #                      for i,l in enumerate(ell[oi])])
-    #                 diff = Pell_list - self.data[oi].signal_kmax[:,None]
-    #             chi2 += np.einsum("a...,a...", diff,
-    #                               self.data[oi].inverse_cov_kmax @ diff)
-    #     else:
-    #         # oi = obs_id[0]
-    #         if compute_chi2_decomposition:
-    #             convolve_obs_id = obs_id if convolve_window else None
-    #             PX_ell = {}
-    #             for X in self.diagrams_all:
-    #                 PX_ell[X] = self.PX_ell(bins_kmax, params, ell_joint, X,
-    #                                         binning=binning,
-    #                                         obs_id=convolve_obs_id,
-    #                                         de_model=de_model, q_tr_lo=q_tr_lo,
-    #                                         W_damping=W_damping,
-    #                                         ell_for_recon=ell_for_recon)
-    #
-    #             n_diagrams = len(self.diagrams_all)
-    #             nparams_poi = int(self.nparams/n_obs)
-    #             self.chi2_decomposition = {}
-    #             self.chi2_decomposition['DD'] = 0.0
-    #             self.chi2_decomposition['XD'] = np.empty((n_diagrams,
-    #                                                       n_obs, nparams_poi))
-    #             self.chi2_decomposition['XX'] = np.empty((n_diagrams,
-    #                                                       n_diagrams,
-    #                                                       n_obs, nparams_poi))
-    #             for n,oi in enumerate(obs_id):
-    #                 ids = [np.intersect1d(bins_kmax[i],
-    #                                       self.data[oi].bins_kmax[i],
-    #                                       return_indices=True)[1]
-    #                        for i,l in enumerate(ell[oi])]
-    #                 if PX_ell['P0L_b1b1']['ell{}'.format(ell[oi][0])].ndim == 1:
-    #                     # ndiag x nk x nell -> ndiag x (ids x nell)
-    #                     PX_ell_list = np.vstack([
-    #                         np.hstack([
-    #                             PX_ell[X]['ell{}'.format(l)][ids[i]]
-    #                             for i,l in enumerate(ell[oi])
-    #                         ]) for X in self.diagrams_all
-    #                     ])
-    #                 else:
-    #                     # ndiag x nk X nell x N -> ndiag x (ids x nell) x N
-    #                     PX_ell_list = np.stack([
-    #                         np.vstack([
-    #                             PX_ell[X]['ell{}'.format(l)][ids[i],
-    #                                                          n::n_obs]
-    #                             for i,l in enumerate(ell[oi])
-    #                         ]) for X in self.diagrams_all
-    #                     ])
-    #                 self.chi2_decomposition['DD'] += self.data[oi].SN_kmax
-    #                 self.chi2_decomposition['XD'][:,n] = \
-    #                     np.einsum("ab...,b->a...", PX_ell_list,
-    #                               self.data[oi].inverse_cov_kmax \
-    #                                   @ self.data[oi].signal_kmax)
-    #                 self.chi2_decomposition['XX'][:,:,n] = \
-    #                     np.einsum("ab...,bc,dc...->ad...", PX_ell_list,
-    #                               self.data[oi].inverse_cov_kmax,
-    #                               PX_ell_list)
-    #
-    #         self._update_bias_params(params)
-    #         self.splines_up_to_date = False
-    #         self.dw_spline_up_to_date = False
-    #
-    #         bX = self._get_bias_coeff_for_chi2_decomposition()
-    #         for n in range(n_obs):
-    #             chi2 += np.einsum("ac,abc,bc->c", bX[:,n::n_obs],
-    #                               self.chi2_decomposition['XX'][:,:,n],
-    #                               bX[:,n::n_obs])
-    #             chi2 -= 2*np.einsum("ab,ab->b", bX[:,n::n_obs],
-    #                                 self.chi2_decomposition['XD'][:,n])
-    #         chi2 += self.chi2_decomposition['DD']
-    #
-    #     return chi2
 
     def _chi2_bispectrum(self, obs_id, params, ell, de_model=None,
                          binning=None, convolve_window=False, q_tr_lo=None,

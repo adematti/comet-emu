@@ -4,7 +4,6 @@ import numpy as np
 import numba as nb
 import pickle
 from comet.grid import Grid, CtypedGrid
-#from comet.ctypedgrid import CtypedGrid
 
 nb.config.THREADING_LAYER = 'workqueue'
 
@@ -98,13 +97,13 @@ class Bispectrum:
             self.kernel_mu_tuples['G2'] = [(0,0,2), (2,0,2), (0,2,2), (2,2,2)]
             self.kernel_mu_tuples['b2'] = self.kernel_mu_tuples['F2']
             self.kernel_mu_tuples['K'] = self.kernel_mu_tuples['F2']
-            self.kernel_mu_tuples['k31'] = [(1,0,1), (3,0,1), (1,2,1),
-                                            (1,4,1), (3,2,1), (3,4,1)]
-            self.kernel_mu_tuples['k32'] = [(0,1,1), (0,3,1), (2,1,1),
-                                            (4,1,1), (2,3,1), (4,3,1)]
-            self.n123_tuples_stoch_all = np.array([[0,0,0],[2,0,0],[0,2,0],
-                                                   [0,0,2],[4,0,0],[2,2,0],
-                                                   [2,0,2]])
+            self.kernel_mu_tuples['k31'] = [
+                (1,0,1), (3,0,1), (1,2,1), (1,4,1), (3,2,1), (3,4,1)]
+            self.kernel_mu_tuples['k32'] = [
+                (0,1,1), (0,3,1), (2,1,1), (4,1,1), (2,3,1), (4,3,1)]
+            self.n123_tuples_stoch_all = np.array([
+                [0,0,0], [2,0,0], [0,2,0], [0,0,2], [4,0,0], [2,2,0],
+                [2,0,2], [6,0,0], [4,2,0], [4,0,2]])
             self._get_mu_tuples_for_discrete_average()
 
         self.grid = None
@@ -259,7 +258,7 @@ class Bispectrum:
                 self.discrete_stoch_kernel_mu_tuples['ksq']
             )
             self.discrete_stoch_kernel_mu_tuples['dksq_dlnk'] = np.array([
-                [2,0,0],[4,0,0],[6,0,0]
+                [2,0,0],[4,0,0],[6,0,0], [8,0,0]
             ])
 
     def change_RSD_model(self, model):
@@ -367,7 +366,7 @@ class Bispectrum:
             tri_is_subset = False
             tri_has_changed = True
         else:
-            tri_mismatch = np.any(self.tri != tri_test) \
+            tri_mismatch = np.logical_not(np.array_equal(self.tri, tri_test)) \
                 or len(tri_test) != max([len(self.tri_id_ell[l])
                                          for l in self.tri_id_ell])
                 #or length of tri_test doesn't match length of tri_id_ell
@@ -459,7 +458,7 @@ class Bispectrum:
             self.cov_mixing_kernel = {}
 
             if binning is None:
-                print('Recompute (non-binned) kernels!')
+                # print('Recompute (non-binned) kernels!')
                 if not self.calibration_mode \
                         and 'VDG_infty_ctr' in self.model:
                     self.pow_ctr = 2
@@ -492,11 +491,12 @@ class Bispectrum:
                     self.grid = CtypedGrid(**self.binning)
                 else:
                     self.grid.update(**self.binning)
-                self.tri_unique = np.arange(
-                    int(np.around(np.amax(self.tri)/self.binning.get('dk')))
-                )
-                self.tri_unique = self.tri_unique * self.binning.get('dk') \
-                                  + self.binning.get('first_bin_centre')
+                # self.tri_unique = np.arange(
+                #     int(np.around(np.amax(self.tri)/self.binning.get('dk')))
+                # )
+                # self.tri_unique = self.tri_unique * self.binning.get('dk') \
+                #                   + self.binning.get('first_bin_centre')
+                self.tri_unique = np.unique(self.tri)
                 if self.binning.get('effective', False):
                     self.discrete_average = False
                     self.use_effective_triangles = True
@@ -1455,6 +1455,7 @@ class Bispectrum:
         # first, find all n1,n2,n3 tuples
         self.n123_tuples_all = np.array([0,0,0])
         kernel_names = ['F2','G2','k31','k32']
+        self.I = {}
         for kk in kernel_names:
             self.I[kk] = {}
             n123_tuples = self.kernel_mu_tuples[kk]
@@ -1540,6 +1541,7 @@ class Bispectrum:
         a class attribute.
         """
         kernel_names = ['F2'] if self.real_space else ['F2','G2','k31','k32']
+        self.I = {}
         for kk in kernel_names:
             self.I[kk] = {}
             n123_tuples = self.kernel_mu_tuples[kk]
@@ -1610,8 +1612,19 @@ class Bispectrum:
                 n123_ctr[0] += 2
                 self.I_stoch_ctr[tuple(n123_ctr)] = {}
                 for ell in [0,2,4]:
-                    self.I_stoch_ctr[tuple(n123_ctr)][ell] = \
-                        self.I['b2'][tuple(n123_ctr)][ell]
+                    if tuple(n123_ctr) in [(6,0,2), (8,0,0)]:
+                        self.I_stoch_ctr[tuple(n123_ctr)][ell] = \
+                            np.zeros([tri.shape[0],3])
+                        for i in range(3):
+                            n123_perm_even = np.roll(np.array(n123_ctr), i)
+                            n123_perm_even[0] += ell
+                            ii = np.argsort(n123_perm_even)[::-1]
+                            self.I_stoch_ctr[tuple(n123_ctr)][ell][:,i] = \
+                                self.mu123_integrals(*n123_perm_even[ii],
+                                                     *tri[:,ii].T)
+                    else:
+                        self.I_stoch_ctr[tuple(n123_ctr)][ell] = \
+                            self.I['b2'][tuple(n123_ctr)][ell]
 
     def compute_damped_mu123_integrals(self, tri, W_damping):
         gl_W3p_damping = W_damping(tri, self.gl_mu1, self.gl_mu2, self.gl_mu3)
@@ -1660,7 +1673,7 @@ class Bispectrum:
                         n123_perm_even[0] += ell
                         self.n123_tuples_all = np.vstack(
                             (self.n123_tuples_all, n123_perm_even))
-        self.n123_tuples_all = np.unique(self.n123_tuples_all, axis=0)
+
         for kk in self.discrete_stoch_kernel_mu_tuples:
             self.stoch_kernels_shell_average[kk] = {}
             for n123 in self.discrete_stoch_kernel_mu_tuples[kk]:
@@ -1668,6 +1681,13 @@ class Bispectrum:
                 for ell in ell_req:
                     self.stoch_kernels_shell_average[kk][tuple(n123)][ell] = \
                         np.zeros((self.tri.shape[0],3,self.num_fiducials))
+                    for i in range(3):
+                        n123_perm_even = np.roll(np.array(n123), i)
+                        n123_perm_even[0] += ell
+                        self.n123_tuples_all = np.vstack(
+                            (self.n123_tuples_all, n123_perm_even))
+
+        self.n123_tuples_all = np.unique(self.n123_tuples_all, axis=0)
 
         self.I_tuples_dict = {}
         for kk in self.kernels_shell_average:
@@ -1850,7 +1870,7 @@ class Bispectrum:
                 pickle.dump(self.stoch_kernels_shell_average, f)
 
     def load_kernels_shell_average(self):
-        print('Load (binned) kernels!')
+        # print('Load (binned) kernels!')
         self.kernels_shell_average = pickle.load(
             open('{}.pickle'.format(self.binning.get('filename_root_kernels')),
             "rb")
@@ -2443,8 +2463,8 @@ class Bispectrum:
             params_kernels['K'] = 2*params['g2']*b1sq
             params_stoch = params['MB0']*b1sq/self.nbar
             if self.discrete_average:
-                kernel[0] = np.zeros(
-                    self.kernels_shell_average['F2'][0,0,0][0].shape)
+                kernel[0] = np.zeros_like(
+                    self.kernels_shell_average['F2'][0,0,0][0])
                 for KK in self.kernel_names:
                     kernel[0] += np.einsum(
                         "abc,c->abc",
@@ -2481,7 +2501,11 @@ class Bispectrum:
             params_kernels['k31'] = -b1f * np.array([b1sq, b1f, 2*b1f, f2,
                                                      2*f2, f4/b1f])
             params_kernels['k32'] = params_kernels['k31']
-            params_stoch = params['MB0']/self.nbar * np.array([b1sq, b1f])
+            params_stoch = np.array([
+                b1sq * params['MB0'],
+                b1f * (params['MB0'] + params['NP0']),
+                f2 * (params['NP0'])
+            ]) / self.nbar
             if ('EFT' in self.model or 'VDG_infty_ctr' in self.model) \
                     and self.cnlo_type == 'EggLeeSco':
                 cnloB = params['cnloB']*f2
@@ -2510,7 +2534,7 @@ class Bispectrum:
                         )
                     kernel_stoch[l] = \
                         self.join_stoch_kernel_mu123_shell_average(
-                            [(0,0,0),(2,0,0)], l, neff, params_stoch,
+                            [(0,0,0),(2,0,0),(4,0,0)], l, neff, params_stoch,
                             params['q_tr'], params['q_lo'], cnloB_stoch
                         )
                 else:
@@ -2523,7 +2547,7 @@ class Bispectrum:
                             cnloB
                         )
                     kernel_stoch[l] = self.join_stoch_kernel_mu123_integral(
-                        [(0,0,0),(2,0,0)], l, neff, params_stoch,
+                        [(0,0,0),(2,0,0),(4,0,0)], l, neff, params_stoch,
                         params['q_tr'], params['q_lo'], cnloB_stoch
                     )
 
@@ -2586,6 +2610,7 @@ class Bispectrum:
 
             kernel_stoch[0]['Bnoise_MB0b1b1'] = 1.0
             kernel_stoch[0]['Bnoise_MB0b1'] = 0.0
+            kernel_stoch[0]['Bnoise_NP0'] = 0.0
         else:
             f2 = params['f']**2
             f3 = params['f']**3
@@ -2600,7 +2625,7 @@ class Bispectrum:
             params_kernels['k31'] = -np.array([params['f'], f2, 2*f2, f3,
                                                      2*f3, f4])
             params_kernels['k32'] = params_kernels['k31']
-            params_stoch = np.array([1.0, params['f']])
+            params_stoch = np.array([1.0, params['f'], f2])
 
             if 'VDG_infty' in self.model and not self.discrete_average:
                     self.compute_damped_mu123_integrals(self.tri, W_damping)
@@ -2621,11 +2646,12 @@ class Bispectrum:
                                 kernel[l][diagram] += kernel_temp[i]
                     kernel_stoch_temp = \
                         self.join_stoch_kernel_mu123_integral_indv(
-                            [(0,0,0),(2,0,0)], l, neff, params_stoch,
+                            [(0,0,0),(2,0,0),(4,0,0)], l, neff, params_stoch,
                             params['q_tr'], params['q_lo']
                         )
                     kernel_stoch[l]['Bnoise_MB0b1b1'] = kernel_stoch_temp[0]
                     kernel_stoch[l]['Bnoise_MB0b1'] = kernel_stoch_temp[1]
+                    kernel_stoch[l]['Bnoise_NP0'] = kernel_stoch_temp[2]
 
             if 4 in ell:
                 for diagram in kernel[4]:
