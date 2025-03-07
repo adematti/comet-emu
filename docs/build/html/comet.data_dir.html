@@ -1,23 +1,24 @@
+
+
 <!DOCTYPE html>
-<html class="writer-html5" lang="en" >
+<html class="writer-html5" lang="en" data-content_root="./">
 <head>
-  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>comet.data_dir package &mdash; Comet 0.1 documentation</title>
-      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
-      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
-      <link rel="stylesheet" href="_static/twemoji.css" type="text/css" />
-  <!--[if lt IE 9]>
-    <script src="_static/js/html5shiv.min.js"></script>
-  <![endif]-->
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="_static/twemoji.css?v=2199c511" />
+
   
-        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
-        <script src="_static/jquery.js"></script>
-        <script src="_static/underscore.js"></script>
-        <script src="_static/doctools.js"></script>
-        <script src="https://twemoji.maxcdn.com/v/latest/twemoji.min.js"></script>
-        <script src="_static/twemoji.js"></script>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=2709fde1"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="https://unpkg.com/twemoji@latest/dist/twemoji.min.js"></script>
+      <script src="_static/twemoji.js?v=a4381b3f"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" /> 
@@ -28,11 +29,15 @@
     <nav data-toggle="wy-nav-shift" class="wy-nav-side">
       <div class="wy-side-scroll">
         <div class="wy-side-nav-search" >
-            <a href="index.html" class="icon icon-home"> Comet
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Comet
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
-    <input type="text" name="q" placeholder="Search docs" />
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
     <input type="hidden" name="check_keywords" value="yes" />
     <input type="hidden" name="area" value="default" />
   </form>
@@ -41,6 +46,40 @@
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Tutorial/examples.html">Tutorials</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="Tutorial/examples.html#quick-start">Quick-start</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Tutorial/examples.html#advanced-configuration-options">Advanced configuration options</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#fiducial-background-cosmologies">Fiducial background cosmologies</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#alcock-paczynski-parameters">Alcock-Paczynski parameters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#shot-noise-normalisation">Shot noise normalisation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#non-flat-and-non-lambda-cosmologies">Non-flat and non-<span class="math notranslate nohighlight">\(\Lambda\)</span> cosmologies</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#the-f-sigma-12-parameter-space">The <span class="math notranslate nohighlight">\(f\)</span>-<span class="math notranslate nohighlight">\(\sigma_{12}\)</span> parameter space</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#user-defined-finger-of-god-damping-functions">User-defined finger-of-god damping functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#providing-different-k-scales">Providing different <span class="math notranslate nohighlight">\(k\)</span>-scales</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#speed-up-with-fixed-cosmological-parameters">Speed-up with fixed cosmological parameters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#using-different-bases-for-galaxy-bias">Using different bases for galaxy bias</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#using-different-bases-for-counterterms">Using different bases for counterterms</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="Tutorial/examples.html#beyond-p-ell-predictions">Beyond <span class="math notranslate nohighlight">\(P_{\ell}\)</span> predictions</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#linear-power-spectrum">Linear power spectrum</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#tree-level-bispectrum">Tree-level bispectrum</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="Tutorial/examples.html#covariance-matrices">Covariance matrices</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Tutorial/examples.html#binning-and-discreteness-effects">Binning and discreteness effects</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#power-spectrum">Power spectrum</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#bispectrum">Bispectrum</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="Tutorial/examples.html#working-with-data-sets">Working with data sets</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#loading-data">Loading data</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#computing-the-chi-2">Computing the <span class="math notranslate nohighlight">\(\chi^2\)</span></a></li>
+<li class="toctree-l3"><a class="reference internal" href="Tutorial/examples.html#convolution-with-survey-window-function">Convolution with survey window function</a></li>
+</ul>
+</li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="model.html">Model Description</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="model.html#real-space-matter-power-spectrum">Real-space matter power spectrum</a></li>
 <li class="toctree-l2"><a class="reference internal" href="model.html#real-space-galaxy-power-spectrum">Real-space galaxy power spectrum</a></li>
@@ -51,17 +90,33 @@
 <li class="toctree-l1"><a class="reference internal" href="spaceparams.html">Parameter space</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="spaceparams.html#ranges-of-emulated-parameters">Ranges of emulated parameters</a></li>
 <li class="toctree-l2"><a class="reference internal" href="spaceparams.html#cosmological-parameters">Cosmological parameters</a></li>
-<li class="toctree-l2"><a class="reference internal" href="spaceparams.html#bias-parameters">Bias parameters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="spaceparams.html#bias-and-rsd-parameters">Bias and RSD parameters</a></li>
 </ul>
 </li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Complete API:</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="modules.html">comet</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="comet.html">PTEmu</a></li>
-<li class="toctree-l2"><a class="reference internal" href="comet.html#module-comet.cosmology">cosmology</a></li>
-<li class="toctree-l2"><a class="reference internal" href="comet.html#module-comet.data">data</a></li>
-<li class="toctree-l2"><a class="reference internal" href="comet.html#module-comet.tables">tables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="comet.html">PTEmu</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.PTEmu.PTEmu"><code class="docutils literal notranslate"><span class="pre">PTEmu</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="comet.html#module-comet.bispectrum">bispectrum</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.bispectrum.Bispectrum"><code class="docutils literal notranslate"><span class="pre">Bispectrum</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="comet.html#module-comet.cosmology">cosmology</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.cosmology.Cosmology"><code class="docutils literal notranslate"><span class="pre">Cosmology</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="comet.html#module-comet.data">data</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.data.MeasuredData"><code class="docutils literal notranslate"><span class="pre">MeasuredData</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="comet.html#module-comet.tables">tables</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="comet.html#comet.tables.Tables"><code class="docutils literal notranslate"><span class="pre">Tables</span></code></a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -79,8 +134,8 @@
         <div class="rst-content">
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
-      <li><a href="index.html" class="icon icon-home"></a> &raquo;</li>
-      <li>comet.data_dir package</li>
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">comet.data_dir package</li>
       <li class="wy-breadcrumbs-aside">
             <a href="_sources/comet.data_dir.rst.txt" rel="nofollow"> View page source</a>
       </li>
@@ -91,9 +146,9 @@
            <div itemprop="articleBody">
              
   <section id="comet-data-dir-package">
-<h1>comet.data_dir package<a class="headerlink" href="#comet-data-dir-package" title="Permalink to this headline"></a></h1>
+<h1>comet.data_dir package<a class="headerlink" href="#comet-data-dir-package" title="Link to this heading"></a></h1>
 <section id="module-comet.data_dir">
-<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-comet.data_dir" title="Permalink to this headline"></a></h2>
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-comet.data_dir" title="Link to this heading"></a></h2>
 </section>
 </section>
 

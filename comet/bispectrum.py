@@ -258,7 +258,7 @@ class Bispectrum:
                 self.discrete_stoch_kernel_mu_tuples['ksq']
             )
             self.discrete_stoch_kernel_mu_tuples['dksq_dlnk'] = np.array([
-                [2,0,0],[4,0,0],[6,0,0], [8,0,0]
+                [2,0,0], [4,0,0], [6,0,0], [8,0,0]
             ])
 
     def change_RSD_model(self, model):

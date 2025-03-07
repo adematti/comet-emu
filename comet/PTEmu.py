@@ -1650,7 +1650,7 @@ class PTEmu:
         Pdw = np.squeeze(self.Pdw_spline.eval(k))
         return Pdw
 
-    def Pell_fid_ktable(self, params, ell, de_model=None):
+    def _Pell_fid_ktable(self, params, ell, de_model=None):
         r"""Compute the power spectrum multipoles at the training wavemodes.
 
         Returns the specified multipole at a fixed :math:`k` grid
@@ -2132,7 +2132,7 @@ class PTEmu:
             if (np.any(params_updated) or
                     np.any([p not in params.keys() for p in params_nonzero]) or
                     not self.splines_up_to_date or diff_shape):
-                Pell = self.Pell_fid_ktable(params, ell=ell_for_recon,
+                Pell = self._Pell_fid_ktable(params, ell=ell_for_recon,
                                             de_model=de_model)
                 h = None if self.use_Mpc else self.params['h']
                 self.Pell_spline.build(self.k_table, Pell, h=h)
@@ -2439,7 +2439,7 @@ class PTEmu:
     #
     #     return PX_2d
 
-    def PX_ell6_novir_noAP(self, X):
+    def _PX_ell6_novir_noAP(self, X):
         r"""Compute the individual contribution X to the octopole.
 
         Returns the individual contribution X to the octopole
@@ -2995,7 +2995,7 @@ class PTEmu:
         elif avg_los==2:
             return (1+(kxx_l1l2/kll_l1l2))/2
 
-    def Gaussian_covariance(self, l1, l2, k, dk, Pell, volume,
+    def _Gaussian_covariance(self, l1, l2, k, dk, Pell, volume,
                             Nmodes=None, avg_cov=False, avg_los=3):
         r"""Compute the gaussian covariance of the power spectrum multipoles.
 
@@ -3183,7 +3183,7 @@ class PTEmu:
                     kij, id1, id2 = np.intersect1d(k[i], k[j],
                                                    return_indices=True)
                     ids_ij = np.intersect1d(k_all, kij, return_indices=True)[1]
-                    cov_l1l2 = self.Gaussian_covariance(
+                    cov_l1l2 = self._Gaussian_covariance(
                         l1, l2, k_all, dk, Pell, volume, Nmodes,
                         avg_cov=avg_cov, avg_los=avg_los)[ids_ij]
                     cov[sum(nbins[:i]):sum(nbins[:i+1]),

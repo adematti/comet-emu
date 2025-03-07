@@ -16,30 +16,23 @@ Let’s begin by importing ``comet`` along with the necessary libraries:
 
 .. code-block:: python
 
-  from comet import comet
-  import numpy as np
-  import matplotlib.pyplot as plt
+   from comet import comet
+   import numpy as np
+   import matplotlib.pyplot as plt
 
-When initialising the emulator, we need to select a specific perturbative model. Currently, COMET supports three options:
+At initialisation, we only need to specify the perturbation theory model that we want to use. Valid specifiers are currently:
 
-- ``EFT`` (Effective Field Theory)
-- ``VDG_infty`` (model with non-perturbative Velocity Difference Generating function)
-- ``RS`` (Real-Space one-loop model)
+- effective field theory model: ``"EFT"``
+- model with non-perturbative damping function: ``"VDG_infty"``
+- real-space version: ``"RS"``
 
-For a detailed overview of the available models, please check :ref:`here<models>`. Each of these models comes with two separate emulators, based on whether the user wants to include the effect from massive neutrinos or not. These can be selected by using the model identifier specified above (e.g. ``EFT``) or by further attaching the string ``_nonu`` (e.g. ``EFT_nonu``). Additionally, we can configure COMET to use either:
-
-- :math:`\mathrm{Mpc}` units (``use_Mpc=True``, default option)
-- :math:`h^{-1}\,\mathrm{Mpc}` units (``use_Mpc=False``)
-
-All non-dimensionless quantities will be assumed to be in the chosen unit system and returned accordingly.
-
-Let’s now define an emulator object for the EFT model without massive neutrinos using :math:`h^{-1}\,\mathrm{Mpc}` units:
+A brief overview of these models and their implementation in COMET can be found :ref:`here<models>`. By default COMET returns the model predictions in :math:`\mathrm{Mpc}` units and assumes that any input quantities, such as wave modes, as given in the same units. It is possible to switch to the standard :math:`h^{-1}\mathrm{Mpc}` units by specifying the argument ``use_Mpc``\ , such that the following call defines an emulator object for the EFT model with :math:`h^{-1}\mathrm{Mpc}` units:
 
 .. code-block:: python
 
-  EFT = comet(model='EFT_nonu', use_Mpc=False)
+   EFT = comet(model="EFT", use_Mpc=False)
 
-Before making predictions for a given cosmological model, we need to specify the fiducial background cosmology. This is essential for computing Alcock-Paczynski distortions. To set up the fiducial cosmology in COMET, we use the function ``define_fiducial_cosmology``:
+In order to make predictions for a given cosmological model we first need to specify the fiducial background cosmology, which is used to compute the Alcock-Paczynski distortions. This is done by calling the function ``define_fiducial_cosmology`` with a dictionary specifying the cosmological parameters and the redshift:
 
 .. code-block:: python
 
@@ -49,13 +42,17 @@ Before making predictions for a given cosmological model, we need to specify the
 
   EFT.define_fiducial_cosmology(params_fid=params_fid)
 
-The function ``Pell``, which returns the power spectrum multipoles, requires three main inputs:
+   # This assumes by default a "lambda" cosmology with w0 = -1, for other
+   # options, see the advanced examples below.
+   EFT.define_fiducial_cosmology(params_fid=params_fid)
 
 - ``k``: the scales at which to compute the multipoles, given in the appropriate units
 - ``params``: the input dictionary, including cosmological, bias, and RSD parameters
 - ``ell``: the Legendre multipole order (can be either 0, 2, 4, or a list of values, e.g. [0, 2, 4])
 
-The parameter dictionary must include all shape parameters, specifically:
+#. The scales for which to compute the multipoles (in the corresponding units)
+#. A parameter dictionary, specifying cosmological, bias, and (if applicable) additional redshift-space distortions parameters, see :ref:`spaceparams` for all available parameters and their dictionary keys
+#. The multipole number, i.e. ell = 0, 2, 4, or a list of multipole numbers
 
 - Cold dark matter densities (``wc``)
 - Baryon density (``wb``)
@@ -99,11 +96,6 @@ and hexadecapole (\ ``ell=4``\ ) for a range of scales from
 
   k_hMpc = np.logspace(-3, np.log10(0.3), 100)
 
-  # The extra argument `de_model` is necessary to specify
-  # that we are working with a LCDM cosmology. In the next
-  # sections we will show how to work with other settings.
-  Pell_LCDM = EFT.Pell(k=k_hMpc, params=params, ell=[0,2,4], de_model='lambda')
-
 The output of the ``Pell`` function is given as a dictionary:
 
 .. code-block:: python
@@ -127,13 +119,7 @@ Finally, we can access our results and plot them as follows:
   plt.tight_layout()
   plt.show()
 
-.. image:: images/fig01.png
-
-
-Massive neutrinos
-^^^^^^^^^^^^^^^^^
-
-To work with massive neutrinos, we need to use a different sets of emulators that have been trained also in terms of the total neutrino mass ``Mnu``. In this case, simply specify the model name without the ``_nonu`` suffix. For example:
+So we can access our results and plot them as follows:
 
 .. code-block:: python
 
@@ -147,27 +133,8 @@ The new parameter dictionary must explicitly include a value for ``Mnu``. Other 
   params_nu = params.copy()
   params_nu['Mnu'] = 0.5
 
-  Pell_LCDM_nu = EFT_nu.Pell(k_hMpc, params_nu, ell=[0,2,4], de_model='lambda')
-
-To check the differences, let's plot the two sets of multipoles:
-
-.. code-block:: python
-
-  fig = plt.figure(figsize=(10,5))
-  ax = fig.add_subplot(111)
-  ax.semilogx(k_hMpc, k_hMpc**0.5 * Pell_LCDM['ell0'], c='C0', ls='-', lw=3, label=r'$P_0$')
-  ax.semilogx(k_hMpc, k_hMpc**0.5 * Pell_LCDM['ell2'], c='C1', ls='-', lw=3, label=r'$P_2$')
-  ax.semilogx(k_hMpc, k_hMpc**0.5 * Pell_LCDM['ell4'], c='C2', ls='-', lw=3, label=r'$P_4$')
-  ax.semilogx(k_hMpc, k_hMpc**0.5 * Pell_LCDM_nu['ell0'], c='C0', ls='--', lw=3, label=r'$P_0\,\nu$')
-  ax.semilogx(k_hMpc, k_hMpc**0.5 * Pell_LCDM_nu['ell2'], c='C1', ls='--', lw=3, label=r'$P_2\,\nu$')
-  ax.semilogx(k_hMpc, k_hMpc**0.5 * Pell_LCDM_nu['ell4'], c='C2', ls='--', lw=3, label=r'$P_4\,\nu$')
-  ax.set_xlabel(r'$k \, \left[h\,\mathrm{Mpc}^{-1}\right]$')
-  ax.set_ylabel(r'$k^{1/2} \, P_{\ell}(k) \, \left[(h^{-1}\,\mathrm{Mpc})^{5/2}\right]$')
-  ax.legend()
-  plt.tight_layout()
-  plt.show()
-
-.. image:: images/fig_nonu_vs_nu.png
+Advanced configuration options
+------------------------------
 
 
 Advanced configuration options
@@ -177,7 +144,7 @@ In addition to the basic commands displayed in the previous section, COMET provi
 
 - Specifying fiducial background cosmologies
 - Fixing Alcock-Paczynski parameters
-- Setting the shot-noise normalisation
+- Setting the shot noise normalisation
 - Non-flat and non-:math:`\Lambda` cosmologies
 - Using the :math:`f`-:math:`\sigma_{12}` parameter space
 - Using user-defined finger-of-god damping functions
@@ -205,11 +172,15 @@ Note that the units of :math:`H_ {\rm fid}(z)` and :math:`D_{m,\rm fid}(z)` are 
 
   We emphasize that the ``define_fiducial_cosmology`` function is used solely for setting the fiducial cosmological parameter values involved in computing the Alcock-Paczynski parameters. It does not set the default values for the evaluation of the model.
 
+.. note::
+
+  We stress that ``define_fiducial_cosmology`` is only used to set the fiducial cosmological parameter values entering the computation of the Alcock-Paczynski parameters. It cannot be used to set default parameter values for the evaluation of the model.
+
 
 Alcock-Paczynski parameters
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-By default, the values of the Alcock-Paczynski parameters, :math:`q_{\parallel}` and :math:`q_{\perp}`, are determined based on the provided cosmological parameters and fiducial background quantities (or the fiducial parameter dictionary). However, these values can be manually overwritten by specifying them explicitly as an argument in the ``Pell`` function:
+By default, the values of the Alcock-Paczynski parameters, :math:`q_{\parallel}` and :math:`q_{\perp}`, are computed based on the given cosmological parameters and the fiducial background values for the Hubble rate and comoving transverse distance. These values can be overwritten by explicitly providing the Alcock-Paczynski parameters as an argument to the ``Pell`` function:
 
 .. code-block:: python
 
@@ -221,10 +192,11 @@ By default, the values of the Alcock-Paczynski parameters, :math:`q_{\parallel}`
 This feature is particularly useful when one wishes to ignore Alcock-Paczynski distortions, as in the example above.
 
 
+
 Shot noise normalisation
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-By default, the shot noise parameters in the power spectrum model are expressed in units of :math:`L^3` for ``NP0`` and :math:`L^5` for ``NP20`` and ``NP22``\ , where :math:`L = (\mathrm{Mpc})^3` (\ ``use_Mpc=True``\ ) or :math:`L = (h^{-1}\mathrm{Mpc})^3` (\ ``use_Mpc=False``\ ). It is possible to define a fixed normalisation scale (corresponding to the Poisson shot noise :math:`1/\bar{n}`) by setting a sample number density as follows:
+By default, the shot noise parameters in the power spectrum model are assumed to be given in units of :math:`L^3` for ``NP0`` and :math:`L^5` for ``NP20`` and ``NP22``\ , where :math:`L = (\mathrm{Mpc})^3` (\ ``use_Mpc=True``\ ) or :math:`L = (h^{-1}\mathrm{Mpc})^3` (\ ``use_Mpc=False``\ ). It is possible to define a fixed normalisation scale (i.e., corresponding to the Poisson shot noise :math:`1/\bar{n}`) as follows:
 
 .. code-block:: python
 
@@ -232,6 +204,8 @@ By default, the shot noise parameters in the power spectrum model are expressed 
   EFT.define_nbar(nbar=nbar)
 
 With this normalisation, ``NP0`` becomes dimensionless, while ``NP20`` and ``NP22`` acquire units of :math:`L^2`. The same normalisation is also used for parameters entering the expression for the bispectrum (see below).
+
+In this case ``NP0`` is dimensionless, while ``NP20`` and ``NP22`` have dimension :math:`L^2`. The same normalisation is also used for parameters entering the bispectrum model (see below).
 
 
 Non-flat and non-:math:`\Lambda` cosmologies
@@ -279,6 +253,9 @@ We can now recompute the model using these updated parameter values and compare 
 
 .. image:: images/fig02.png
 
+
+The :math:`f`-:math:`\sigma_{12}` parameter space
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The :math:`f`-:math:`\sigma_{12}` parameter space
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -356,6 +333,38 @@ If we want to use the :math:`f`-:math:`\sigma_{12}` parameter space directly, we
 User-defined finger-of-god damping functions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+By default, the ``VDG_infty`` model applies a damping function to the power spectrum and bispectrum (see below) that is derived by the resummation of quadratic non-linearities and which depends on the parameter ``'avir'``\ . However, the user may supply their own damping function via the argument ``W_damping`` in the function ``Pell``\ . The corresponding function must be defined with two arguments for the scale :math:`k`  and the cosine :math:`\mu` of the angle between the wave vector and the line of sight. For instance, to define a Lorentzian damping function we can proceed as follows:
+
+.. code-block:: python
+
+   # Let's set up the VDG model first:
+   VDG = comet(model='VDG_infty', use_Mpc=False)
+   VDG.define_fiducial_cosmology(params_fid=params_fid)
+
+   # Define Lorentzian damping function
+   def W_Lorentzian(k, mu):
+       sigma_v = VDG.params['avir'] # define velocity dispersion as a free parameter (reusing "avir")
+       x = k * mu * VDG.params['f'] * sigma_v
+       return 1.0 / (1.0 + x**2)
+
+.. hint::
+
+   Note that model parameters can be accessed through the internal parameter dictionary of the VDG emulator object. It is (currently) not possible to define new model parameters, but existing parameters can be reused (if they are not used anywhere else in the model). When not using the default damping function, the parameter ``'avir'`` is not required, so in the example above, we instead use it to allow for fits of the velocity dispersion.
+
+We can now obtain predictions of the power spectrum multipoles with the Lorentzian damping function with the following call:
+
+.. code-block:: python
+
+   Pell_Lorentizan = VDG.Pell(k_hMpc, params, ell=[0,2,4], de_model='lambda',
+                              W_damping=W_Lorentzian)
+
+
+Providing different :math:`k`-scales
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+User-defined finger-of-god damping functions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 By default, the ``VDG_infty`` model applies a damping function to both the power spectrum and bispectrum (see below). This function is derived from the resummation of quadratic non-linearities and depends on the parameter ``avir``\ . However, users can override this default by supplying their own damping function via the ``W_damping`` argument in the ``Pell``\ function. The corresponding function must accept two arguments, the scale :math:`k`  and the cosine :math:`\mu` of the angle between the wave vector and the line of sight. For instance, to define a Lorentzian damping function, we can proceed as follows:
 
 .. code-block:: python
@@ -396,7 +405,9 @@ As an example, to compute the quadrupole at :math:`k = 0.1\,h\,\mathrm{Mpc}^{-1}
 
   EFT.Pell(k=0.1, params=params, ell=2)
 
-  >> {'ell2': array([12734.58552054])}
+
+Speed-up with fixed cosmological parameters
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 To compute multiple multipoles at a given set of scales:
 
@@ -421,7 +432,9 @@ To compute different multipoles at different scales:
 
    If ``kmax`` is given as a list, its length must match the length of specified multipoles (\ ``ell``\ ).
 
-.. hint::
+
+Using different bases for galaxy bias
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
    For better performance, it is recommended to compute all required multipoles and scales in a single function call rather than calling ``Pell`` multiple times for individual wavemodes.
 
@@ -464,33 +477,6 @@ The bias basis is defined at initialisation using the argument ``bias_basis``\ ,
 
 It is also possible to change the bias basis later via the function ``change_bias_basis``\ , e.g.:
 
-.. code-block:: python
-
-  EFT.change_bias_basis("AssBauGre")
-
-Changing the bias basis also changes the keys of the parameter dictionary that must be specified. The full list of available bias keys can be printed as follows:
-
-.. code-block:: python
-
-  print(EFT.bias_params_list)
-
-  >> ['b1', 'b2', 'bG2', 'bGam3', 'c0', 'c2', 'c4', 'cnlo', 'NP0', 'NP20', 'NP22', 'NB0', 'MB0']
-
-In this case we now need to provide values for ``'bG2'`` and ``'bGam3'``\ , i.e., parameters for ``'g2'`` and ``'g21'`` are now ignored. In case of the d'Amico et al. basis we have:
-
-.. code-block:: python
-
-  EFT.change_bias_basis("AmiGleKok")
-  print(EFT.bias_params_list)
-
-  >> ['b1t', 'b2t', 'b3t', 'b4t', 'c0', 'c2', 'c4', 'cnlo', 'NP0', 'NP20', 'NP22', 'NB0', 'MB0']
-
-Let's change back to the default for the remainder of the tutorial:
-
-.. code-block:: python
-
-  EFT.change_bias_basis("EggScoSmi")
-
 
 Using different bases for counterterms
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -500,7 +486,7 @@ Apart from a different basis for galaxy bias, it is also possible to use a diffe
 - ``"Comet"``: default choice, corresponds to definitions given in Eggemeier et al. 2023, 2025
 - ``"ClassPT"``: definitions adopted by the Class-PT code (Chudaykin et al. 2020)
 
-.. note::
+In this case we now need to provide values for ``'bG2'`` and ``'bGam3'``\ , i.e., parameters for ``'g2'`` and ``'g21'`` are now ignored. In case of the d'Amico et al. basis we have:
 
   Unlike for the different bias parameter bases above, the dictionary keywords for the counterterms remain the same when switching basis. However, the parameter values of the input dictionary are converted to the Comet definitions, which means the internal parameter values might differ from those given as input.
 
@@ -511,8 +497,13 @@ Beyond :math:`P_{\ell}` predictions
 
 Below, we demonstrate several additional outputs that COMET can generate:
 
+<<<<<<< HEAD
 - The linear power spectrum, both with and without infrared resummation.
 - The tree-level bispectrum multipoles.
+=======
+- The linear power spectrum, with and without infra-red resummation
+- The tree-level bispectrum multipoles
+>>>>>>> main
 
 Linear power spectrum
 ^^^^^^^^^^^^^^^^^^^^^
@@ -546,7 +537,7 @@ Let's plot the ratio of the no-wiggle and de-wiggled linear power spectrum over 
 Tree-level bispectrum
 ^^^^^^^^^^^^^^^^^^^^^
 
-COMET can also compute and output the tree-level bispectrum (in real space, with the ``RS`` model) and its multipoles (in redshift space, with the ``EFT`` and ``VDG_infty`` models). These predictions are not emulated but are instead directly computed from the emulated de-wiggled power spectrum. To obtain the bispectrum, we use the function ``Bell``. To demonstrate its usage, let's first generate a set of triangle configurations:
+COMET can also output the tree-level bispectrum (in real-space, for the ``RS`` model) and its multipoles (in redshift-space, for the ``EFT`` and ``VDG_infty`` model). These predictions are not emulated, but computed from the emulated de-wiggled power spectrum directly. For that purpose we provide the function ``Bell`` and in order to demonstrate its usage let's first generate a set of triangle configurations:
 
 .. code-block:: python
 
@@ -584,20 +575,37 @@ The ``Bell`` function has the same arguments and functionality as the analogous 
 
 .. image:: images/fig_bispectrum.png
 
-As in case of the power spectrum, it is possible to specify user-defined damping functions for the ``VDG_infty`` model. As arguments, it requires the list of triangle configurations, as well as (separately) the cosines of the angles between the three wave vectors and the line of sight. For example, for a Lorentzian damping function one can define:
+As in case of the power spectrum, it is possible to specify user-defined damping functions in the ``VDG_infty`` model. As arguments, it requires the list of triangle configurations, as well as (separately) the cosines of the angles between the three wave vectors and the line of sight. For example, for a Lorentzian damping function one can define:
 
 .. code-block:: python
 
-  def WB_Lorentzian(tri, mu1, mu2, mu3):
-    kmu1, kmu2, kmu3 = VDG.get_kmu_products(tri, mu1, mu2, mu3)
-    x2 = ((kmu1)**2 + (kmu2)**2 + (kmu3)**2) * (VDG.params['f'] * VDG.params['avirB'])**2
-    return 1.0 / (1.0 + 0.5*x2)
+    def WB_Lorentzian(tri, mu1, mu2, mu3):
+       kmu1, kmu2, kmu3 = VDG.get_kmu_products(tri, mu1, mu2, mu3)
+       x2 = ((kmu1)**2 + (kmu2)**2 + (kmu3)**2) * (VDG.params['f'] * VDG.params['avirB'])**2
+      return 1.0 / (1.0 + 0.5*x2)
 
 .. note::
 
   The products between the wave modes :math:`k_i` and the cosines :math:`\mu_i` are required in a specific format. For that purpose, one can use the provided ``get_kmu_products`` function.
 
 In case of the EFT model, COMET provides two different counterterm prescriptions, which are either based on the definition in `Ivanov et al. 2022 <https://doi.org/10.1103/PhysRevD.105.063512>`_ or Eggemeier et al. 2025. The default option is the latter, which defines a single counterterm parameter ``'cnloB'``\ . The former prescription can be enabled by calling the function
+
+.. code-block:: python
+
+   EFT.change_cnloB_type(type='IvaPhiNis')
+
+in which case two counterterm parameters, ``'cB1'`` and ``'cB2'``\ , can be specified (see also :ref:`here<spaceparams>`). To switch back to the default, one can call the same function with the specifier ``'EggLeeSco'``\ :
+
+.. code-block:: python
+
+   EFT.change_cnloB_type(type='EggLeeSco')
+
+
+
+Covariance matrices
+-------------------
+
+Apart from the power spectrum and bispectrum multipoles COMET can also generate (Gaussian) covariance matrices for each of these statistics. The call structure follows that of ``Pell``, having in common the arguments for scales, parameters, multipole numbers, and dark energy model. In addition, we need to specify a binwidth ``dk`` and volume (both of which need to be given in the respective units for which the emulator is configured in), for example:
 
 .. code-block:: python
 
@@ -641,7 +649,7 @@ In addition to computing power spectrum and bispectrum multipoles, COMET can als
 
 The argument specifying the scales works similarly to how it does in the ``Pell`` function. It can be provided as either a single number or a numpy array, in which case all specified multipoles are evaluated at the same scales. Alternatively, it can be given as a list of numbers or numpy arrays, where each entry corresponds to the scales for the respective multipole in ``ell``.
 
-When explicitly specifying a dark energy model, the survey volume can be set in two ways. Instead of using the volume argument directly, one can alternatively define the minimum and maximum redshifts (``zmin`` and ``zmax``), the sky fraction (``fsky``), and a volume scaling factor (``volfac``) that defaults to 1. The total volume is then computed based on the chosen cosmological model. For example:
+When explicitly specifying a dark energy model, it is also possible (as an alternative to providing the volume via the ``volume`` argument) to provide minimum and maximum redshifts, ``zmin`` and ``zmax``\ , a sky fraction ``fsky``\ , and a volume scaling factor ``volfac`` (by default set to 1), such that the volume is computed in accordance with the given cosmological model. For example:
 
 .. code-block:: python
 
@@ -718,10 +726,10 @@ In COMET, this can be done by specifying a binning dictionary, when calling ``Pe
 
 .. code-block:: python
 
-  binning = {'kfun':0.005, 'dk':0.005}
+   binning = {'kfun':0.005, 'dk':0.005}
 
-  k = 0.005 + np.arange(80)*0.005
-  Pell_discrete = EFT.Pell(k=k, params=params, ell=[0,2,4], de_model='lambda', binning=binning)
+   k = 0.005 + np.arange(80)*0.005
+   Pell_discrete = EFT.Pell(k, params, [0,2,4], 'lambda', binning=binning)
 
 .. note::
 
@@ -735,29 +743,27 @@ A common approximation to account for the finite bin width is to evaluate the po
 
 .. code-block:: python
 
-  Pell_discrete_eff = EFT.Pell(k=k, params=params, ell=[0,2,4], de_model='lambda',
-                               binning={'kfun':0.005, 'dk':0.005, 'effective':True})
+   Pell_discrete_eff = EFT.Pell(k, params, [0,2,4], 'lambda',
+                                binning={'kfun':0.005, 'dk':0.005, 'effective':True})
 
 Let's compare the two sets of predictions:
 
 .. code-block:: python
 
-  fig = plt.figure(figsize=(10,5))
-  ax = fig.add_subplot(111)
+   f = plt.figure(figsize=(10,5))
+   ax = f.add_subplot(111)
 
-  ax.plot(k, k * Pell_discrete['ell0'], m='o', c='C0', mfc='none', ms=3.5, label='discrete')
-  ax.plot(k, k * Pell_discrete['ell2'], m='o', c='C1', mfc='none', ms=3.5)
-  ax.plot(k, k * Pell_discrete['ell4'], m='o', c='C2', mfc='none', ms=3.5)
+   ax.plot(k, k*Pell_discrete['ell0'], 'o', c='C0', mfc='none', ms=3.5, label='discrete')
+   ax.plot(k, k*Pell_discrete['ell2'], 'o', c='C1', mfc='none', ms=3.5)
+   ax.plot(k, k*Pell_discrete['ell4'], 'o', c='C2', mfc='none', ms=3.5)
 
-  ax.plot(k, k * Pell_discrete_eff['ell0'], c='C0', label='effective')
-  ax.plot(k, k * Pell_discrete_eff['ell2'], c='C1')
-  ax.plot(k, k * Pell_discrete_eff['ell4'], c='C2')
+   ax.plot(k, k*Pell_discrete_eff['ell0'], c='C0', label='effective')
+   ax.plot(k, k*Pell_discrete_eff['ell2'], c='C1')
+   ax.plot(k, k*Pell_discrete_eff['ell4'], c='C2')
 
-  ax.legend()
-  ax.set_xlabel(r'$k \, \left[h\,\mathrm{Mpc}^{-1}\right]$')
-  ax.set_ylabel(r'$k \, P_{\ell}(k) \, \left[(h^{-1}\,\mathrm{Mpc})^2\right]$')
-
-  plt.show()
+   ax.legend()
+   ax.set_xlabel('$k$ [$h/\mathrm{Mpc}$]',fontsize=15)
+   ax.set_ylabel('$k\,P_{\ell}(k)$ [$(h/\mathrm{Mpc})^2$]',fontsize=15)
 
 .. image:: images/fig_discreteness_effect.png
 
@@ -769,21 +775,21 @@ COMET also provides the possibility to correct for binning and discreteness effe
 
 .. code-block:: python
 
-  binning = {
-    'kfun': 0.005,                  # fundamental frequency of Fourier grid
-    'dk': 0.015,                    # bin width
-    'first_bin_centre': 0.0075,     # k-mode of first bin centre
-    'do_rounding': False,           # apply rounding to fundamental configurations: True(default)/False
-    'decimals': [3,3],              # defines rounding precision, default: [3,3]
-    'shape_limits': [0.999,2.001],  # defines for which triangle configurations the binning/discreteness corrections are computed, default: [0.999,1.15]
-    'fiducial_cosmology':{          # defines for which fiducial cosmology the corrections are computed, default: Planck2018 + redshift in parameter dictionary
-      'h': 0.7, 'wc': 0.12,
-      'wb': 0.022, 'ns': 0.96,
-      'As': 2.2, 'w0': -1.0,
-      'wa': 0.0, 'z': 0.5
-    },
-    'filename_root_kernels':'test'  # filename root to store binned tables
-  }
+   binning = {
+      'kfun':0.005,                  # fundamental frequency of Fourier grid
+      'dk':0.015,                    # bin width
+      'first_bin_centre':0.0075,     # k-mode of first bin centre
+      'do_rounding':False,           # apply rounding to fundamental configurations: True(default)/False
+      'decimals':[3,3],              # defines rounding precision, default: [3,3]
+      'shape_limits':[0.999,2.001],  # defines for which triangle configurations the binning/discreteness corrections are computed, default: [0.999,1.15]
+      'fiducial_cosmology':{         # defines for which fiducial cosmology the corrections are computed, default: Planck2018 + redshift in parameter dictionary
+         'h': 0.7, 'wc': 0.12,
+         'wb': 0.022, 'ns': 0.96,
+         'As': 2.2, 'w0': -1.0,
+         'wa': 0.0, 'z': 0.5
+      },
+      'filename_root_kernels':'test' # filename root to store binned tables
+   }
 
 With the settings above, it is possible to define the triangle configurations for which the binning and discreteness corrections are being computed, as well as the efficiency (at the expense of accuracy).  The ``'shape_limits'`` property allows the user to specify a tuple of numbers ``[a,b]``\ , which select the following triangle configurations:
 
@@ -795,8 +801,8 @@ In the following example with ``binning['shape_limits'] = [0.999,1.15]`` this co
 
 .. code-block:: python
 
-  fig = plt.figure(figsize=(5,3))
-  ax = fig.add_subplot(111)
+  f = plt.figure(figsize=(5,3))
+  ax = f.add_subplot(111)
 
   x1 = np.linspace(0,0.5)
   x2 = np.linspace(0.5,1)
@@ -806,19 +812,17 @@ In the following example with ``binning['shape_limits'] = [0.999,1.15]`` this co
   ax.set_xticklabels(['0.00','0.25','0.50','0.75','1.00'])
   ax.set_yticks(np.linspace(0.5,1,3))
   ax.set_ylabel(r'$k_2/k_1$')
-  ax.plot(x1, 1.-x1, c='k', lw=1)
-  ax.plot(x2, x2, c='k', lw=1)
-  ax.plot(np.concatenate((x1,x2)), np.ones(100), c='k', lw=1)
+  ax.plot(x1,1.-x1,c='k',lw=1)
+  ax.plot(x2,x2,c='k',lw=1)
+  ax.plot(np.concatenate((x1,x2)),np.ones(100),c='k',lw=1)
   ax.set_xlim(-0.05,1.05)
   ax.set_ylim(0.45,1.05)
 
   shape_limits = [0.999, 1.15]
   x3 = np.linspace(shape_limits[1]-1,shape_limits[1]/2)
   x4 = np.linspace(shape_limits[0]-1,shape_limits[0]/2)
-  ax.plot(x3, shape_limits[1]-x3, c='C1', lw=3)
-  ax.plot(x4, shape_limits[0]-x4, c='C1', lw=3)
-
-  plt.show()
+  ax.plot(x3,shape_limits[1]-x3,c='C1',lw=3)
+  ax.plot(x4,shape_limits[0]-x4,c='C1',lw=3)
 
 .. image:: images/fig_triangle_01.png
 

@@ -274,7 +274,6 @@ void Grid::find_unique_triangles (vector<double> kbin, double dk,
         kmu123_private[m].reserve(ntri);
         weights_private[m].reserve(ntri);
       }
-
       #pragma omp for schedule(dynamic) nowait
       for (int i=0; i<get_num_modes_in_posmu_shell(i1); i++)
       {

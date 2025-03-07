@@ -279,7 +279,7 @@ class Grid:
 
 
 class CtypedGrid:
-    
+
     try:
         lib = ctypes.cdll.LoadLibrary('{}/discreteness/libgrid.so'.format(
             os.path.join(os.path.dirname(__file__))))

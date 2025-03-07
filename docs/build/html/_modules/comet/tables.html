@@ -1,22 +1,23 @@
+
+
 <!DOCTYPE html>
-<html class="writer-html5" lang="en" >
+<html class="writer-html5" lang="en" data-content_root="../../">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>comet.tables &mdash; Comet 0.1 documentation</title>
-      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
-      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
-      <link rel="stylesheet" href="../../_static/twemoji.css" type="text/css" />
-  <!--[if lt IE 9]>
-    <script src="../../_static/js/html5shiv.min.js"></script>
-  <![endif]-->
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../_static/twemoji.css?v=2199c511" />
+
   
-        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
-        <script src="../../_static/jquery.js"></script>
-        <script src="../../_static/underscore.js"></script>
-        <script src="../../_static/doctools.js"></script>
-        <script src="https://twemoji.maxcdn.com/v/latest/twemoji.min.js"></script>
-        <script src="../../_static/twemoji.js"></script>
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=2709fde1"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="https://unpkg.com/twemoji@latest/dist/twemoji.min.js"></script>
+      <script src="../../_static/twemoji.js?v=a4381b3f"></script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" /> 
@@ -27,11 +28,15 @@
     <nav data-toggle="wy-nav-shift" class="wy-nav-side">
       <div class="wy-side-scroll">
         <div class="wy-side-nav-search" >
-            <a href="../../index.html" class="icon icon-home"> Comet
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            Comet
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
-    <input type="text" name="q" placeholder="Search docs" />
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
     <input type="hidden" name="check_keywords" value="yes" />
     <input type="hidden" name="area" value="default" />
   </form>
@@ -42,16 +47,34 @@
 <li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../Tutorial/examples.html">Tutorials</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../Tutorial/examples.html#quick-start">Quick-start</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../../Tutorial/examples.html#in-depth-options-for-obtaining-multipoles">In-depth options for obtaining multipoles</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#an-alternative-dark-energy-model">An alternative Dark energy model.</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#the-f-sigma-12-parameter-space">The <span class="math notranslate nohighlight">\(f-\sigma_{12}\)</span> parameter space.</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#how-to-provide-different-k-scales">How to provide different k-scales.</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#speedup-when-changing-just-bias-parameters">Speedup when changing just bias parameters.</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../Tutorial/examples.html#advanced-configuration-options">Advanced configuration options</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#fiducial-background-cosmologies">Fiducial background cosmologies</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#alcock-paczynski-parameters">Alcock-Paczynski parameters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#shot-noise-normalisation">Shot noise normalisation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#non-flat-and-non-lambda-cosmologies">Non-flat and non-<span class="math notranslate nohighlight">\(\Lambda\)</span> cosmologies</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#the-f-sigma-12-parameter-space">The <span class="math notranslate nohighlight">\(f\)</span>-<span class="math notranslate nohighlight">\(\sigma_{12}\)</span> parameter space</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#user-defined-finger-of-god-damping-functions">User-defined finger-of-god damping functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#providing-different-k-scales">Providing different <span class="math notranslate nohighlight">\(k\)</span>-scales</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#speed-up-with-fixed-cosmological-parameters">Speed-up with fixed cosmological parameters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#using-different-bases-for-galaxy-bias">Using different bases for galaxy bias</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#using-different-bases-for-counterterms">Using different bases for counterterms</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="../../Tutorial/examples.html#beyond-p-ell-predictions">Beyond <span class="math notranslate nohighlight">\(P_{\ell}\)</span> predictions.</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#computing-covariance-matrices">Computing covariance matrices</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../Tutorial/examples.html#beyond-p-ell-predictions">Beyond <span class="math notranslate nohighlight">\(P_{\ell}\)</span> predictions</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#linear-power-spectrum">Linear power spectrum</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#tree-level-bispectrum">Tree-level bispectrum</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../Tutorial/examples.html#covariance-matrices">Covariance matrices</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../Tutorial/examples.html#binning-and-discreteness-effects">Binning and discreteness effects</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#power-spectrum">Power spectrum</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#bispectrum">Bispectrum</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../Tutorial/examples.html#working-with-data-sets">Working with data sets</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#loading-data">Loading data</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#computing-the-chi-2">Computing the <span class="math notranslate nohighlight">\(\chi^2\)</span></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../Tutorial/examples.html#convolution-with-survey-window-function">Convolution with survey window function</a></li>
 </ul>
 </li>
 </ul>
@@ -66,17 +89,33 @@
 <li class="toctree-l1"><a class="reference internal" href="../../spaceparams.html">Parameter space</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../spaceparams.html#ranges-of-emulated-parameters">Ranges of emulated parameters</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../spaceparams.html#cosmological-parameters">Cosmological parameters</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../../spaceparams.html#bias-parameters">Bias parameters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../spaceparams.html#bias-and-rsd-parameters">Bias and RSD parameters</a></li>
 </ul>
 </li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Complete API:</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../modules.html">comet</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="../../comet.html">PTEmu</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../../comet.html#module-comet.cosmology">cosmology</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../../comet.html#module-comet.data">data</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../../comet.html#module-comet.tables">tables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../comet.html">PTEmu</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../comet.html#comet.PTEmu.PTEmu"><code class="docutils literal notranslate"><span class="pre">PTEmu</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../comet.html#module-comet.bispectrum">bispectrum</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../comet.html#comet.bispectrum.Bispectrum"><code class="docutils literal notranslate"><span class="pre">Bispectrum</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../comet.html#module-comet.cosmology">cosmology</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../comet.html#comet.cosmology.Cosmology"><code class="docutils literal notranslate"><span class="pre">Cosmology</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../comet.html#module-comet.data">data</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../comet.html#comet.data.MeasuredData"><code class="docutils literal notranslate"><span class="pre">MeasuredData</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../comet.html#module-comet.tables">tables</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../comet.html#comet.tables.Tables"><code class="docutils literal notranslate"><span class="pre">Tables</span></code></a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -94,9 +133,9 @@
         <div class="rst-content">
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
-      <li><a href="../../index.html" class="icon icon-home"></a> &raquo;</li>
-          <li><a href="../index.html">Module code</a> &raquo;</li>
-      <li>comet.tables</li>
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">comet.tables</li>
       <li class="wy-breadcrumbs-aside">
       </li>
   </ul>
@@ -108,13 +147,13 @@
   <h1>Source code for comet.tables</h1><div class="highlight"><pre>
 <span></span><span class="sd">&quot;&quot;&quot;Tables module.&quot;&quot;&quot;</span>
 
-<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
-<span class="kn">from</span> <span class="nn">astropy.io</span> <span class="kn">import</span> <span class="n">fits</span>
-<span class="kn">import</span> <span class="nn">GPy</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">astropy.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">fits</span>
 
-
-<div class="viewcode-block" id="Tables"><a class="viewcode-back" href="../../comet.html#comet.tables.Tables">[docs]</a><span class="k">class</span> <span class="nc">Tables</span><span class="p">:</span>
-    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Class for handling the tables of the emulator.</span>
+<div class="viewcode-block" id="Tables">
+<a class="viewcode-back" href="../../comet.html#comet.tables.Tables">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Tables</span><span class="p">:</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Class for handling the tables of the emulator.</span>
 
 <span class="sd">    It handles both the training and validation sets, in the form of tables</span>
 <span class="sd">    containing the different contributions to :math:`P_\mathrm{gg}(k,\mu)`.</span>
@@ -124,8 +163,8 @@
 <span class="sd">    predictions in the original metric.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
-        <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Class constructor.</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+<span class="w">        </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Class constructor.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -145,8 +184,10 @@
                                <span class="s1">&#39;P1L_g21&#39;</span><span class="p">,</span> <span class="s1">&#39;Pctr_c0&#39;</span><span class="p">,</span> <span class="s1">&#39;Pctr_c2&#39;</span><span class="p">,</span> <span class="s1">&#39;Pctr_c4&#39;</span><span class="p">,</span>
                                <span class="s1">&#39;Pctr_b1b1cnlo&#39;</span><span class="p">,</span> <span class="s1">&#39;Pctr_b1cnlo&#39;</span><span class="p">,</span> <span class="s1">&#39;Pctr_cnlo&#39;</span><span class="p">]</span>
 
-<div class="viewcode-block" id="Tables.set_param_ranges"><a class="viewcode-back" href="../../comet.html#comet.tables.Tables.set_param_ranges">[docs]</a>    <span class="k">def</span> <span class="nf">set_param_ranges</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ranges</span><span class="p">):</span>
-        <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Set ranges for the parameters of the emulator.</span>
+<div class="viewcode-block" id="Tables.set_param_ranges">
+<a class="viewcode-back" href="../../comet.html#comet.tables.Tables.set_param_ranges">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_param_ranges</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ranges</span><span class="p">):</span>
+<span class="w">        </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Set ranges for the parameters of the emulator.</span>
 
 <span class="sd">        Sets the internal class attribute defining the prior for the</span>
 <span class="sd">        parameters of the emulator.</span>
@@ -163,8 +204,11 @@
         <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">param_ranges</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">ranges</span><span class="p">[</span><span class="n">p</span><span class="p">]</span></div>
 
-<div class="viewcode-block" id="Tables.assign_samples"><a class="viewcode-back" href="../../comet.html#comet.tables.Tables.assign_samples">[docs]</a>    <span class="k">def</span> <span class="nf">assign_samples</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">samples_hdu</span><span class="p">):</span>
-        <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Read parameter sample from HDU object.</span>
+
+<div class="viewcode-block" id="Tables.assign_samples">
+<a class="viewcode-back" href="../../comet.html#comet.tables.Tables.assign_samples">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">assign_samples</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">samples_hdu</span><span class="p">):</span>
+<span class="w">        </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Read parameter sample from HDU object.</span>
 
 <span class="sd">        Reads parameter sample from a Header Data Unit object, and stores it</span>
 <span class="sd">        as class attribute. If the sample is meant for validation, determines</span>
@@ -181,8 +225,11 @@
         <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">p</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">):</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">samples</span><span class="p">[:,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">samples_hdu</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="n">p</span><span class="p">]</span></div>
 
-<div class="viewcode-block" id="Tables.assign_table"><a class="viewcode-back" href="../../comet.html#comet.tables.Tables.assign_table">[docs]</a>    <span class="k">def</span> <span class="nf">assign_table</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table_hdu</span><span class="p">,</span> <span class="n">nk</span><span class="p">,</span> <span class="n">nkloop</span><span class="p">):</span>
-        <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Read model table from HDU object.</span>
+
+<div class="viewcode-block" id="Tables.assign_table">
+<a class="viewcode-back" href="../../comet.html#comet.tables.Tables.assign_table">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">assign_table</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table_hdu</span><span class="p">,</span> <span class="n">nk</span><span class="p">,</span> <span class="n">nkloop</span><span class="p">):</span>
+<span class="w">        </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Read model table from HDU object.</span>
 
 <span class="sd">        Reads a model table from a Header Data Unit object, and stores it as</span>
 <span class="sd">        class attribute. If the sample is a training one, additionally calls</span>
@@ -242,8 +289,11 @@
         <span class="k">else</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="s1">&#39;HDU table does not contain valid identifiers.&#39;</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="Tables.get_flip_and_offset"><a class="viewcode-back" href="../../comet.html#comet.tables.Tables.get_flip_and_offset">[docs]</a>    <span class="k">def</span> <span class="nf">get_flip_and_offset</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table</span><span class="p">):</span>
-        <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Compute flip and offset to rescale an input model table.</span>
+
+<div class="viewcode-block" id="Tables.get_flip_and_offset">
+<a class="viewcode-back" href="../../comet.html#comet.tables.Tables.get_flip_and_offset">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_flip_and_offset</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table</span><span class="p">):</span>
+<span class="w">        </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Compute flip and offset to rescale an input model table.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -270,8 +320,11 @@
             <span class="n">max_offset</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">offset_list</span><span class="p">)</span><span class="o">*</span><span class="mf">1.1</span>
         <span class="k">return</span> <span class="n">flip</span><span class="p">,</span> <span class="n">max_offset</span></div>
 
-<div class="viewcode-block" id="Tables.transform"><a class="viewcode-back" href="../../comet.html#comet.tables.Tables.transform">[docs]</a>    <span class="k">def</span> <span class="nf">transform</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table</span><span class="p">,</span> <span class="n">data_type</span><span class="p">):</span>
-        <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Rescale the dynamical range of a table for the emulation.</span>
+
+<div class="viewcode-block" id="Tables.transform">
+<a class="viewcode-back" href="../../comet.html#comet.tables.Tables.transform">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">transform</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table</span><span class="p">,</span> <span class="n">data_type</span><span class="p">):</span>
+<span class="w">        </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Rescale the dynamical range of a table for the emulation.</span>
 
 <span class="sd">        Applies flip, offset, and rescales the model table. This step is</span>
 <span class="sd">        performed by first taking the logarithm of the model table, and then</span>
@@ -303,8 +356,11 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">std</span><span class="p">[</span><span class="n">data_type</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">temp</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
         <span class="k">return</span> <span class="p">(</span><span class="n">temp</span><span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">mean</span><span class="p">[</span><span class="n">data_type</span><span class="p">])</span><span class="o">/</span><span class="bp">self</span><span class="o">.</span><span class="n">std</span><span class="p">[</span><span class="n">data_type</span><span class="p">]</span></div>
 
-<div class="viewcode-block" id="Tables.transform_inv"><a class="viewcode-back" href="../../comet.html#comet.tables.Tables.transform_inv">[docs]</a>    <span class="k">def</span> <span class="nf">transform_inv</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table</span><span class="p">,</span> <span class="n">data_type</span><span class="p">):</span>
-        <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Rescale back the dynamical range of a table.</span>
+
+<div class="viewcode-block" id="Tables.transform_inv">
+<a class="viewcode-back" href="../../comet.html#comet.tables.Tables.transform_inv">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">transform_inv</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table</span><span class="p">,</span> <span class="n">data_type</span><span class="p">):</span>
+<span class="w">        </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Rescale back the dynamical range of a table.</span>
 
 <span class="sd">        Performs the inverse operations defined in the **transform** method.</span>
 <span class="sd">        Needed to obtain predictions from the emulator in the original metric.</span>
@@ -327,8 +383,11 @@
         <span class="k">return</span> <span class="p">(</span><span class="mi">10</span><span class="o">**</span><span class="p">(</span><span class="n">table</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">std</span><span class="p">[</span><span class="n">data_type</span><span class="p">]</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">mean</span><span class="p">[</span><span class="n">data_type</span><span class="p">])</span> <span class="o">-</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">offset</span><span class="p">[</span><span class="n">data_type</span><span class="p">])</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">flip</span><span class="p">[</span><span class="n">data_type</span><span class="p">]</span></div>
 
-<div class="viewcode-block" id="Tables.transform_emulator_data"><a class="viewcode-back" href="../../comet.html#comet.tables.Tables.transform_emulator_data">[docs]</a>    <span class="k">def</span> <span class="nf">transform_emulator_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data_type</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-        <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Rescale class attribute tables.</span>
+
+<div class="viewcode-block" id="Tables.transform_emulator_data">
+<a class="viewcode-back" href="../../comet.html#comet.tables.Tables.transform_emulator_data">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">transform_emulator_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data_type</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Rescale class attribute tables.</span>
 
 <span class="sd">        Transforms the class attribute model tables from the original metric</span>
 <span class="sd">        into the emulator one.</span>
@@ -383,7 +442,9 @@
                     <span class="n">cnt</span> <span class="o">+=</span> <span class="mi">1</span>
 
                 <span class="bp">self</span><span class="o">.</span><span class="n">model_transformed</span><span class="p">[</span><span class="n">ell</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">temp</span><span class="p">,</span>
-                                                             <span class="n">data_type</span><span class="o">=</span><span class="n">ell</span><span class="p">)</span></div></div>
+                                                             <span class="n">data_type</span><span class="o">=</span><span class="n">ell</span><span class="p">)</span></div>
+</div>
+
 </pre></div>
 
            </div>
