@@ -80,7 +80,7 @@ class Bispectrum:
                     kk_deriv = 'd{}_dlnk{}'.format(kk, i+1)
                     kernel_names_deriv.append(kk_deriv)
             self.kernel_names += kernel_names_deriv
-            if 'EFT' in self.model == 'EFT':
+            if 'EFT' in self.model:
                 kernel_names_ctr = []
                 for kk in ['F2', 'G2', 'b2', 'K', 'k31', 'k32']:
                     for i in range(3):
@@ -461,7 +461,7 @@ class Bispectrum:
                 # print('Recompute (non-binned) kernels!')
                 if not self.calibration_mode \
                         and 'VDG_infty_ctr' in self.model:
-                    self.pow_ctr = 2
+                    self.pow_ctr = 2.0
                     new_model = self.model.replace('_ctr','')
                     self.change_RSD_model(new_model)
                 self.discrete_average = False
@@ -469,22 +469,29 @@ class Bispectrum:
                 self.compute_kernels(self.tri)
                 if not self.real_space:
                     if 'VDG_infty' in self.model:
-                        self.compute_mu123_integrals(self.tri)
-                        self.Gauss_Legendre_mu123_integrals(self.tri, gl_deg)
+                        self.compute_mu123_integrals(self.tri, max(ell))
+                        self.Gauss_Legendre_mu123_integrals(self.tri, gl_deg,
+                                                            max(ell))
                     else:
-                        self.compute_mu123_integrals(self.tri)
+                        self.compute_mu123_integrals(self.tri, max(ell))
         elif tri_is_subset:
             update_tri_id(tri)
 
         if binning:
             binning_has_changed = self.binning != binning
-            if self.model == 'VDG_infty' or self.model == 'VDG_infty_nonu':
+            if self.model in ['VDG_infty','VDG_infty_nonu'] and \
+                    not binning.get('effective',False):
                 self.pow_ctr = 1.75
                 idx = self.model.index('_nonu') if 'nonu' in self.model \
                       else len(self.model)
                 new_model = self.model[:idx] + '_ctr' + self.model[idx:]
                 self.change_RSD_model(new_model)
             if tri_has_changed or binning_has_changed or self.binning_turned_on:
+                if binning.get('effective',False) and \
+                        'VDG_infty_ctr' in self.model:
+                    self.pow_ctr = 2.0
+                    new_model = self.model.replace('_ctr','')
+                    self.change_RSD_model(new_model)
                 change_tri(tri)
                 self.binning = binning
                 if self.grid is None:
@@ -508,7 +515,12 @@ class Bispectrum:
                     self.generate_eff_index_arrays()
                     self.compute_kernels(self.tri_eff)
                     if not self.real_space:
-                        self.compute_mu123_integrals(self.tri_eff)
+                        if 'VDG_infty' in self.model:
+                            self.compute_mu123_integrals(self.tri, max(ell))
+                            self.Gauss_Legendre_mu123_integrals(self.tri, gl_deg,
+                                                                max(ell))
+                        else:
+                            self.compute_mu123_integrals(self.tri, max(ell))
                 else:
                     self.discrete_average = True
                     self.use_effective_triangles = False
@@ -576,7 +588,8 @@ class Bispectrum:
                             np.logical_not(check))[0]
                         self.grid.find_discrete_triangles(self.tri_unique)
                         self.compute_kernels(self.tri[self.tri_ids_eff])
-                        self.compute_mu123_integrals(self.tri[self.tri_ids_eff])
+                        self.compute_mu123_integrals(self.tri[self.tri_ids_eff],
+                                                     max(ell))
                         # self.compute_kernels_shell_average(max(ell))
             elif tri_is_subset:
                 update_tri_id(tri)
@@ -903,7 +916,7 @@ class Bispectrum:
             - :math:`d K/d \log{k_2}`
             - :math:`d K/d \log{k_3}`
         """
-        n_kernels = 24 if 'VDG_infty' in self.model else 96
+        n_kernels = 24 if self.model in ['VDG_infty','VDG_infty_nonu'] else 96
         if self.cnlo_type == 'IvaPhiNis':
             n_kernels += 24
         kernels = np.zeros([k1.size,n_kernels])
@@ -1437,7 +1450,7 @@ class Bispectrum:
                 for kk in self.kernel_names:
                     self.kernels[kk][:,i] = kernels[kk]
 
-    def Gauss_Legendre_mu123_integrals(self, tri, deg):
+    def Gauss_Legendre_mu123_integrals(self, tri, deg, max_ell):
         def muphi_to_mu123(mu_ij, phi_ij, k1, k2, k3):
             mu12 = (k3**2-k1**2-k2**2)/(2*k1*k2)
             mu1 = mu_ij
@@ -1451,6 +1464,8 @@ class Bispectrum:
 
         def I(n1, n2, n3, mu1, mu2, mu3):
             return mu1**n1 * mu2**n2 * mu3**n3
+
+        ell_req = np.arange(0, max_ell+1, 2)
 
         # first, find all n1,n2,n3 tuples
         self.n123_tuples_all = np.array([0,0,0])
@@ -1467,7 +1482,7 @@ class Bispectrum:
             n123_tuples = np.unique(n123_tuples, axis=0)
             for n123 in n123_tuples:
                 self.I[kk][tuple(n123)] = {}
-                for ell in [0,2,4]:
+                for ell in ell_req:
                     for i in range(3):
                         n123_perm_even = np.roll(np.array(n123), i)
                         n123_perm_even[0] += ell
@@ -1480,7 +1495,7 @@ class Bispectrum:
             self.I_tuples_dict[kk] = {}
             for n123 in self.I[kk]:
                 self.I_tuples_dict[kk][n123] = {}
-                for ell in [0,2,4]:
+                for ell in ell_req:
                     self.I_tuples_dict[kk][n123][ell] = []
                     for i in range(3):
                         n123_perm_even = np.roll(np.array(n123), i)
@@ -1515,7 +1530,7 @@ class Bispectrum:
         n = 0
         for n123 in self.n123_tuples_stoch_all:
             if np.all(n123 == [0,0,0]):
-                for ell in [0,2,4]:
+                for ell in ell_req:
                     n123_temp = np.copy(n123)
                     n123_temp[0] += ell
                     self.gl_I_stoch_weights[n,0] = I(*n123_temp, self.gl_mu1,
@@ -1524,7 +1539,7 @@ class Bispectrum:
                     self.gl_I_stoch_weights[n,2] = self.gl_I_stoch_weights[n,0]
                     n += 1
             else:
-                for ell in [0,2,4]:
+                for ell in ell_req:
                     for i in range(3):
                         n123_perm_even = np.roll(np.array(n123), i)
                         n123_perm_even[0] += ell
@@ -1533,13 +1548,14 @@ class Bispectrum:
                     n += 1
         self.gl_I_stoch_weights *= self.gl_weights_ij
 
-    def compute_mu123_integrals(self, tri):
+    def compute_mu123_integrals(self, tri, max_ell):
         """Compute angular integrals for all triangle configurations.
 
         Computes the angular integrals for the various triangle configurations,
         by calling the class method **mu123_integrals**, and stores them into
         a class attribute.
         """
+        ell_req = np.arange(0, max_ell+1, 2)
         kernel_names = ['F2'] if self.real_space else ['F2','G2','k31','k32']
         self.I = {}
         for kk in kernel_names:
@@ -1579,7 +1595,11 @@ class Bispectrum:
                                 n123_ij[1] += 2*(j+1)
                                 n123_new = np.vstack((n123_new, n123_ij))
                     n123_tuples = np.vstack((n123_tuples, n123_new))
-                n123_tuples = np.unique(n123_tuples, axis=0)
+            else:
+                # add kernel needed for stochastic contributions
+                if kk == 'F2':
+                    n123_tuples = np.vstack((n123_tuples, [4,0,0]))
+            n123_tuples = np.unique(n123_tuples, axis=0)
             for n123 in n123_tuples:
                 for i in range(3):
                     n123_new = np.copy(n123)
@@ -1588,7 +1608,7 @@ class Bispectrum:
             n123_tuples = np.unique(n123_tuples, axis=0)
             for n123 in n123_tuples:
                 self.I[kk][tuple(n123)] = {}
-                for ell in [0,2,4]:
+                for ell in ell_req:
                     self.I[kk][tuple(n123)][ell] = np.zeros([tri.shape[0],3])
                     for i in range(3):
                         n123_perm_even = np.roll(np.array(n123), i)
@@ -1601,17 +1621,15 @@ class Bispectrum:
         self.I['b2'] = self.I['F2']
         self.I['K'] = self.I['F2']
 
-        # n = 0
         for n123 in self.n123_tuples_stoch_all:
             self.I_stoch[tuple(n123)] = {}
-            for ell in [0,2,4]:
+            for ell in ell_req:
                 self.I_stoch[tuple(n123)][ell] = self.I['b2'][tuple(n123)][ell]
-                # n += 1
             if 'EFT' in self.model or 'VDG_infty_ctr' in self.model:
                 n123_ctr = np.copy(n123)
                 n123_ctr[0] += 2
                 self.I_stoch_ctr[tuple(n123_ctr)] = {}
-                for ell in [0,2,4]:
+                for ell in ell_req:
                     if tuple(n123_ctr) in [(6,0,2), (8,0,0)]:
                         self.I_stoch_ctr[tuple(n123_ctr)][ell] = \
                             np.zeros([tri.shape[0],3])
@@ -1626,7 +1644,8 @@ class Bispectrum:
                         self.I_stoch_ctr[tuple(n123_ctr)][ell] = \
                             self.I['b2'][tuple(n123_ctr)][ell]
 
-    def compute_damped_mu123_integrals(self, tri, W_damping):
+    def compute_damped_mu123_integrals(self, tri, W_damping, max_ell):
+        ell_req = np.arange(0, max_ell+1, 2)
         gl_W3p_damping = W_damping(tri, self.gl_mu1, self.gl_mu2, self.gl_mu3)
         gl_W2p_damping = np.zeros((3, tri.shape[0],
                                    self.gl_mu1.shape[0], self.nparams))
@@ -1638,7 +1657,7 @@ class Bispectrum:
                                     self.gl_I_weights, gl_W3p_damping)
         for kk in self.I_tuples_dict:
             for n123 in self.I_tuples_dict[kk]:
-                for ell in [0,2,4]:
+                for ell in ell_req:
                     ids = self.I_tuples_dict[kk][n123][ell]
                     self.I[kk][n123][ell] = np.swapaxes(I_damped[ids],0,1)
 
@@ -1650,7 +1669,7 @@ class Bispectrum:
             "abcd,bcd...->abc...", self.gl_I_stoch_weights, gl_W2p_damping)
         for n123 in self.n123_tuples_stoch_all:
             self.I_stoch[tuple(n123)] = {}
-            for ell in [0,2,4]:
+            for ell in ell_req:
                 self.I_stoch[tuple(n123)][ell] = np.swapaxes(
                     I_stoch_damped[n],0,1)
                 n += 1
@@ -1833,30 +1852,36 @@ class Bispectrum:
                 i1 = self.tri_eff_to_id[tri_id][i%3]
                 i2 = self.tri_eff_to_id[tri_id][(i+1)%3]
                 P2[i] = self.fiducial_Pdw_eff[i1]*self.fiducial_Pdw_eff[i2]
-            P = self.fiducial_Pdw_eff[self.tri_eff_to_id[tri_id]]
+            P = np.atleast_2d(
+                self.fiducial_Pdw_eff[self.tri_eff_to_id[tri_id]].T).T
             for kk in self.kernels_shell_average:
                 kk_bare = [x for x in self.I.keys() if x in kk][0]
                 for n123 in self.kernels_shell_average[kk]:
                     for ell in ell_req:
                         self.kernels_shell_average[kk][n123][ell][tri_id] = \
-                            self.kernels[kk][n]*self.I[kk_bare][n123][ell][n]*P2
+                            np.einsum(
+                                "a,ab->ab", self.kernels[kk][n] \
+                                * self.I[kk_bare][n123][ell][n], P2)
             for kk in self.stoch_kernels_shell_average:
                 for n123 in self.stoch_kernels_shell_average[kk]:
                     for ell in ell_req:
                         if kk == 'id':
                             self.stoch_kernels_shell_average[kk][n123][ell] \
                                                             [tri_id] = \
-                                self.I_stoch[n123][ell][n] * P
+                                np.einsum("a,a...->a...",
+                                          self.I_stoch[n123][ell][n], P)
                         elif kk == 'ksq':
                             self.stoch_kernels_shell_average[kk][n123][ell] \
                                                             [tri_id] = \
-                                self.I_stoch_ctr[n123][ell][n] \
-                                * self.kernels['k1sqb2'] * P
+                                np.einsum("a,a...->a...",
+                                          self.I_stoch_ctr[n123][ell][n] \
+                                          * self.kernels['k1sqb2'][n], P)
                         elif kk == 'dksq_dlnk':
                             self.stoch_kernels_shell_average[kk][n123][ell] \
                                                             [tri_id] = \
-                                self.I_stoch_ctr[n123][ell][n] \
-                                * self.kernels['dk1sqb2_dlnk1'] * P
+                                np.einsum("a,a...->a...",
+                                          self.I_stoch_ctr[n123][ell][n] \
+                                          * self.kernels['dk1sqb2_dlnk1'][n], P)
 
         # dump kernels
         if self.binning.get('filename_root_kernels'):
@@ -2520,7 +2545,8 @@ class Bispectrum:
                 cnloB_stoch = 0.0
 
             if 'VDG_infty' in self.model and not self.discrete_average:
-                self.compute_damped_mu123_integrals(self.tri, W_damping)
+                self.compute_damped_mu123_integrals(self.tri, W_damping,
+                                                    max(ell))
 
             for l in np.arange(0, max(ell)+1, 2):
                 if self.discrete_average:
@@ -2628,7 +2654,8 @@ class Bispectrum:
             params_stoch = np.array([1.0, params['f'], f2])
 
             if 'VDG_infty' in self.model and not self.discrete_average:
-                    self.compute_damped_mu123_integrals(self.tri, W_damping)
+                    self.compute_damped_mu123_integrals(self.tri, W_damping,
+                                                        max(ell))
 
             for l in np.arange(0, max(ell)+1, 2):
                 kernel[l] = {}

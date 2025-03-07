@@ -235,7 +235,7 @@ void Grid::find_unique_triangles (vector<double> kbin, double dk,
   double savety_factor = (dk > kf_ ? 1.0 : 1.8);
   for (int n=0; n<tri_.size(); n++)
   {
-    // cout << "Iteration: " << n << endl;
+    // cout << "Iteration: " << n << "/" << tri_.size() << endl;
     int i1 = tri_[n][1], i2 = tri_[n][2];
     vector<array<double,6>>* kmu123 =
       new vector<array<double,6>> [tri_[n].size()-3];
