@@ -492,9 +492,10 @@ class PTEmu:
             :math:`\mathrm{Mpc}^{-3}` or :math:`h^3\,\mathrm{Mpc}^{-3}`,
             depending on the value of the class attribute **use_Mpc**.
         """
-        self.nbar = np.copy(nbar)
-        self.Bisp.define_nbar(self.nbar)
-        self.splines_up_to_date = False
+        if np.any(nbar != self.nbar):
+            self.nbar = np.copy(nbar)
+            self.Bisp.define_nbar(self.nbar)
+            self.splines_up_to_date = False
 
     def define_data_set(self, obs_id, **kwargs):
         r"""Define data sample.
@@ -511,10 +512,42 @@ class PTEmu:
             Dictionary of keyword arguments (check docs of **MeasuredData**
             class for the list of allowed keyword arguments).
         """
+        temp_kwargs = kwargs
+        if 'fiducial_cosmology' in temp_kwargs:
+            if not isinstance(temp_kwargs['fiducial_cosmology'], list):
+                params_fid = temp_kwargs['fiducial_cosmology']
+                if 'z' not in params_fid:
+                    params_fid['z'] = temp_kwargs['zeff']
+                wnu = (params_fid['Mnu'] / self.neutrino_mass_fac
+                       if 'Mnu' in params_fid.keys() else 0.0)
+                Om0 = (params_fid['wc'] + params_fid['wb'] + wnu) \
+                      / params_fid['h']**2
+                H0 = params_fid['h'] * 100.0
+                Ok0 = 0.0 if 'Ok' not in params_fid else params_fid['Ok']
+                if ('w0' in params_fid and params_fid['w0'] != -1) and \
+                        ('wa' in params_fid and params_fid['wa'] != 0):
+                    de_model = 'w0wa'
+                    w0 = params_fid['w0']
+                    wa = params_fid['wa']
+                elif 'w0' in params_fid and params_fid['w0'] != -1:
+                    de_model = 'w0'
+                    w0 = params_fid['w0']
+                    wa = 0.0
+                else:
+                    de_model = 'lambda'
+                    w0 = -1.0
+                    wa = 0.0
+                self.cosmo.update_cosmology(Om0, H0, Ok0=Ok0, de_model=de_model,
+                                            w0=w0, wa=wa)
+                H_fid = self.cosmo.Hz(np.atleast_1d(params_fid['z']))
+                Dm_fid = self.cosmo.comoving_transverse_distance(
+                    params_fid['z'])
+                temp_kwargs['fiducial_cosmology'] = [H_fid,Dm_fid]
+
         if obs_id not in self.data:
-            self.data[obs_id] = MeasuredData(**kwargs)
+            self.data[obs_id] = MeasuredData(**temp_kwargs)
         else:
-            self.data[obs_id].update(**kwargs)
+            self.data[obs_id].update(**temp_kwargs)
 
         self.chi2_decomposition = None
         self.Bisp_chi2_decomposition = None
@@ -3710,7 +3743,7 @@ class PTEmu:
                         - (coeff*self.params['avirB']**self.Bisp.pow_ctr \
                            + 0.5*self.params['sv']**self.Bisp.pow_ctr)
 
-            self.update_AP_params(params, de_model=de_model,
+            self._update_AP_params(params, de_model=de_model,
                                   q_tr_lo=q_tr_lo)
 
             Bell = self.Bisp.Bell(Pdw, neff, self.params, ell_joint,  W_damping)
@@ -3895,6 +3928,10 @@ class PTEmu:
                 obs_id_stat[self.data[oi].stat] = [oi]
             else:
                 obs_id_stat[self.data[oi].stat].append(oi)
+        for stat in obs_id_stat:
+            ordered_obs_id_stat = sorted([oi for oi in obs_id_stat[stat]],
+                                         key=lambda x: self.data[x].zeff)
+            obs_id_stat[stat] = ordered_obs_id_stat
 
         if binning is None:
             binning = {stat:None for stat in obs_id_stat}
@@ -3976,9 +4013,6 @@ class PTEmu:
                     if oi not in AM_priors:
                         AM_priors[oi] = {}
 
-        # TODO:
-        # - extend multi parameter sampling to bispectrum
-
         # sort params dictionary:
         # - make sure that all redshifts appear corresponding to the redshifts
         #   stored in the data objects for all given obs_ids
@@ -4000,6 +4034,19 @@ class PTEmu:
             ids_sorting = np.argsort(params['z'])[
                 np.arange(len(np.atleast_1d(params['z']))).reshape(
                     len(obs_id_stat[stat]),counts[0]).flatten(order='F')]
+            nbar = np.tile(
+                np.hstack([self.data[oi].nbar for oi in obs_id_stat[stat]]),
+                counts[0])
+            self.define_nbar(nbar)
+            Hfid = np.tile(
+                np.hstack([self.data[oi].fiducial_cosmology[0]
+                           for oi in obs_id_stat[stat]]),
+                counts[0])
+            Dmfid = np.tile(
+                np.hstack([self.data[oi].fiducial_cosmology[1]
+                           for oi in obs_id_stat[stat]]),
+                counts[1])
+            self.define_fiducial_cosmology(HDm_fid=[Hfid,Dmfid])
             params_eval = {}
             for p in params:
                 params_eval[p] = np.atleast_1d(params[p])[ids_sorting]

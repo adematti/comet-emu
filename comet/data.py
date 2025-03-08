@@ -69,6 +69,12 @@ class MeasuredData:
             else:
                 self.cov_is_block_diagonal = self.is_block_diagonal(self.cov,
                                                                     self.n_ell)
+        if 'nbar' in kwargs:
+            self.nbar = kwargs.get('nbar')
+        else:
+            self.nbar = 1.0
+        if 'fiducial_cosmology' in kwargs:
+            self.fiducial_cosmology = kwargs.get('fiducial_cosmology')
         if 'bins_mixing_matrix' in kwargs:
             self.bins_mixing_matrix = kwargs.get('bins_mixing_matrix')
             self.bins_mixing_matrix_compressed = np.logspace(
@@ -171,6 +177,10 @@ class MeasuredData:
             else:
                 self.cov_is_block_diagonal = self.is_block_diagonal(self.cov,
                                                                     self.n_ell)
+        if 'nbar' in kwargs:
+            self.nbar = kwargs.get('nbar')
+        if 'fiducial_cosmology' in kwargs:
+            self.fiducial_cosmology = kwargs.get('fiducial_cosmology')
         if 'bins_mixing_matrix' in kwargs:
             self.bins_mixing_matrix = kwargs.get('bins_mixing_matrix')
             self.bins_mixing_matrix_compressed = np.logspace(
@@ -217,6 +227,7 @@ class MeasuredData:
         self.bins = None
         self.signal = None
         self.cov = None
+        self.nbar = 1.0
         self.bins_mixing_matrix = None
         self.W_mixing_matrix = None
         self.kmax_is_set = False
