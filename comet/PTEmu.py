@@ -458,7 +458,7 @@ class PTEmu:
         if counterterm_basis in ['Comet','ClassPT']:
             if self.counterterm_basis != counterterm_basis:
                 self.counterterm_basis = counterterm_basis
-                self.init_params_dict()
+                self._init_params_dict()
                 self.splines_up_to_date = False
                 self.dw_splines_up_to_date = False
         else:
