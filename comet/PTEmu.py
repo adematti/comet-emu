@@ -1373,9 +1373,10 @@ class PTEmu:
         k1 = tri[:,0].reshape((-1,1))
         k2 = tri[:,1].reshape((-1,1))
         k3 = tri[:,2].reshape((-1,1))
-        kmu1 = np.outer(k1,mu1)/self.params['q_lo']
-        kmu2 = k2*mu2/self.params['q_lo']
-        kmu3 = k3*mu3/self.params['q_lo']
+        kmu1 = np.einsum("...,ab->ab...", 1.0/self.params['q_lo'],
+                         np.outer(k1,mu1))
+        kmu2 = np.einsum("...,ab->ab...", 1.0/self.params['q_lo'], k2*mu2)
+        kmu3 = np.einsum("...,ab->ab...", 1.0/self.params['q_lo'], k3*mu3)
         return kmu1, kmu2, kmu3
 
     def _WB_kurt(self, tri, mu1, mu2, mu3):
@@ -3732,7 +3733,8 @@ class PTEmu:
                 neff = np.atleast_2d(
                     np.einsum(
                         "ij,i...->i...", tri_unique[:,None],
-                        np.squeeze(self.Pdw_spline.eval_derivative(tri_unique))/Pdw
+                        np.squeeze(
+                            self.Pdw_spline.eval_derivative(tri_unique))/Pdw
                     ).T
                 ).T
             if binning and self.RSD_model == 'VDG_infty':
@@ -4012,6 +4014,13 @@ class PTEmu:
                 for oi in obs_id:
                     if oi not in AM_priors:
                         AM_priors[oi] = {}
+            if 'bispectrum' in obs_id_stat:
+                # remove 'NP0' from AM dictionary
+                # since NP0 also appears in the bispectrum model
+                for oi in AM_priors:
+                    if 'NP0' in AM_priors[oi]:
+                        AM_priors[oi].pop('NP0')
+
 
         # sort params dictionary:
         # - make sure that all redshifts appear corresponding to the redshifts
