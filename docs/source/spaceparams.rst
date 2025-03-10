@@ -13,28 +13,37 @@ Ranges of emulated parameters
 Since COMET employs the evolution mapping approach, its parameter space consists
 of a set of shape parameters, in addition to :math:`\sigma_{12}` and the
 growth rate :math:`f`, which capture the dependence on redshift and evolution
-parameters. The following table lists the ranges for each emulated parameter.
+parameters. When working with cosmologies that include massive neutrinos, we
+need to load a different set of emulators. In this case, COMET also requests the
+total neutrino mass :math:`M_\nu` (in units of :math:`{\rm eV}`) and the scalar
+amplitude :math:`A_{\rm s}` (in units of :math:`10^{-9}`).
+The following table lists the ranges for each emulated parameter.
 
 +--------------------+-------------+-------------+
 | Parameter          | Minimum     | Maximum     |
 +====================+=============+=============+
-| :math:`\omega_c`   | 0.085       | 0.155       |
+| :math:`\omega_c`   | 0.08        | 0.16        |
 +--------------------+-------------+-------------+
-| :math:`\omega_b`   | 0.0205      | 0.02415     |
+| :math:`\omega_b`   | 0.01930     | 0.02535     |
 +--------------------+-------------+-------------+
-| :math:`n_s`        | 0.92        | 1.01        |
+| :math:`n_s`        | 0.90        | 1.03        |
 +--------------------+-------------+-------------+
 | :math:`\sigma_{12}`| 0.2         | 1.0         |
 +--------------------+-------------+-------------+
 | :math:`f`          | 0.5         | 1.05        |
 +--------------------+-------------+-------------+
+| :math:`M_\nu`      | 0.0         | 1.0         |
++--------------------+-------------+-------------+
+| :math:`A_{\rm s}`  | 1.0         | 3.5         |
++--------------------+-------------+-------------+
 
 All predictions from COMET are limited to the range of scales
-:math:`k \in [6.95 \times 10^{-4}, 0.35028]\,\mathrm{Mpc}^{-1}` (note that the range is
-defined in units of :math:`\mathrm{Mpc}`, opposed to :math:`h^{-1}\,\mathrm{Mpc}`!).
+:math:`k \in [6.95 \times 10^{-4}, 0.48298]\,\mathrm{Mpc}^{-1}` (note that the
+range is defined in units of :math:`\mathrm{Mpc}`, opposed to
+:math:`h^{-1}\,\mathrm{Mpc}`!).
 
 .. note::
-   Note that for values of :math:`k` beyond 0.35 :math:`\mathrm{Mpc}^{-1}`
+   Note that for values of :math:`k` beyond 0.48298 :math:`\mathrm{Mpc}^{-1}`
    COMET returns a power-law extrapolation of the power spectrum multipoles.
    This is mainly intended for performing the convolution with the survey window
    function. Direct evaluation of the multipoles should always be kept within
@@ -56,31 +65,34 @@ multipoles (see :ref:`examples`).
    for :math:`\sigma_{12}` and :math:`f`. For ``de_model = 'lambda'``, ``'w0'``, or
    ``'w0wa'`` different sets of parameters are required. The curvature density
    is always optional and if not explicitly included in the parameter dictionary
-   a flat cosmology is assumed.
+   a flat cosmology is assumed. If the massive neutrino emulators are selected,
+   then the additional parameters :math:`(M_\nu,\, A_{\rm s})` must be specified.
 
-+---------------------+----------------------------------------------+----------------+-----------------------------------------------+
-| Parameter           | Description                                  | Key            | Option                                        |
-+=====================+==============================================+================+===============================================+
-| :math:`\omega_c`    | Phys. cold dark matter density               | ``wc``         |                                               |
-+---------------------+----------------------------------------------+----------------+-----------------------------------------------+
-| :math:`\omega_b`    | Phys. baryon density                         | ``wb``         |                                               |
-+---------------------+----------------------------------------------+----------------+-----------------------------------------------+
-| :math:`n_s`         | Scalar spectral index                        | ``ns``         |                                               |
-+---------------------+----------------------------------------------+----------------+-----------------------------------------------+
-| :math:`\sigma_{12}` | RMS of fluctuations in spheres of 12 Mpc     | ``s12``        | ``de_model = None``                           |
-+---------------------+----------------------------------------------+----------------+-----------------------------------------------+
-| :math:`f`           | Growth rate                                  | ``f``          | ``de_model = None``                           |
-+---------------------+----------------------------------------------+----------------+-----------------------------------------------+
-| :math:`A_s`         | Amplitude of scalar fluctuations             | ``As``         | ``de_model = 'lambda'``, ``'w0'``, ``'w0wa'`` |
-+---------------------+----------------------------------------------+----------------+-----------------------------------------------+
-| :math:`h`           | Hubble rate                                  | ``h``          | ``de_model = 'lambda'``, ``'w0'``, ``'w0wa'`` |
-+---------------------+----------------------------------------------+----------------+-----------------------------------------------+
-| :math:`w_0`         | Const. DE equation of state parameter        | ``w0``         | ``de_model = 'w0'``, ``'w0wa'``               |
-+---------------------+----------------------------------------------+----------------+-----------------------------------------------+
-| :math:`w_a`         | Time evolving DE equation of state parameter | ``wa``         | ``de_model = 'w0wa'``                         |
-+---------------------+----------------------------------------------+----------------+-----------------------------------------------+
-| :math:`\Omega_K`    | Curvature density                            | ``Ok``         | ``de_model = 'lambda'``, ``'w0'``, ``'w0wa'`` |
-+---------------------+----------------------------------------------+----------------+-----------------------------------------------+
++---------------------+----------------------------------------------+----------------+-------------------------------------------------------------------------------+
+| Parameter           | Description                                  | Key            | Option                                                                        |
++=====================+==============================================+================+===============================================================================+
+| :math:`\omega_c`    | Phys. cold dark matter density               | ``wc``         |                                                                               |
++---------------------+----------------------------------------------+----------------+-------------------------------------------------------------------------------+
+| :math:`\omega_b`    | Phys. baryon density                         | ``wb``         |                                                                               |
++---------------------+----------------------------------------------+----------------+-------------------------------------------------------------------------------+
+| :math:`n_s`         | Scalar spectral index                        | ``ns``         |                                                                               |
++---------------------+----------------------------------------------+----------------+-------------------------------------------------------------------------------+
+| :math:`\sigma_{12}` | RMS of fluctuations in spheres of 12 Mpc     | ``s12``        | ``de_model = None``                                                           |
++---------------------+----------------------------------------------+----------------+-------------------------------------------------------------------------------+
+| :math:`f`           | Growth rate                                  | ``f``          | ``de_model = None``                                                           |
++---------------------+----------------------------------------------+----------------+-------------------------------------------------------------------------------+
+| :math:`A_s`         | Amplitude of scalar fluctuations             | ``As``         | ``de_model = 'lambda'``, ``'w0'``, ``'w0wa'`` (always with massive neutrinos) |
++---------------------+----------------------------------------------+----------------+-------------------------------------------------------------------------------+
+| :math:`h`           | Hubble rate                                  | ``h``          | ``de_model = 'lambda'``, ``'w0'``, ``'w0wa'``                                 |
++---------------------+----------------------------------------------+----------------+-------------------------------------------------------------------------------+
+| :math:`w_0`         | Const. DE equation of state parameter        | ``w0``         | ``de_model = 'w0'``, ``'w0wa'``                                               |
++---------------------+----------------------------------------------+----------------+-------------------------------------------------------------------------------+
+| :math:`w_a`         | Time evolving DE equation of state parameter | ``wa``         | ``de_model = 'w0wa'``                                                         |
++---------------------+----------------------------------------------+----------------+-------------------------------------------------------------------------------+
+| :math:`\Omega_K`    | Curvature density                            | ``Ok``         | ``de_model = 'lambda'``, ``'w0'``, ``'w0wa'``                                 |
++---------------------+----------------------------------------------+----------------+-------------------------------------------------------------------------------+
+| :math:`M_\nu`       | Total neutrino mass                          | ``Mnu``        | (always with massive neutrinos)                                               |                                            |
++---------------------+----------------------------------------------+----------------+-------------------------------------------------------------------------------+
 
 Bias and RSD parameters
 ~~~~~~~~~~~~~~~~~~~~~~~
