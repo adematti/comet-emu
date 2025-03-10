@@ -1237,7 +1237,7 @@ class PTEmu:
 
                 amplitude_scaling = np.sqrt(
                     self.params['As'] / self.emu_LCDM_params['As']) \
-                    * np.diag(D) / Dfid[0]
+                    * np.diag(D) / np.squeeze(Dfid)
                 self.params['s12'] = sigma12 * amplitude_scaling
 
                 self.params['f'] = np.diag(f)
