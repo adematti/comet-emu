@@ -99,7 +99,7 @@ class PTEmu:
 
         if self.counterterm_basis == 'Comet':
             self.bias_params_list += ['c0', 'c2', 'c4', 'cnlo', 'NP0', 'NP20', 'NP22']
-        elif self.ctr_noise_basis == 'ClassPT':
+        elif self.counterterm_basis == 'ClassPT':
             self.bias_params_list += ['c0*', 'c2*', 'c4*', 'cnlo*', 'NP0', 'NP20*', 'NP22*']
         else:
             print('Warning. Counterterms and noise basis not recognised, defaulting to '
@@ -450,8 +450,8 @@ class PTEmu:
             expansion. Must be specified from the following list:
             ['Comet', 'ClassPT']. Defaults to 'ClassPT'.
         """
-        if self.bias_basis != bias_basis or
-                self.counterterm_basis != counterterm_basis:
+        if (self.bias_basis != bias_basis or
+                self.counterterm_basis != counterterm_basis):
             self.bias_params_list = []
 
             if self.bias_basis != bias_basis:
