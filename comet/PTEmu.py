@@ -2777,7 +2777,7 @@ class PTEmu:
                                             self.Pk_ratios[m][ids[0]:ids[1]]
                                     else:
                                         PXNL_ell[:, nx, i] = \
-                                            self.PX_ell6_novir_noAP(X_emu)
+                                            self._PX_ell6_novir_noAP(X_emu)
                             PXNL_ell[:, nx, :len(ell_eval_emu)] = \
                                 np.einsum("abc,ac->abc",
                                     PXNL_ell[:, nx, :len(ell_eval_emu)],
