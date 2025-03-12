@@ -396,8 +396,8 @@ redefine our parameter values:
 
 .. note::
 
-  When computing the multipoles using the :math:`\sigma_{12}` parameter space
-  and using the massive neutrinos emulators, the parameter dictionary must also
+  When computing the multipoles within the :math:`\sigma_{12}` parameter space
+  using the massive neutrinos emulators, the parameter dictionary must also
   contain a value of `As`, since this determines, jointly with `s12`, the
   amplitude of the neutrino suppression.
 
@@ -554,11 +554,11 @@ The bias basis is defined at initialisation using the argument ``bias_basis``\
 - ``'AmiGleKok'`` (for the D'Amico et al. basis)
 
 It is also possible to change the bias basis later via the function
-``change_bias_basis``\ , e.g.:
+``change_basis``\ , e.g.:
 
 .. code-block:: python
 
-  EFT.change_bias_basis('AssBauGre')
+  EFT.change_basis(bias_basis='AssBauGre')
 
 Changing the bias basis also changes the keys of the parameter dictionary that
 must be specified. The full list of available bias keys can be printed as
@@ -567,7 +567,7 @@ follows:
 .. code-block:: python
 
   print(EFT.bias_params_list)
-  >> ['b1', 'b2', 'bG2', 'bGam3', 'c0', 'c2', 'c4', 'cnlo', 'NP0', 'NP20', 'NP22', 'NB0', 'MB0']
+  >> ['b1', 'b2', 'bG2', 'bGam3', 'c0', 'c2', 'c4', 'cnlo', 'NP0', 'NP20', 'NP22', 'cnloB', 'NB0', 'MB0', 'cB1', 'cB2']
 
 In this case we now need to provide values for ``'bG2'`` and ``'bGam3'``\ ,
 i.e., parameters for ``'g2'`` and ``'g21'`` are now ignored. In case of the
@@ -575,15 +575,16 @@ d'Amico et al. basis, we have:
 
 .. code-block:: python
 
-  EFT.change_bias_basis('AmiGleKok')
+  EFT.change_basis(bias_basis='AmiGleKok')
+
   print(EFT.bias_params_list)
-  >> ['b1t', 'b2t', 'b3t', 'b4t', 'c0', 'c2', 'c4', 'cnlo', 'NP0', 'NP20', 'NP22', 'NB0', 'MB0']
+  >> ['b1t', 'b2t', 'b3t', 'b4t', 'c0', 'c2', 'c4', 'cnlo', 'NP0', 'NP20', 'NP22', 'cnloB', 'NB0', 'MB0', 'cB1', 'cB2']
 
 Let's change back to the default for the remainder of the tutorial:
 
 .. code-block:: python
 
-  EFT.change_bias_basis('EggScoSmi')
+  EFT.change_basis(bias_basis='EggScoSmi')
 
 
 Using different bases for counterterms
@@ -592,19 +593,33 @@ Using different bases for counterterms
 Apart from a different basis for galaxy bias, it is also possible to use a
 different definition of the counterterm parameters. This can either be done by
 providing the argument ``counterterm_basis`` at initialisation, or at any later
-point by calling the function ``change_counterterm_basis``. The currently
+point by calling the function ``change_basis``. The currently
 supported specifiers are either:
 
 - ``'Comet'``: default choice, corresponds to definitions given in Eggemeier et al. 2023, 2025
 - ``'ClassPT'``: definitions adopted by the Class-PT code (Chudaykin et al. 2020)
 
+Similarly to the previous case, the ``'ClassPT'`` option changes the name of
+the keys of the internal parameter dictionary. The new names that must be
+passed as input are thus defined as:
+
+.. code-block:: python
+
+  EFT.change_basis(counterterm_basis='ClassPT')
+
+  print(EFT.bias_params_list)
+  >> ['b1', 'b2', 'g2', 'g21', 'c0*', 'c2*', 'c4*', 'cnlo*', 'NP0', 'NP20*', 'NP22*', 'cnloB', 'NB0', 'MB0', 'cB1', 'cB2']
+
 .. note::
 
-  Unlike for the different bias parameter bases above, the dictionary keywords
-  for the counterterms remain the same when switching basis. However, the
-  parameter values of the input dictionary are converted to the Comet
-  definitions, which means the internal parameter values might differ from
-  those given as input.
+  The parameter :math:`N_{P,0}` is not modified since it has the same meaning
+  in both parametrisations.
+
+Again, let's switch back to the COMET native basis:
+
+.. code-block:: python
+
+  EFT.change_basis(counterterm_basis='Comet')
 
 
 Batch evaluation of multiple samples
