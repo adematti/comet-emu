@@ -674,7 +674,8 @@ first sample, the second values define the second sample, and so on.
 
   The batch evaluation is not only limited to the power spectrum multipoles,
   but also to other output of COMET, such as the bispectrum multipoles, the
-  linear power spectra, etc. (see the rest of the tutorial).
+  linear power spectra, the :math:`\chi^2` evaluation, etc.
+  (see the rest of the tutorial).
 
 
 Beyond :math:`P_{\ell}` predictions
@@ -1437,7 +1438,7 @@ and :math:`0.05\,h\mathrm{Mpc}^{-1}`:
 
   The option ``chi2_decomposition`` is currently not available for the
   bispectrum.
-
+  
 
 Including analytical marginalisation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1463,6 +1464,22 @@ Let’s see an example:
 
   EFT.chi2(obs_id='mock_Pk', params=params, kmax=[0.30, 0.30, 0.30], de_model='lambda', AM_priors={'g21': [0.0, 5.0], 'c0': [0.0, 100.0]})
   >> 81718.03020579
+
+.. note::
+
+  When working with a different bias or counterterm basis, it is intended that
+  the marginalisation is done over the corresponding parameter set. In this
+  case, the parameters specified in the `AM_priors` flags must be the ones of
+  the selected basis.
+
+.. note::
+
+  In case of a batch evaluation, the keys of the `AM_priors` dictionary must
+  be the specific sample identifiers, similarly to what happens with the `kmax`
+  flag. The value of each of these flags should be a dictionary like the one
+  written above, with the possibility of analytically marginalising different
+  parameters for different samples (or using different priors).
+
 
 
 Convolution with survey window function
