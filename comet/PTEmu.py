@@ -107,7 +107,7 @@ class PTEmu:
             self.counterterm_basis = 'Comet'
             self.bias_params_list += ['c0', 'c2', 'c4', 'cnlo', 'NP0', 'NP20', 'NP22']
 
-        self.bias_params_list += ['NB0', 'MB0', 'cB1', 'cB2']
+        self.bias_params_list += ['cnloB', 'NB0', 'MB0', 'cB1', 'cB2']
 
         # If model with massive neutrinos is loaded, then As is no longer
         # an evolution parameter, and must be treated as a shape parameter
@@ -432,7 +432,7 @@ class PTEmu:
                   "cosmology and data sets (if defined)"
                   "cleared.".format(nbar_unit))
 
-    def change_basis(self, bias_basis, counterterm_basis):
+    def change_basis(self, bias_basis=None, counterterm_basis=None):
         r"""Change basis.
 
         Changes the parametrisation assumed for the bias, counterterm, and
@@ -450,39 +450,57 @@ class PTEmu:
             expansion. Must be specified from the following list:
             ['Comet', 'ClassPT']. Defaults to 'ClassPT'.
         """
-        if (self.bias_basis != bias_basis or
-                self.counterterm_basis != counterterm_basis):
-            self.bias_params_list = []
+        bias_params = []
+        counterterm_params = []
 
-            if self.bias_basis != bias_basis:
-                self.bias_basis = bias_basis
-                if self.bias_basis == 'EggScoSmi':
-                    self.bias_params_list += ['b1', 'b2', 'g2', 'g21']
-                elif self.bias_basis == 'AssBauGre':
-                    self.bias_params_list += ['b1', 'b2', 'bG2', 'bGam3']
-                elif self.bias_params_list == 'AmiGleKok':
-                    self.bias_params_list += ['b1t', 'b2t', 'b3t', 'b4t']
-                else:
-                    print('Warning. Bias basis not recognised, choose between '
-                          '"EggScoSmi" (default), "AssBauGre", or "AmiGleKok".')
+        for param in self.bias_params_list:
+            if param in ['b1', 'b2', 'g2', 'g21', 'bG2', 'bGam3', 'b1t', 'b2t', 'b3t', 'b4t']:
+                bias_params.append(param)
+            elif param in ['c0', 'c2', 'c4', 'cnlo', 'NP0', 'NP20', 'NP22', 'c0*', 'c2*', 'c4*', 'cnlo*', 'NP20*', 'NP22*']:
+                counterterm_params.append(param)
 
-            if self.counterterm_basis != counterterm_basis:
-                self.counterterm_basis = counterterm_basis
-                if self.counterterm_basis == 'Comet':
-                    self.bias_params_list += ['c0', 'c2', 'c4', 'cnlo',
-                                              'NP0', 'NP20', 'NP22']
-                elif self.counterterm_basis == 'ClassPT':
-                    self.bias_params_list += ['c0*', 'c2*', 'c4*', 'cnlo*',
-                                              'NP0', 'NP20*', 'NP22*']
-                else:
-                    print('Warning. Counterterm basis not recognised, choose '
-                          'between "Comet" (default) or "ClassPT".')
+        if bias_basis is not None and bias_basis != self.bias_basis:
+            self.bias_basis = bias_basis
+            bias_params.clear()
 
-            self.bias_params_list += ['cnloB', 'NB0', 'MB0', 'cB1', 'cB2']
+            if bias_basis == 'EggScoSmi':
+                bias_params.extend(['b1', 'b2', 'g2', 'g21'])
+            elif bias_basis == 'AssBauGre':
+                bias_params.extend(['b1', 'b2', 'bG2', 'bGam3'])
+            elif bias_basis == 'AmiGleKok':
+                bias_params.extend(['b1t', 'b2t', 'b3t', 'b4t'])
+            else:
+                print('Warning. Bias basis not recognised, choose between '
+                      '"EggScoSmi", "AssBauGre", or "AmiGleKok". Deafulting '
+                      'to "EggScoSmi"')
+                self.bias_basis = 'EggScoSmi'
+                bias_params.extend(['b1', 'b2', 'g2', 'g21'])
 
-            self._init_params_dict()
-            self.splines_up_to_date = False
-            self.dw_spline_up_to_date = False
+        if (counterterm_basis is not None and
+                counterterm_basis != self.counterterm_basis):
+            self.counterterm_basis = counterterm_basis
+            counterterm_params.clear()
+
+            if counterterm_basis == 'Comet':
+                counterterm_params.extend(['c0', 'c2', 'c4', 'cnlo',
+                                           'NP0', 'NP20', 'NP22'])
+            elif counterterm_basis == 'ClassPT':
+                counterterm_params.extend(['c0*', 'c2*', 'c4*', 'cnlo*',
+                                           'NP0', 'NP20*', 'NP22*'])
+            else:
+                print('Warning. Counterterm basis not recognised, choose '
+                      'between "Comet" or "ClassPT". Defaulting to "EggScoSmi"')
+                self.counterterm_basis = 'Comet'
+                counterterm_params.extend(['c0', 'c2', 'c4', 'cnlo',
+                                          'NP0', 'NP20', 'NP22'])
+
+        fixed_params = ['cnloB', 'NB0', 'MB0', 'cB1', 'cB2']
+
+        self.bias_params_list = bias_params + counterterm_params + fixed_params
+
+        self._init_params_dict()
+        self.splines_up_to_date = False
+        self.dw_spline_up_to_date = False
 
     def change_gauss_legendre_degree(self, degree):
         self.gl_x, self.gl_weights = np.polynomial.legendre.leggauss(degree)
