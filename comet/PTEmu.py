@@ -342,7 +342,7 @@ class PTEmu:
         else:
             self.training['LINEAR'] = self.training['SHAPE']
 
-        self.training['FULL'] = Tables(self.params_list)
+        self.training['FULL'] = Tables(self.params_list, self.real_space)
         self.training['FULL'].assign_samples(hdul['PARAMS_FULL'])
         self.training['FULL'].assign_table(hdul['MODEL_FULL'],
                                            self.nk, self.nkloop)
