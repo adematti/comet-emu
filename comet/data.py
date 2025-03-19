@@ -39,13 +39,15 @@ class MeasuredData:
         if 'stat' in kwargs and \
             kwargs.get('stat') in ['powerspectrum', 'bispectrum']:
                 self.stat = kwargs.get('stat')
+        if 'zeff' in kwargs:
+            self.zeff = kwargs.get('zeff')
         if 'bins' in kwargs:
             self.bins = kwargs.get('bins')
             if 'stat' not in kwargs and self.bins.ndim == 1:
                 self.stat = 'powerspectrum'
             elif 'stat' not in kwargs and self.bins.shape[1] == 3:
                 self.stat = 'bispectrum'
-            else:
+            elif 'stat' not in kwargs:
                 print('Warning! Type of statistic not recognised.')
                 self.stat = 'unknown'
         if 'signal' in kwargs:
@@ -67,6 +69,12 @@ class MeasuredData:
             else:
                 self.cov_is_block_diagonal = self.is_block_diagonal(self.cov,
                                                                     self.n_ell)
+        if 'nbar' in kwargs:
+            self.nbar = kwargs.get('nbar')
+        else:
+            self.nbar = 1.0
+        if 'fiducial_cosmology' in kwargs:
+            self.fiducial_cosmology = kwargs.get('fiducial_cosmology')
         if 'bins_mixing_matrix' in kwargs:
             self.bins_mixing_matrix = kwargs.get('bins_mixing_matrix')
             self.bins_mixing_matrix_compressed = np.logspace(
@@ -75,6 +83,12 @@ class MeasuredData:
                 int(self.bins_mixing_matrix[1][-1]/0.5*100))
         if 'W_mixing_matrix' in kwargs:
             self.W_mixing_matrix = kwargs.get('W_mixing_matrix')
+        if hasattr(self, 'bins_mixing_matrix') \
+                and hasattr(self, 'W_mixing_matrix'):
+            self.mixing_matrix_exists = True
+        else:
+            self.mixing_matrix_exists = False
+
         if 'theory_cov' in kwargs:
             self.theory_cov = kwargs.get('theory_cov')
         else:
@@ -133,13 +147,15 @@ class MeasuredData:
         if 'stat' in kwargs and \
             kwargs.get('stat') in ['powerspectrum', 'bispectrum']:
                 self.stat = kwargs.get('stat')
+        if 'zeff' in kwargs:
+            self.zeff = kwargs.get('zeff')
         if 'bins' in kwargs:
             self.bins = kwargs.get('bins')
             if 'stat' not in kwargs and self.bins.ndim == 1:
                 self.stat = 'powerspectrum'
             elif 'stat' not in kwargs and self.bins.shape[1] == 3:
                 self.stat = 'bispectrum'
-            else:
+            elif 'stat' not in kwargs:
                 print('Warning! Type of statistic not recognised.')
                 self.stat = 'unknown'
         if 'signal' in kwargs:
@@ -161,6 +177,10 @@ class MeasuredData:
             else:
                 self.cov_is_block_diagonal = self.is_block_diagonal(self.cov,
                                                                     self.n_ell)
+        if 'nbar' in kwargs:
+            self.nbar = kwargs.get('nbar')
+        if 'fiducial_cosmology' in kwargs:
+            self.fiducial_cosmology = kwargs.get('fiducial_cosmology')
         if 'bins_mixing_matrix' in kwargs:
             self.bins_mixing_matrix = kwargs.get('bins_mixing_matrix')
             self.bins_mixing_matrix_compressed = np.logspace(
@@ -169,6 +189,12 @@ class MeasuredData:
                 int(self.bins_mixing_matrix[1][-1]/0.5*100))
         if 'W_mixing_matrix' in kwargs:
             self.W_mixing_matrix = kwargs.get('W_mixing_matrix')
+        if hasattr(self, 'bins_mixing_matrix') \
+                and hasattr(self, 'W_mixing_matrix'):
+            self.mixing_matrix_exists = True
+        else:
+            self.mixing_matrix_exists = False
+
         if 'theory_cov' in kwargs:
             self.theory_cov = kwargs.get('theory_cov')
         if 'kfun' in kwargs:
@@ -201,9 +227,17 @@ class MeasuredData:
         self.bins = None
         self.signal = None
         self.cov = None
+        self.nbar = 1.0
         self.bins_mixing_matrix = None
         self.W_mixing_matrix = None
         self.kmax_is_set = False
+        self.mixing_matrix_exists = False
+
+    def transpose_mixing_matrix(self, axes):
+        if hasattr(self, 'W_mixing_matrix'):
+            self.W_mixing_matrix_transpose = np.ascontiguousarray(
+                np.transpose(self.W_mixing_matrix, axes)
+            )
 
     def is_block_diagonal(self, arr, nblock):
         def is_diagonal(arr):

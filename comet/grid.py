@@ -10,7 +10,6 @@ nb.config.THREADING_LAYER = 'workqueue'
 class Grid:
 
     def __init__(self, kfun, dk):
-
         self.kfun = kfun
         self.dk = dk
         self.kbin = None
@@ -85,13 +84,17 @@ class Grid:
 
             self.k = self.k_all
             self.mu = self.mu_all
+            self.mu2_all = self.mu_all**2
+            self.mu2 = self.mu2_all
             self.weights = self.weights_all
             self.nmodes = self.nmodes_all
             self.keff_all = np.zeros(len(self.nmodes_all)-1)
+            self.weights_sum = np.add.reduceat(self.weights, self.nmodes[:-1])
         elif kbin.size != self.kbin.size:
             ids = np.intersect1d(kbin, self.kbin, return_indices=True)[2]
             self.k = None
             self.mu = None
+            self.mu2 = None
             self.weights = None
             self.nmodes = [0]
 
@@ -102,16 +105,21 @@ class Grid:
                     if self.k is not None else self.k_all[n1:n2]
                 self.mu = np.hstack((self.mu, self.mu_all[n1:n2])) \
                     if self.mu is not None else self.mu_all[n1:n2]
+                self.mu2 = np.hstack((self.mu2, self.mu2_all[n1:n2])) \
+                    if self.mu2 is not None else self.mu2_all[n1:n2]
                 self.weights = np.hstack((self.weights,
                                           self.weights_all[n1:n2])) \
                     if self.weights is not None else self.weights_all[n1:n2]
                 self.nmodes.append(self.nmodes[-1] + self.nmodes_all[i+1]
                                    - self.nmodes_all[i])
+            self.weights_sum = np.add.reduceat(self.weights, self.nmodes[:-1])
         else:
             self.k = self.k_all
             self.mu = self.mu_all
+            self.mu2 = self.mu2_all
             self.weights = self.weights_all
             self.nmodes = self.nmodes_all
+            self.weights_sum = np.add.reduceat(self.weights, self.nmodes[:-1])
 
     def find_discrete_triangles(self, tri_unique, tri_to_id, **kwargs):
         def id_to_mode(ii):

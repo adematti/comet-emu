@@ -14,19 +14,23 @@ class Tables:
     predictions in the original metric.
     """
 
-    def __init__(self, params):
+    def __init__(self, params, real_space=False):
         r"""Class constructor.
 
         Parameters
         ----------
         params: list
             List of parameters used to train the emulator.
+        real_space: bool
+            Flag to determine if the tables are in real or redshift space.
         """
         self.params = params
         self.n_params = len(params)
         self.param_ranges = None
         self.model = None
         self.model_transformed = None
+
+        self.ells = [0, 2, 4] if not real_space else [0]
 
         self.n_diagrams = 19
         self.names_diagrams = ['P0L_b1b1', 'PNL_b1', 'PNL_id', 'P1L_b1b1',
@@ -91,7 +95,7 @@ class Tables:
         self.nk = nk
         self.nkloop = nkloop
 
-        if 'MODEL_SHAPE' == table_hdu.header['EXTNAME']:
+        if table_hdu.header['EXTNAME'] in ['MODEL_SHAPE', 'MODEL_LINEAR']:
             if self.model is None:
                 self.model = {}
             for TYPE in [table_hdu.header['TTYPE{}'.format(i+1)]
@@ -104,7 +108,7 @@ class Tables:
             if self.model is None:
                 self.model = {}
             self.model['PL'] = table_hdu.data['PL']
-            for ell in [0, 2, 4]:
+            for ell in self.ells:
                 for diagram in self.names_diagrams:
                     diagram_full = '{}_ell{}'.format(diagram, ell)
                     if diagram == 'PNL_b1':
@@ -182,7 +186,7 @@ class Tables:
         resc_table: numpy.ndarray
             Rescaled table.
         """
-        if data_type not in ['PL', 's12', 'sv']:
+        if data_type not in ['PL', 'PNW', 's12', 'sv']:
             self.flip[data_type], self.offset[data_type] = \
                 self.get_flip_and_offset(table.T)
         else:
@@ -247,7 +251,7 @@ class Tables:
             self.std = {}
             self.flip = {}
             self.offset = {}
-            for ell in [0, 2, 4]:
+            for ell in self.ells:
                 temp = np.zeros([self.n_samples, 9*self.nk + 10*self.nkloop])
                 cnt = 0
                 # only include the cell_ell counterterm

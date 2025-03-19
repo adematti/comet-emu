@@ -1,7 +1,7 @@
 """Cosmology module."""
 
 import numpy as np
-from scipy.integrate import quad, solve_ivp
+from scipy.integrate import quad, quad_vec, solve_ivp
 from scipy.special import beta, betainc
 
 
@@ -49,20 +49,29 @@ class Cosmology:
             respect to the scale factor, :math:`w_a`. Only used if
             **de_model** is `"w0wa"`. Defaults to 0.0.
         """
-        self.Om0 = Om0
-        self.Ok0 = Ok0
-        self.Or0 = Or0
-        self.H0 = H0
+        self.Om0 = np.atleast_1d(Om0)
+        self.Ok0 = np.atleast_1d(Ok0)
+        self.Or0 = np.atleast_1d(Or0)
+        self.H0 = np.atleast_1d(H0)
 
         self.Ode0 = 1.0 - self.Om0 - self.Ok0 - self.Or0
-        self.hubble_distance = 2.998E5/self.H0
+        self.light_speed = 299792.458
+        self.hubble_distance = self.light_speed/self.H0
 
         self.de_model = de_model
-        self.w0 = w0
-        self.wa = wa
+        self.w0 = np.atleast_1d(w0)
+        self.wa = np.atleast_1d(wa)
 
-        self.flat = True if self.Ok0 == 0.0 else False
-        self.relspecies = False if self.Or0 == 0.0 else True
+        if len(self.Ok0) != len(self.Om0):
+            self.Ok0 = np.ones_like(self.Om0) * self.Ok0
+        if len(self.Or0) != len(self.Om0):
+            self.Or0 = np.ones_like(self.Om0) * self.Or0
+
+        self.flat = np.where(self.Ok0 == 0.0, True, False)
+        self.relspecies = np.where(self.Or0 == 0.0, False, True)
+
+        self.gl_x, self.gl_weights = np.polynomial.legendre.leggauss(10)
+        self.gl_x = 0.5 * self.gl_x + 0.5
 
     def update_cosmology(self, Om0, H0, Ok0=0.0, Or0=0.0, de_model='lambda',
                          w0=-1.0, wa=0.0):
@@ -98,20 +107,25 @@ class Cosmology:
             respect to the scale factor, :math:`w_a`. Only used if
             **de_model** is `"w0wa"`. Defaults to 0.0.
         """
-        self.Om0 = Om0
-        self.Ok0 = Ok0
-        self.Or0 = Or0
-        self.H0 = H0
+        self.Om0 = np.atleast_1d(Om0)
+        self.Ok0 = np.atleast_1d(Ok0)
+        self.Or0 = np.atleast_1d(Or0)
+        self.H0 = np.atleast_1d(H0)
 
         self.Ode0 = 1.0 - self.Om0 - self.Ok0 - self.Or0
         self.hubble_distance = 2.998E5/self.H0
 
         self.de_model = de_model
-        self.w0 = w0
-        self.wa = wa
+        self.w0 = np.atleast_1d(w0)
+        self.wa = np.atleast_1d(wa)
 
-        self.flat = True if self.Ok0 == 0.0 else False
-        self.relspecies = False if self.Or0 == 0.0 else True
+        if len(self.Ok0) != len(self.Om0):
+            self.Ok0 = np.ones_like(self.Om0) * self.Ok0
+        if len(self.Or0) != len(self.Om0):
+            self.Or0 = np.ones_like(self.Om0) * self.Or0
+
+        self.flat = np.where(self.Ok0 == 0.0, True, False)
+        self.relspecies = np.where(self.Or0 == 0.0, False, True)
 
     def DE_z(self, z):
         r"""
@@ -139,10 +153,11 @@ class Cosmology:
         if self.de_model == 'lambda':
             de_z = 1.0
         elif self.de_model == 'w0':
-            de_z = (1.0+z)**(3.0*(1.0+self.w0))
+            de_z = np.power.outer(1.0+z, 3.0*(1.0+self.w0))
         elif self.de_model == 'w0wa':
             a = 1.0/(1.0+z)
-            de_z = a**(-3.0*(1.0+self.w0+self.wa))*np.exp(-3.0*self.wa*(1.0-a))
+            de_z = np.power.outer(a, -3.0*(1.0+self.w0+self.wa)) \
+                   * np.exp(-3.0 * np.multiply.outer((1.0-a), self.wa))
         return de_z
 
     def wz(self, z):
@@ -167,9 +182,9 @@ class Cosmology:
         if self.de_model == 'lambda':
             w = -1.0*np.ones_like(z)
         elif self.de_model == 'w0':
-            w = self.w0*np.ones_like(z)
+            w = np.multiply.outer(np.ones_like(z), self.w0)
         elif self.de_model == 'w0wa':
-            w = self.w0 + self.wa*z/(1.0+z)
+            w = self.w0 + np.multiply.outer(z/(1.0+z), self.wa)
         return w
 
     def Ez(self, z):
@@ -202,12 +217,14 @@ class Cosmology:
         Ez: float or numpy.ndarray
             Normalised expansion factor at the specified redshifts.
         """
-        ainv = 1.0+z
-        Ez2 = self.Om0*ainv**3 + self.Ode0*self.DE_z(z)
-        if not self.flat:
-            Ez2 += self.Ok0*ainv**2
-        if self.relspecies:
-            Ez2 += self.Or0*ainv**4
+        ainv = 1.0 + z
+        Ez2 = np.multiply.outer(ainv**3, self.Om0) + self.Ode0*self.DE_z(z)
+        if np.any(np.invert(self.flat)):
+            Ez2[...,np.invert(self.flat)] += np.multiply.outer(
+                ainv**2, self.Ok0[np.invert(self.flat)])
+        if np.any(self.relspecies):
+            Ez2[...,self.relspecies] += np.multiply.outer(
+                ainv**4, self.Or0[self.relspecies])
         Ez = np.sqrt(Ez2)
         return Ez
 
@@ -250,7 +267,8 @@ class Cosmology:
         Hz: float or numpy.ndarray
             Hubble expansion factor at the specified redshifts.
         """
-        Hz = self.H0*self.Ez(z)
+        mask = np.eye(len(z),dtype=bool)
+        Hz = self.H0*self.Ez(z)[mask]
         return Hz
 
     def Om(self, z):
@@ -276,7 +294,7 @@ class Cosmology:
         Om: float or numpy.ndarray
             Fractional matter density at the specified redshifts.
         """
-        Om = self.Om0*(1.0+z)**3/(self.Ez(z))**2
+        Om = np.multiply.outer((1.0+z)**3, self.Om0)/(self.Ez(z))**2
         return Om
 
     def Ode(self, z):
@@ -352,15 +370,21 @@ class Cosmology:
         dm: float
             Transverse comoving distance at the specified redshift.
         """
-        r = quad(self.one_over_Ez, 0.0, z)[0]
-        if self.flat:
-            dm = r
-        elif self.Ok0 > 0.0:
-            sqrt_Ok0 = np.sqrt(self.Ok0)
-            dm = np.sinh(sqrt_Ok0*r)/sqrt_Ok0
-        else:
-            sqrt_Ok0 = np.sqrt(-self.Ok0)
-            dm = np.sin(sqrt_Ok0*r)/sqrt_Ok0
+        z = np.atleast_1d(z)
+        mask = np.eye(len(z),dtype=bool)
+        #r = quad_vec(lambda x: z[:,None]*self.one_over_Ez(x*z), 0.0, 1.0)[0]
+        temp = self.one_over_Ez(np.outer(self.gl_x, z))[:,mask]
+        r = 0.5 * np.einsum("ab,a->b", z*temp, self.gl_weights)
+
+        dm = r
+        if np.any(self.Ok0 > 0.0):
+            ii = self.Ok0 > 0.0
+            sqrt_Ok0 = np.sqrt(self.Ok0[ii])
+            dm[ii] = np.sinh(sqrt_Ok0*r[ii])/sqrt_Ok0
+        if np.any(self.Ok0 < 0.0):
+            ii = self.Ok0 < 0.0
+            sqrt_Ok0 = np.sqrt(-self.Ok0[ii])
+            dm[ii] = np.sin(sqrt_Ok0*r[ii])/sqrt_Ok0
         dm *= self.hubble_distance
         return dm
 
@@ -383,7 +407,8 @@ class Cosmology:
         da: float
             Angular diameter distance at the specified redshift.
         """
-        da = self.comoving_transverse_distance(z)/(1.0+z)
+        a = np.atleast_1d(1.0 / (1.0+z))
+        da = self.comoving_transverse_distance(z) * a
         return da
 
     def growth_factor(self, z, get_growth_rate=False):
@@ -410,22 +435,25 @@ class Cosmology:
         """
         def Ez_for_D(z):
             ainv = 1.0+z
-            Ez2 = self.Om0*ainv**3 + self.Ode0*self.DE_z(z)
-            if not self.flat:
-                Ez2 += self.Ok0*ainv**2
-            if self.relspecies:
-                Ez2 += self.Or0
+            Ez2 = np.multiply.outer(ainv**3,self.Om0) + self.Ode0*self.DE_z(z)
+            if np.any(np.invert(self.flat)):
+                Ez2[:,np.invert(self.flat)] += np.multiply.outer(
+                    ainv**2, self.Ok0[np.invert(self.flat)])
+            if np.any(self.relspecies):
+                Ez2[:,self.relspecies] += self.Or0[self.relspecies]
             return np.sqrt(Ez2)
 
-        def integrand(z):
-            return (1.0+z)/(Ez_for_D(z))**3
+        def integrand(x, z, indices):
+            zz = z[:,None]
+            return zz * (1.0+x*zz)/(Ez_for_D(x*z)[:,indices])**3
 
         def growth_factor_from_ODE(z_eval):
+            nparam = len(self.Om0)
 
             def derivatives_D(a, y):
                 z = 1.0/a - 1.0
-                D = y[0]
-                Dp = y[1]
+                D = y[:nparam,0]
+                Dp = y[nparam:,0]
 
                 wa = self.wz(z)
                 Oma = self.Om(z)
@@ -434,42 +462,57 @@ class Cosmology:
                 u1 = -(2.0 - 0.5*(Oma + (3.0*wa+1.0)*Odea))/a
                 u2 = 1.5*Oma/a**2
 
-                return [Dp, u1*Dp + u2*D]
+                return np.array([Dp, u1*Dp + u2*D])
 
-            a_eval = np.array([1.0/(1.0 + z_eval)])
-            a_min = np.fmin(a_eval, 1E-4)*0.99
-            a_max = a_eval*1.01
-            
-            dic = solve_ivp(derivatives_D, (a_min[0], a_max[0]), [a_min[0], 1.0],
-                            t_eval=a_eval, atol=1E-6, rtol=1E-6,
-                            vectorized=True)
-            D = dic['y'][0, :]
+            a_eval = 1.0 / (1.0 + z_eval)
+            a_min = np.amin(np.fmin(a_eval, 1E-4) * 0.99)
+            a_max = np.amax(a_eval * 1.01)
+
+            a_eval_sorted_unique, unique_indices = np.unique(a_eval, return_inverse=True)
+
+            isort = np.argsort(a_eval_sorted_unique)
+            isort_rev = np.zeros_like(isort)
+            isort_rev[isort] = np.arange(isort.shape[0])
+
+            dic = solve_ivp(derivatives_D, (a_min, a_max),
+                            np.array([a_min]*nparam +[1.0]*nparam),
+                            t_eval=a_eval_sorted_unique[isort],
+                            atol=1E-6, rtol=1E-6, vectorized=True)
+
+            D_sorted = dic['y'][:nparam].T
+            D = D_sorted[unique_indices]
 
             if (dic['status'] != 0) or (D.shape[0] != a_eval.shape[0]):
                 raise Exception('The calculation of the growth factor failed.')
 
             if get_growth_rate:
-                Dp = dic['y'][1, :]
-                f = np.float64(a_eval*Dp/D)
-
-                return [D[0], f]
+                Dp_sorted = dic['y'][nparam:].T
+                Dp = Dp_sorted[unique_indices]
+                f = a_eval[:, None] * Dp / D  # a_eval retains its original shape and order
+                return [D, f]
             else:
-                return D[0]
+                return D
 
+        z = np.atleast_1d(z)
         if self.de_model == 'lambda':
-            if self.flat and not self.relspecies:
-                a3 = 1.0/(1.0+z)**3
-                Dz = (5.0/6.0*betainc(5.0/6.0, 2.0/3.0,
-                                      self.Ode0*a3/(self.Om0+self.Ode0*a3)) *
-                      (self.Om0 / self.Ode0)**(1.0 / 3.0) *
-                      np.sqrt(1.0 + self.Om0 / (self.Ode0 * a3)) *
-                      beta(5.0/6.0, 2.0/3.0))
-            else:
+            Dz = np.zeros((z.shape[0],self.Ode0.shape[0]))
+            ii = self.flat & np.invert(self.relspecies)
+            a3 = 1.0/(1.0+z)**3
+            a3Ode0 = np.multiply.outer(a3, self.Ode0[ii])
+            Dz[:,ii] = 5.0/6.0*betainc(5.0/6.0, 2.0/3.0,
+                                       a3Ode0/(self.Om0[ii]+a3Ode0)) \
+                       * (self.Om0[ii] / self.Ode0[ii])**(1.0/3.0) \
+                       * np.sqrt(1.0 + self.Om0[ii]/a3Ode0) \
+                       * beta(5.0/6.0, 2.0/3.0)
+            if np.any(np.invert(ii)):
+                ii_inv = np.invert(ii)
                 # integrate integral expression
-                Dz = 2.5*self.Om0*Ez_for_D(z)*quad(integrand, z, np.inf)[0]
+                Dz[:,ii_inv] = 2.5*self.Om0[ii_inv]*Ez_for_D(z)[:,ii_inv] \
+                               * quad_vec(integrand, 1, np.inf,
+                                          args=(z,ii_inv,))[0]
             if get_growth_rate:
                 Omz = self.Om(z)
-                f = -1.0 - Omz/2.0 + self.Ode(z) + 2.5*Omz/Dz/(1.0+z)
+                f = -1.0 - Omz/2.0 + self.Ode(z) + 2.5*Omz/Dz/(1.0+z[:,None])
                 Dz = [Dz, f]
         else:
             # do full differential equation integration
@@ -495,17 +538,18 @@ class Cosmology:
         """
         def Ez_for_D(z):
             ainv = 1.0+z
-            Ez2 = self.Om0*ainv**3 + self.Ode0*self.DE_z(z)
-            if not self.flat:
-                Ez2 += self.Ok0*ainv**2
-            if self.relspecies:
-                Ez2 += self.Or0
+            Ez2 = np.multiply.outer(ainv**3,self.Om0) + self.Ode0*self.DE_z(z)
+            if np.any(np.invert(self.flat)):
+                Ez2[:,np.invert(self.flat)] += np.multiply.outer(
+                    ainv**2, self.Ok0[np.invert(self.flat)])
+            if np.any(self.relspecies):
+                Ez2[:,self.relspecies] += self.Or0[self.relspecies]
             return np.sqrt(Ez2)
 
         if self.de_model == 'lambda':
             Omz = self.Om(z)
             f = -1.0 - Omz/2.0 + self.Ode(z) \
-                + 2.5*Omz/self.growth_factor(z)/(1.0+z)
+                + 2.5*Omz/self.growth_factor(z)/(1.0+z[:,None])
         else:
             f = self.growth_factor(z, get_growth_rate=True)[1]
         return f
@@ -539,9 +583,10 @@ class Cosmology:
             maximum redshifts, and for the given sky fraction.
         """
         def differential_comoving_volume(z):
+            z = np.atleast_1d(z)
             dm = self.comoving_transverse_distance(z)
             return self.hubble_distance*dm**2/self.Ez(z)
 
-        vol = fsky*4*np.pi*quad(differential_comoving_volume, zmin, zmax)[0]
+        vol = fsky*4*np.pi*quad_vec(differential_comoving_volume, zmin, zmax)[0]
 
         return vol
