@@ -42,6 +42,7 @@ Welcome to COMET's documentation!
      Constant dark energy equation of state parameter  :math:`w_0`
      Time-evolving equation of state parameter         :math:`w_a`
      Curvature density parameter                       :math:`\Omega_K`
+     Total neutrino mass                               :math"`M_\nu`
      ================================================  ====
 
      Currently, COMET can be used to obtain the following quantities (the
