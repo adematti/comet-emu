@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "comet-emu"
-version = "2.0.1"
+version = "2.0.2"
 description = "COMET - Cosmological Observables Modelled by Emulated perturbation Theory."
 authors = [
     {name = "Alex Eggemeier, Benjamin Camacho-Quevedo, Andrea Pezzotta, Martin Crocce, Román Scoccimarro, Ariel Sánchez", email = "aeggemeier@astro.uni-bonn.de"}
