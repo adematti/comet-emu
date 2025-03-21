@@ -514,6 +514,12 @@ that the one-loop corrections and the counterterms are evaluated using the
 leading order IR-resummed matter power spectrum in place of the linear power
 spectrum.
 
+.. note::
+
+  From COMET v1.4 a new RSD framework is available, i.e. the VDG:math:`_\infty`
+  model. To understand the details of the model, check out the corresponding
+  paper `Eggemeier et al. 2025 <https://arxiv.org/abs/2501.18597>`_ .
+  (This page will be updated soon).
 
 Legendre multipoles and geometrical distortions
 -----------------------------------------------

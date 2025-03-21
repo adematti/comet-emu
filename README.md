@@ -6,7 +6,7 @@
 | **Source:**  |  [Source code at GitLab](https://gitlab.com/aegge/pt-emulator)  |
 | **Documentation**: | [Documentation at Readthedocs](https://comet-emu.readthedocs.io/en/latest/index.html)  |
 | **Installation**:  |  `pip install comet-emu`|
-| **References**:  |[Sanchez 2020](https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511), [Sanchez et al 2021](https://arxiv.org/abs/2108.12710) |
+| **References**:  | [Eggemeier et al 2022](https://academic.oup.com/mnras/article/519/2/2962/6912276), [Pezzotta et al 2025](https://arxiv.org/abs/2503.16160) |
 
 ---
 ## :dizzy: **COMET** - Cosmological Observables Modelled by Emulated perturbation Theory.

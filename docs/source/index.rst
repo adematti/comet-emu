@@ -15,7 +15,11 @@ Welcome to COMET's documentation!
 **Source**:           `Source code at GitLab <https://gitlab.com/aegge/comet-emu>`_
 **Documentation**:    `Documentation at Readthedocs <https://comet-emu.readthedocs.io/en/latest/>`_
 **Installation**:     ``pip install comet-emu``
-**References**:       `Eggemeier et al. 2022 <https://academic.oup.com/mnras/article/519/2/2962/6912276>`_
+**References**:       `Sanchez 2020 <https://academic.oup.com/mnras/article/519/2/2962/6912276>`_
+                      `Sanchez et al 2021 <https://academic.oup.com/mnras/article/514/4/5673/6609938>`_
+                      `Eggemeier et al 2022 <https://academic.oup.com/mnras/article/519/2/2962/6912276>`_
+                      `Eggemeier et al 2025 <https://arxiv.org/abs/2501.18597>`_
+                      `Pezzotta et al 2025 <https://arxiv.org/abs/2503.16160>`_
 ====================  =====
 
 |:dizzy:| **COMET** - Cosmological Observables Modelled by Emulated perturbation Theory
