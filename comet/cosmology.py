@@ -589,4 +589,4 @@ class Cosmology:
 
         vol = fsky*4*np.pi*quad_vec(differential_comoving_volume, zmin, zmax)[0]
 
-        return vol
+        return vol.squeeze()
