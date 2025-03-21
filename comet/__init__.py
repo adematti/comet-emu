@@ -19,8 +19,8 @@ def download_data(download_dir):
     import gzip
     import glob
 
-    urls = ['https://saco.csic.es/s/aisGdMRMp6GM3cf/download',
-            'https://saco.csic.es/s/mTMwFts7sk6PctL/download']
+    urls = ['https://saco.csic.es/s/pqf9E5HERL6Pmw4/download',
+            'https://saco.csic.es/s/WfPiczxNwFE8C7r/download']
     filenames = ['tables.zip', 'models.zip']
     out_filenames = ['tables', 'models']
     # download both files

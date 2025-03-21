@@ -6,7 +6,7 @@
 | **Source:**  |  [Source code at GitLab](https://gitlab.com/aegge/pt-emulator)  |
 | **Documentation**: | [Documentation at Readthedocs](https://comet-emu.readthedocs.io/en/latest/index.html)  |
 | **Installation**:  |  `pip install comet-emu`|
-| **References**:  |[Sanchez 2020](https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511), [Sanchez et al 2021](https://arxiv.org/abs/2108.12710) |
+| **References**:  | [Eggemeier et al 2022](https://academic.oup.com/mnras/article/519/2/2962/6912276), [Pezzotta et al 2025](https://arxiv.org/abs/2503.16160) |
 
 ---
 ## :dizzy: **COMET** - Cosmological Observables Modelled by Emulated perturbation Theory.
@@ -35,6 +35,7 @@ parameters (for more details, see [here](https://comet-emulator-comet-emu.readth
 | Constant dark energy equation of state parameter | $`w_0`$ |
 | Time-evolving equation of state parameter   |      $`w_a`$ |
 | Curvature density parameter   |                    $`\Omega_K`$ |
+| Total neutrino mass           |                    $`M_\nu`$ |
 
 Currently, COMET can be used to obtain the following quantities (the
 perturbation theory models are described [here](https://comet-emu.readthedocs.io/en/latest/model.html)):

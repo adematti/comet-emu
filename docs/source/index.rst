@@ -11,11 +11,14 @@ Welcome to COMET's documentation!
 
 ====================  =====
 **Contributors**:     Alex Eggemeier, Benjamin Camacho-Quevedo, Andrea Pezzotta,
-                      Martin Crocce, Román Scoccimarro, Ariel G. Sánchez
+                      Giosuè Gambardella, Martin Crocce, Román Scoccimarro, Ariel G. Sánchez
 **Source**:           `Source code at GitLab <https://gitlab.com/aegge/comet-emu>`_
 **Documentation**:    `Documentation at Readthedocs <https://comet-emu.readthedocs.io/en/latest/>`_
 **Installation**:     ``pip install comet-emu``
-**References**:       `Eggemeier et al. 2022 <https://academic.oup.com/mnras/article/519/2/2962/6912276>`_
+**References**:       `Sanchez et al 2021 <https://academic.oup.com/mnras/article/514/4/5673/6609938>`_,
+                      `Eggemeier et al 2022 <https://academic.oup.com/mnras/article/519/2/2962/6912276>`_,
+                      `Eggemeier et al 2025 <https://arxiv.org/abs/2501.18597>`_,
+                      `Pezzotta et al 2025 <https://arxiv.org/abs/2503.16160>`_
 ====================  =====
 
 |:dizzy:| **COMET** - Cosmological Observables Modelled by Emulated perturbation Theory
@@ -27,8 +30,8 @@ Welcome to COMET's documentation!
 
      At its core, COMET exploits the evolution mapping approach of
      `Sanchez 2020 <https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511>`_
-     and `Sanchez et al. 2021 <https://arxiv.org/abs/2108.12710>`_, which
-     gives it a high degree of flexibility and allows it to cover a wide
+     and `Sanchez et al. 2021 <https://academic.oup.com/mnras/article/514/4/5673/6609938>`_,
+     which gives it a high degree of flexibility and allows it to cover a wide
      cosmology parameter space at continuous redshifts up to :math:`z \sim 3`.
      Specifically, the  current release of COMET supports the following
      parameters (for more details, see :ref:`here<spaceparams>`):
@@ -42,6 +45,7 @@ Welcome to COMET's documentation!
      Constant dark energy equation of state parameter  :math:`w_0`
      Time-evolving equation of state parameter         :math:`w_a`
      Curvature density parameter                       :math:`\Omega_K`
+     Total neutrino mass                               :math:`M_\nu`
      ================================================  ====
 
      Currently, COMET can be used to obtain the following quantities (the

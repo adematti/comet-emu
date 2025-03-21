@@ -100,7 +100,7 @@ class CustomBuild(build_ext):
         compiler = get_compiler()
 
         # Compile source code
-        print(f"Compiling with {compiler} using C++ standard {get_cpp_standard()}")
+        print(f"Compiling with {compiler}.")
         try:
             subprocess.run([compiler] + get_compile_args(), check=True)
         except subprocess.CalledProcessError as e:
@@ -131,11 +131,6 @@ class CustomBuild(build_ext):
 # Define the compiler to be used
 os.environ['CXX'] = get_compiler()
 
-# Clean default flags as defined by setuptools.
-# It may be needed because of Cython types
-#os.environ['CXXFLAGS'] = ''
-#os.environ['LDFLAGS'] = ''
-#os.environ['CPPFLAGS'] = ''
 os.environ['LDFLAGS'] = os.environ.get('LDFLAGS', '').replace('-bundle', '')
 
 # Add appropriate flags.
