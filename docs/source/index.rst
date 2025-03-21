@@ -11,7 +11,7 @@ Welcome to COMET's documentation!
 
 ====================  =====
 **Contributors**:     Alex Eggemeier, Benjamin Camacho-Quevedo, Andrea Pezzotta,
-                      Martin Crocce, Román Scoccimarro, Ariel G. Sánchez
+                      Giosuè Gambardella, Martin Crocce, Román Scoccimarro, Ariel G. Sánchez
 **Source**:           `Source code at GitLab <https://gitlab.com/aegge/comet-emu>`_
 **Documentation**:    `Documentation at Readthedocs <https://comet-emu.readthedocs.io/en/latest/>`_
 **Installation**:     ``pip install comet-emu``
