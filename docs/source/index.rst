@@ -31,8 +31,8 @@ Welcome to COMET's documentation!
 
      At its core, COMET exploits the evolution mapping approach of
      `Sanchez 2020 <https://journals.aps.org/prd/abstract/10.1103/PhysRevD.102.123511>`_
-     and `Sanchez et al. 2021 <https://arxiv.org/abs/2108.12710>`_, which
-     gives it a high degree of flexibility and allows it to cover a wide
+     and `Sanchez et al. 2021 <https://academic.oup.com/mnras/article/514/4/5673/6609938>`_,
+     which gives it a high degree of flexibility and allows it to cover a wide
      cosmology parameter space at continuous redshifts up to :math:`z \sim 3`.
      Specifically, the  current release of COMET supports the following
      parameters (for more details, see :ref:`here<spaceparams>`):
