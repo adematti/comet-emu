@@ -516,7 +516,7 @@ spectrum.
 
 .. note::
 
-  From COMET v1.4 a new RSD framework is available, i.e. the VDG:math:`_\infty`
+  From COMET v1.4 a new RSD framework is available, i.e. the :math:`{\rm VDG}_\infty`
   model. To understand the details of the model, check out the corresponding
   paper `Eggemeier et al. 2025 <https://arxiv.org/abs/2501.18597>`_ .
   (This page will be updated soon).
