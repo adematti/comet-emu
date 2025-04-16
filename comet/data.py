@@ -39,8 +39,12 @@ class MeasuredData:
         if 'stat' in kwargs and \
             kwargs.get('stat') in ['powerspectrum', 'bispectrum']:
                 self.stat = kwargs.get('stat')
+        else:
+            self.stat = None
+
         if 'zeff' in kwargs:
             self.zeff = kwargs.get('zeff')
+
         if 'bins' in kwargs:
             self.bins = kwargs.get('bins')
             if 'stat' not in kwargs and self.bins.ndim == 1:
@@ -50,6 +54,7 @@ class MeasuredData:
             elif 'stat' not in kwargs:
                 print('Warning! Type of statistic not recognised.')
                 self.stat = 'unknown'
+
         if 'signal' in kwargs:
             self.signal = kwargs.get('signal')
             if self.signal.ndim == 1:
@@ -61,6 +66,7 @@ class MeasuredData:
             else:
                 self.n_ell = self.signal.shape[1]
                 self.ell = [2*n for n in range(self.n_ell)]
+
         if 'cov' in kwargs:
             self.cov = kwargs.get('cov')
             if self.cov.ndim == 1:
@@ -69,20 +75,47 @@ class MeasuredData:
             else:
                 self.cov_is_block_diagonal = self.is_block_diagonal(self.cov,
                                                                     self.n_ell)
+
         if 'nbar' in kwargs:
             self.nbar = kwargs.get('nbar')
         else:
             self.nbar = 1.0
+
         if 'fiducial_cosmology' in kwargs:
             self.fiducial_cosmology = kwargs.get('fiducial_cosmology')
+
+        if 'composition' in kwargs:
+            self.composition = kwargs.get('composition')
+        else:
+            self.composition = None
+
         if 'bins_mixing_matrix' in kwargs:
             self.bins_mixing_matrix = kwargs.get('bins_mixing_matrix')
             self.bins_mixing_matrix_compressed = np.logspace(
                 np.log10(self.bins_mixing_matrix[1][0]),
                 np.log10(self.bins_mixing_matrix[1][-1]),
                 int(self.bins_mixing_matrix[1][-1]/0.5*100))
+
         if 'W_mixing_matrix' in kwargs:
-            self.W_mixing_matrix = kwargs.get('W_mixing_matrix')
+            if self.composition is not None:
+                W_mixing_matrix = kwargs.get('W_mixing_matrix')
+                if isinstance(W_mixing_matrix, dict):
+                    W_stacked = np.stack(
+                        [W_mixing_matrix[species]
+                         for species in self.composition
+                        ],
+                        axis=0
+                    )
+                else:
+                    W_stacked = W_mixing_matrix
+                    # W_stacked = np.stack(
+                    #     [W_mixing_matrix for species in self.composition],
+                    #     axis=0
+                    # )
+                self.W_mixing_matrix = np.ascontiguousarray(W_stacked)
+            else:
+                self.W_mixing_matrix = kwargs.get('W_mixing_matrix')
+
         if hasattr(self, 'bins_mixing_matrix') \
                 and hasattr(self, 'W_mixing_matrix'):
             self.mixing_matrix_exists = True
@@ -147,8 +180,10 @@ class MeasuredData:
         if 'stat' in kwargs and \
             kwargs.get('stat') in ['powerspectrum', 'bispectrum']:
                 self.stat = kwargs.get('stat')
+
         if 'zeff' in kwargs:
             self.zeff = kwargs.get('zeff')
+
         if 'bins' in kwargs:
             self.bins = kwargs.get('bins')
             if 'stat' not in kwargs and self.bins.ndim == 1:
@@ -158,6 +193,7 @@ class MeasuredData:
             elif 'stat' not in kwargs:
                 print('Warning! Type of statistic not recognised.')
                 self.stat = 'unknown'
+
         if 'signal' in kwargs:
             self.signal = kwargs.get('signal')
             if self.signal.ndim == 1:
@@ -169,6 +205,7 @@ class MeasuredData:
             else:
                 self.n_ell = self.signal.shape[1]
                 self.ell = [2*n for n in range(self.n_ell)]
+
         if 'cov' in kwargs:
             self.cov = kwargs.get('cov')
             if self.cov.ndim == 1:
@@ -177,18 +214,42 @@ class MeasuredData:
             else:
                 self.cov_is_block_diagonal = self.is_block_diagonal(self.cov,
                                                                     self.n_ell)
+
         if 'nbar' in kwargs:
             self.nbar = kwargs.get('nbar')
+
         if 'fiducial_cosmology' in kwargs:
             self.fiducial_cosmology = kwargs.get('fiducial_cosmology')
+
+        if 'composition' in kwargs:
+            self.composition = kwargs.get('composition')
+
         if 'bins_mixing_matrix' in kwargs:
             self.bins_mixing_matrix = kwargs.get('bins_mixing_matrix')
             self.bins_mixing_matrix_compressed = np.logspace(
                 np.log10(self.bins_mixing_matrix[1][0]),
                 np.log10(self.bins_mixing_matrix[1][-1]),
                 int(self.bins_mixing_matrix[1][-1]/0.5*100))
+
         if 'W_mixing_matrix' in kwargs:
-            self.W_mixing_matrix = kwargs.get('W_mixing_matrix')
+            if self.composition is not None:
+                W_mixing_matrix = kwargs.get('W_mixing_matrix')
+                if isinstance(W_mixing_matrix, dict):
+                    W_stacked = np.stack(
+                        [W_mixing_matrix[species]
+                         for species in self.composition
+                        ],
+                        axis=0
+                    )
+                else:
+                    W_stacked = np.stack(
+                        [W_mixing_matrix for species in self.composition],
+                        axis=0
+                    )
+                self.W_mixing_matrix = np.ascontiguousarray(W_stacked)
+            else:
+                self.W_mixing_matrix = kwargs.get('W_mixing_matrix')
+
         if hasattr(self, 'bins_mixing_matrix') \
                 and hasattr(self, 'W_mixing_matrix'):
             self.mixing_matrix_exists = True

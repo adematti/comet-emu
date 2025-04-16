@@ -352,7 +352,9 @@ class PTEmu:
             self.s12_for_P6 = hdul['MODEL_Pell6'].header['SIG12']
             self.P6 = hdul['MODEL_Pell6'].data['P_all']
             # better compute P6 table for full k-range...
-            nkdiff = self.nk-self.nkloop
+            # the shift by 12 is because the P6 models become noisy at low k,
+            # making the extrapolation unreliable otherwise
+            nkdiff = self.nk-self.nkloop + 12
             for i in range(3,25):
                 dly = np.log10(
                     np.abs(self.P6[nkdiff+2,i]/self.P6[nkdiff,i]))
@@ -549,7 +551,7 @@ class PTEmu:
             Dictionary of keyword arguments (check docs of **MeasuredData**
             class for the list of allowed keyword arguments).
         """
-        temp_kwargs = kwargs
+        temp_kwargs = kwargs.copy()
         if 'fiducial_cosmology' in temp_kwargs:
             if not isinstance(temp_kwargs['fiducial_cosmology'], list):
                 params_fid = temp_kwargs['fiducial_cosmology']
@@ -580,6 +582,47 @@ class PTEmu:
                 Dm_fid = self.cosmo.comoving_transverse_distance(
                     params_fid['z'])
                 temp_kwargs['fiducial_cosmology'] = [H_fid,Dm_fid]
+        if 'composition' in kwargs and 'fiducial_cosmology' in kwargs:
+            for species in kwargs['composition']:
+                if 'gamma_tr_lo' not in kwargs['composition'][species]:
+                    params_fid = kwargs['fiducial_cosmology']
+                    wnu = (params_fid['Mnu'] / self.neutrino_mass_fac
+                           if 'Mnu' in params_fid.keys() else 0.0)
+                    Om0 = (params_fid['wc'] + params_fid['wb'] + wnu) \
+                          / params_fid['h']**2
+                    H0 = params_fid['h'] * 100.0
+                    Ok0 = 0.0 if 'Ok' not in params_fid else params_fid['Ok']
+                    if ('w0' in params_fid and params_fid['w0'] != -1) and \
+                            ('wa' in params_fid and params_fid['wa'] != 0):
+                        de_model = 'w0wa'
+                        w0 = params_fid['w0']
+                        wa = params_fid['wa']
+                    elif 'w0' in params_fid and params_fid['w0'] != -1:
+                        de_model = 'w0'
+                        w0 = params_fid['w0']
+                        wa = 0.0
+                    else:
+                        de_model = 'lambda'
+                        w0 = -1.0
+                        wa = 0.0
+                    self.cosmo.update_cosmology(Om0, H0, Ok0=Ok0,
+                                                de_model=de_model,
+                                                w0=w0, wa=wa)
+                    Dm_measured = self.cosmo.comoving_transverse_distance(
+                        kwargs['zeff'])
+                    Dm_true = self.cosmo.comoving_transverse_distance(
+                        kwargs['composition'][species]['zeff'])
+                    H_measured = self.cosmo.Hz(np.atleast_1d(kwargs['zeff']))
+                    H_true = self.cosmo.Hz(
+                        np.atleast_1d(kwargs['composition'][species]['zeff']))
+                    gamma_tr = np.squeeze(Dm_measured/Dm_true)
+                    gamma_lo = np.squeeze(
+                        (1.0 + kwargs['zeff']) \
+                        / (1.0 + kwargs['composition'][species]['zeff'])\
+                        * H_true / H_measured
+                    )
+                    temp_kwargs['composition'][species]['gamma_tr_lo'] = \
+                        [gamma_tr,gamma_lo]
 
         if obs_id not in self.data:
             self.data[obs_id] = MeasuredData(**temp_kwargs)
@@ -589,16 +632,29 @@ class PTEmu:
         self.chi2_decomposition = None
         self.Bisp_chi2_decomposition = None
 
-    def stack_mixing_matrices(self, obs_id_list, obs_id_stacked, nparams):
+    def stack_mixing_matrices(self, obs_id_list, obs_id_stacked,
+                              nparams_per_oi):
+        if self.data[obs_id_list[0]].composition is not None:
+            composition = set([species for oi in obs_id_list
+                               for species in self.data[oi].composition])
+            composition = dict.fromkeys(composition, {})
+        else:
+            composition = None
         if np.all([self.data[oi].mixing_matrix_exists for oi in obs_id_list]):
-            W_stacked = np.stack([self.data[oi].W_mixing_matrix
-                          for oi in obs_id_list], axis=0)
-            ids = np.arange(nparams) % len(obs_id_list)
-            W_stacked = np.ascontiguousarray(W_stacked[ids])
+            shapes = [Ellipsis if self.data[oi].W_mixing_matrix.ndim > 2
+                      else (None,Ellipsis) for oi in obs_id_list]
+            W_stacked = np.vstack([self.data[oi].W_mixing_matrix[shapes[n]]
+                                   for i in range(nparams_per_oi)
+                                   for n,oi in enumerate(obs_id_list)])
+            # ids = np.arange(nparams) % len(obs_id_list)
+            # W_stacked = np.ascontiguousarray(W_stacked[ids])
             self.data[obs_id_stacked] = MeasuredData(
                 stat='powerspectrum',
                 bins_mixing_matrix=self.data[obs_id_list[0]].bins_mixing_matrix,
-                W_mixing_matrix=W_stacked)
+                W_mixing_matrix=W_stacked, composition=composition)
+        else:
+            self.data[obs_id_stacked] = MeasuredData(
+                stat='powerspectrum', composition=composition)
 
     def define_fiducial_cosmology(self, params_fid=None, HDm_fid=None,
                                   de_model='lambda'):
@@ -821,7 +877,8 @@ class PTEmu:
                                                - 18*self.params['b2t']
                                                + 7*self.params['b3t'])
 
-    def _update_AP_params(self, params, de_model=None, q_tr_lo=None):
+    def _update_AP_params(self, params, de_model=None, q_tr_lo=None,
+                          gamma_tr_lo=None):
         r"""Update AP parameters.
 
         Sets the internal attributes of the class to store the AP parameters.
@@ -882,6 +939,10 @@ class PTEmu:
                 in params else np.repeat(1.0, self.nparams)
             self.params['q_tr'] = np.atleast_1d(params['q_tr']) if 'q_tr' \
                 in params else np.repeat(1.0, self.nparams)
+
+        if gamma_tr_lo is not None:
+            self.params['q_lo'] *= gamma_tr_lo[1]
+            self.params['q_tr'] *= gamma_tr_lo[0]
 
     def _get_bias_coeff(self):
         r"""Get bias coefficients for the emulated terms.
@@ -2060,7 +2121,8 @@ class PTEmu:
     #     return Pell_dict
 
     def Pell(self, k, params, ell, de_model=None, binning=None, obs_id=None,
-             q_tr_lo=None, W_damping=None, ell_for_recon=None):
+             q_tr_lo=None, gamma_tr_lo=None, W_damping=None,
+             ell_for_recon=None):
         r"""Compute the power spectrum multipoles.
 
         Main method to compute the galaxy power spectrum multipoles.
@@ -2137,6 +2199,9 @@ class PTEmu:
             k_list = [k]*len(ell)
             k = np.unique(np.hstack(k_list))
 
+        if obs_id is not None:
+            obs_id = [obs_id] if not isinstance(obs_id, list) else obs_id
+
         use_effective_modes = False
         if binning is not None:
             if self.grid is None:
@@ -2205,20 +2270,21 @@ class PTEmu:
             params_nonzero = [x for x in self.bias_params_list +
                               self.RSD_params_list + self.obs_syst_params_list
                               if np.any(self.params[x] != 0)]
-            diff_shape = np.any([np.array(params[p]).shape != self.params[p].shape
-                                 for p in params.keys()])
+            diff_shape = np.any(
+                [np.array(params[p]).shape != self.params[p].shape
+                 for p in params.keys()])
 
             if (np.any(params_updated) or
                     np.any([p not in params.keys() for p in params_nonzero]) or
                     not self.splines_up_to_date or diff_shape):
                 Pell = self._Pell_fid_ktable(params, ell=ell_for_recon,
-                                            de_model=de_model)
+                                             de_model=de_model)
                 h = None if self.use_Mpc else self.params['h']
                 self.Pell_spline.build(self.k_table, Pell, h=h)
                 self.splines_up_to_date = True
 
             self._update_AP_params(params, de_model=de_model,
-                                   q_tr_lo=q_tr_lo)
+                                   q_tr_lo=q_tr_lo, gamma_tr_lo=gamma_tr_lo)
             q3 = self.params['q_tr']**2 * self.params['q_lo']
 
             if binning is None or use_effective_modes:
@@ -2232,29 +2298,76 @@ class PTEmu:
                 ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
                 Pell_dict['ell{}'.format(m)] = np.squeeze(Pell_model[ids, i])
         else:
-            if isinstance(obs_id, list):
-                if len(obs_id) > 1:
-                    ordering = np.argsort([self.data[oi].zeff for oi in obs_id])
-                    obs_id_use = reduce(lambda s1, s2: s1+'|'+s2,
-                                        np.array(obs_id)[ordering])
-                    nparams = len(next(iter(params.values())))
-                    if len(obs_id) < nparams:
-                        obs_id_use += ':{}'.format(nparams)
-                    if not obs_id_use in self.data or \
-                            not self.data[obs_id_use].mixing_matrix_exists:
-                        self.stack_mixing_matrices(np.array(obs_id)[ordering],
-                                                   obs_id_use, nparams)
-                else:
-                    obs_id_use = obs_id[0]
+            nobs = len(obs_id)
+            if nobs > 1:
+                obs_id_sorted = sorted([oi for oi in obs_id],
+                                        key=lambda x: self.data[x].zeff)
+                obs_id_use = reduce(lambda s1, s2: s1+'|'+s2, obs_id_sorted)
             else:
-                obs_id_use = obs_id
+                obs_id_sorted = obs_id
+                obs_id_use = obs_id[0]
+            if any([self.data[oi].composition is not None for oi in obs_id]):
+                nparams_per_oi = int(max([len(np.atleast_1d(params[spec]['wc']))
+                                          for spec in params]) / nobs)
+                if nparams_per_oi > 1:
+                    obs_id_use += ':{}'.format(nparams_per_oi)
+                if not obs_id_use in self.data or \
+                        not self.data[obs_id_use].mixing_matrix_exists:
+                    self.stack_mixing_matrices(obs_id_sorted, obs_id_use,
+                                               nparams_per_oi)
+                # get parameters for eval, fractions, gammas
+                for spec in params:
+                    for p in params[spec]:
+                        params[spec][p] = np.atleast_1d(params[spec][p])
+                params_list = {p for spec in params
+                               for p in list(params[spec].keys())
+                               if p != 'fraction'}
+                params_eval = {p:[] for p in params_list}
+                fractions = []
+                gamma_tr_lo = [[],[]]
+                ids = {oi:{spec:np.where(np.array(params[spec]['z']) ==
+                                self.data[oi].composition[spec]['zeff'])[0]
+                           for spec in self.data[oi].composition}
+                       for oi in obs_id_sorted}
+                ireduc = [0]
+                i = 0
+                for n in range(nparams_per_oi):
+                    for oi in obs_id_sorted:
+                        for spec in self.data[oi].composition:
+                            for p in params_eval:
+                                val = params[spec][p][ids[oi][spec][n]] \
+                                      if p in params[spec] else 0.0
+                                params_eval[p].append(val)
+                            fractions.append(
+                                params[spec]['fraction'][ids[oi][spec][n]])
+                            for j in range(2):
+                                gamma_tr_lo[j].append(
+                                    self.data[oi].composition[spec] \
+                                             ['gamma_tr_lo'][j]
+                                )
+                            i += 1
+                        ireduc.append(i)
+                fractions = np.array(fractions)**2
+                for p in params_eval:
+                    params_eval[p] = np.array(params_eval[p])
+            else:
+                nparams_per_oi = int(len(np.atleast_1d(params['wc'])) / nobs)
+                if nparams_per_oi > 1:
+                    obs_id_use += ':{}'.format(nparams_per_oi)
+                if not obs_id_use in self.data or \
+                        not self.data[obs_id_use].mixing_matrix_exists:
+                    self.stack_mixing_matrices(obs_id_sorted, obs_id_use,
+                                               nparams_per_oi)
+                params_eval = params
+                gamma_tr_lo = None
             if self.data[obs_id_use].mixing_matrix_exists:
                 ell_for_mixing_matrix = [0,2,4] if not self.real_space else [0]
                 Pell_model = self.Pell(
                     self.data[obs_id_use].bins_mixing_matrix_compressed,
-                    params, ell_for_mixing_matrix, de_model,
+                    params_eval, ell_for_mixing_matrix, de_model,
                     binning=None, obs_id=None, q_tr_lo=q_tr_lo,
-                    W_damping=W_damping, ell_for_recon=ell_for_recon)
+                    gamma_tr_lo=gamma_tr_lo, W_damping=W_damping,
+                    ell_for_recon=ell_for_recon)
                 Pell_list = np.stack([Pell_model[ell] for ell in Pell_model],
                                      axis=1)
                 spline = make_interp_spline(
@@ -2263,7 +2376,13 @@ class PTEmu:
                         self.data[obs_id_use].bins_mixing_matrix[1])
                 spline = spline.reshape((spline.shape[0]*spline.shape[1],) \
                                         + spline.shape[2:], order='F')
-                if isinstance(obs_id, list) and len(obs_id) > 1:
+                if self.data[obs_id_use].composition is not None:
+                    Pell_convolved = (self.data[obs_id_use].W_mixing_matrix \
+                                      @ spline.T[...,None]).squeeze().T
+                    # (x) add up interloper contributions
+                    Pell_convolved = np.add.reduceat(Pell_convolved*fractions,
+                                                     ireduc[:-1], axis=1)
+                elif len(obs_id) > 1:
                     Pell_convolved = (self.data[obs_id_use].W_mixing_matrix \
                                       @ spline.T[...,None]).squeeze().T
                 else:
@@ -2295,11 +2414,17 @@ class PTEmu:
                         Pell_dict['ell{}'.format(m)] = np.squeeze(
                             Pell_convolved[ids + int(m/2)*nb])
             else:
-                print('Warning! Bins for mixing matrix and/or mixing matrix '
-                      'itself not provided. Returning unconvolved power '
-                      'spectrum.')
-                Pell_dict = self.Pell(k, params, ell, de_model, binning, None,
-                                      q_tr_lo, W_damping, ell_for_recon)
+                # print('Warning! Bins for mixing matrix and/or mixing matrix '
+                #       'itself not provided. Returning unconvolved power '
+                #       'spectrum.')
+                Pell_dict = self.Pell(k, params_eval, ell, de_model, binning,
+                                      None, q_tr_lo, gamma_tr_lo, W_damping,
+                                      ell_for_recon)
+                if self.data[obs_id_use].composition is not None:
+                    # (x) add up interloper contributions
+                    for ell in Pell_dict:
+                        Pell_dict[ell] = np.add.reduceat(
+                            Pell_dict[ell]*fractions, ireduc[:-1], axis=1)
 
         return Pell_dict
 
@@ -2588,7 +2713,8 @@ class PTEmu:
         return P6X
 
     def PX_ell(self, k, params, ell, X_list, de_model=None, binning=None,
-               obs_id=None, q_tr_lo=None, W_damping=None, ell_for_recon=None):
+               obs_id=None, q_tr_lo=None, gamma_tr_lo=None, W_damping=None,
+               ell_for_recon=None):
         r"""Get the individual contribution to the power spectrum multipoles.
 
         Computes the individual contribution X to the galaxy power spectrum
@@ -2820,7 +2946,7 @@ class PTEmu:
                     self.X_splines_up_to_date[XNL] = True
 
             self._update_AP_params(params, de_model=de_model,
-                                   q_tr_lo=q_tr_lo)
+                                   q_tr_lo=q_tr_lo, gamma_tr_lo=gamma_tr_lo)
             q3 = self.params['q_tr']**2 * self.params['q_lo']
 
             PX_ell_model = np.empty((len(keff), len(ell), len(X_list),
