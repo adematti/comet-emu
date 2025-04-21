@@ -2311,8 +2311,10 @@ class PTEmu:
                                           for spec in params]) / nobs)
                 if nparams_per_oi > 1:
                     obs_id_use += ':{}'.format(nparams_per_oi)
-                if not obs_id_use in self.data or \
-                        not self.data[obs_id_use].mixing_matrix_exists:
+                if (nobs > 1 or nparams_per_oi > 1) \
+                        and obs_id_use not in self.data:
+                # if not obs_id_use in self.data or \
+                #         not self.data[obs_id_use].mixing_matrix_exists:
                     self.stack_mixing_matrices(obs_id_sorted, obs_id_use,
                                                nparams_per_oi)
                 # get parameters for eval, fractions, gammas
@@ -2354,8 +2356,10 @@ class PTEmu:
                 nparams_per_oi = int(len(np.atleast_1d(params['wc'])) / nobs)
                 if nparams_per_oi > 1:
                     obs_id_use += ':{}'.format(nparams_per_oi)
-                if not obs_id_use in self.data or \
-                        not self.data[obs_id_use].mixing_matrix_exists:
+                if (nobs > 1 or nparams_per_oi > 1) \
+                        and obs_id_use not in self.data:
+                # if not obs_id_use in self.data or \
+                #         not self.data[obs_id_use].mixing_matrix_exists:
                     self.stack_mixing_matrices(obs_id_sorted, obs_id_use,
                                                nparams_per_oi)
                 params_eval = params
@@ -2803,6 +2807,9 @@ class PTEmu:
         else:
             k_list = [k]*len(ell)
 
+        if obs_id is not None:
+            obs_id = [obs_id] if not isinstance(obs_id, list) else obs_id
+
         use_effective_modes = False
         if binning is not None:
             if self.grid is None:
@@ -2969,29 +2976,93 @@ class PTEmu:
                 PX_ell_dict['ell{}'.format(m)] = np.squeeze(
                     PX_ell_model[ids, i])
         else:
-            if isinstance(obs_id, list):
-                if len(obs_id) > 1:
-                    ordering = np.argsort([self.data[oi].zeff for oi in obs_id])
-                    obs_id_use = reduce(lambda s1, s2: s1+'|'+s2,
-                                        np.array(obs_id)[ordering])
-                    nparams = len(next(iter(params.values())))
-                    if len(obs_id) < nparams:
-                        obs_id_use += ':{}'.format(nparams)
-                    if not obs_id_use in self.data or \
-                            not self.data[obs_id_use].mixing_matrix_exists:
-                        self.stack_mixing_matrices(np.array(obs_id)[ordering],
-                                                   obs_id_use, nparams)
-                else:
-                    obs_id_use = obs_id[0]
+            # if isinstance(obs_id, list):
+            #     if len(obs_id) > 1:
+            #         ordering = np.argsort([self.data[oi].zeff for oi in obs_id])
+            #         obs_id_use = reduce(lambda s1, s2: s1+'|'+s2,
+            #                             np.array(obs_id)[ordering])
+            #         nparams = len(next(iter(params.values())))
+            #         if len(obs_id) < nparams:
+            #             obs_id_use += ':{}'.format(nparams)
+            #         if not obs_id_use in self.data or \
+            #                 not self.data[obs_id_use].mixing_matrix_exists:
+            #             self.stack_mixing_matrices(np.array(obs_id)[ordering],
+            #                                        obs_id_use, nparams)
+            #     else:
+            #         obs_id_use = obs_id[0]
+            # else:
+            #     obs_id_use = obs_id
+
+            nobs = len(obs_id)
+            if nobs > 1:
+                obs_id_sorted = sorted([oi for oi in obs_id],
+                                        key=lambda x: self.data[x].zeff)
+                obs_id_use = reduce(lambda s1, s2: s1+'|'+s2, obs_id_sorted)
             else:
-                obs_id_use = obs_id
+                obs_id_sorted = obs_id
+                obs_id_use = obs_id[0]
+            if any([self.data[oi].composition is not None for oi in obs_id]):
+                nparams_per_oi = int(max([len(np.atleast_1d(params[spec]['wc']))
+                                          for spec in params]) / nobs)
+                if nparams_per_oi > 1:
+                    obs_id_use += ':{}'.format(nparams_per_oi)
+                if not obs_id_use in self.data or \
+                        not self.data[obs_id_use].mixing_matrix_exists:
+                    self.stack_mixing_matrices(obs_id_sorted, obs_id_use,
+                                               nparams_per_oi)
+                # get parameters for eval, fractions, gammas
+                for spec in params:
+                    for p in params[spec]:
+                        params[spec][p] = np.atleast_1d(params[spec][p])
+                params_list = {p for spec in params
+                               for p in list(params[spec].keys())
+                               if p != 'fraction'}
+                params_eval = {p:[] for p in params_list}
+                fractions = []
+                gamma_tr_lo = [[],[]]
+                ids = {oi:{spec:np.where(np.array(params[spec]['z']) ==
+                                self.data[oi].composition[spec]['zeff'])[0]
+                           for spec in self.data[oi].composition}
+                       for oi in obs_id_sorted}
+                ireduc = [0]
+                i = 0
+                for n in range(nparams_per_oi):
+                    for oi in obs_id_sorted:
+                        for spec in self.data[oi].composition:
+                            for p in params_eval:
+                                val = params[spec][p][ids[oi][spec][n]] \
+                                      if p in params[spec] else 0.0
+                                params_eval[p].append(val)
+                            fractions.append(
+                                params[spec]['fraction'][ids[oi][spec][n]])
+                            for j in range(2):
+                                gamma_tr_lo[j].append(
+                                    self.data[oi].composition[spec] \
+                                             ['gamma_tr_lo'][j]
+                                )
+                            i += 1
+                        ireduc.append(i)
+                fractions = np.array(fractions)**2
+                for p in params_eval:
+                    params_eval[p] = np.array(params_eval[p])
+            else:
+                nparams_per_oi = int(len(np.atleast_1d(params['wc'])) / nobs)
+                if nparams_per_oi > 1:
+                    obs_id_use += ':{}'.format(nparams_per_oi)
+                if not obs_id_use in self.data or \
+                        not self.data[obs_id_use].mixing_matrix_exists:
+                    self.stack_mixing_matrices(obs_id_sorted, obs_id_use,
+                                               nparams_per_oi)
+                params_eval = params
+                gamma_tr_lo = None
             if self.data[obs_id_use].mixing_matrix_exists:
                 ell_for_mixing_matrix = [0,2,4] if not self.real_space else [0]
                 PX_ell_model = self.PX_ell(
                     self.data[obs_id_use].bins_mixing_matrix_compressed,
-                    params, ell_for_mixing_matrix, X_list, de_model,
+                    params_eval, ell_for_mixing_matrix, X_list, de_model,
                     binning=None, obs_id=None, q_tr_lo=q_tr_lo,
-                    W_damping=W_damping, ell_for_recon=ell_for_recon)
+                    gamma_tr_lo=gamma_tr_lo, W_damping=W_damping,
+                    ell_for_recon=ell_for_recon)
                 PX_ell_list = np.stack([PX_ell_model[ell]
                                         for ell in PX_ell_model],
                                        axis=1) # nk x nell x (nX) x (N)
@@ -3014,14 +3085,6 @@ class PTEmu:
                             (self.data[obs_id_use].W_mixing_matrix \
                              @ spline.T[...,None]).squeeze().T
                 else:
-                    # if len(X_list) > 1:
-                    #     spline = np.ascontiguousarray(
-                    #         np.moveaxis(spline, 0, 1))
-                    #     PX_ell_convolved = np.moveaxis(
-                    #         self.data[obs_id_use].W_mixing_matrix @ spline,
-                    #         1, 0
-                    #     )
-                    # else:
                     PX_ell_convolved = \
                         self.data[obs_id_use].W_mixing_matrix @ spline
                 nb = len(self.data[obs_id_use].bins_mixing_matrix[0])
