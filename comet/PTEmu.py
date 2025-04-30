@@ -3006,8 +3006,8 @@ class PTEmu:
                                           for spec in params]) / nobs)
                 if nparams_per_oi > 1:
                     obs_id_use += ':{}'.format(nparams_per_oi)
-                if not obs_id_use in self.data or \
-                        not self.data[obs_id_use].mixing_matrix_exists:
+                if (nobs > 1 or nparams_per_oi > 1) \
+                        and obs_id_use not in self.data:
                     self.stack_mixing_matrices(obs_id_sorted, obs_id_use,
                                                nparams_per_oi)
                 # get parameters for eval, fractions, gammas
@@ -3049,8 +3049,8 @@ class PTEmu:
                 nparams_per_oi = int(len(np.atleast_1d(params['wc'])) / nobs)
                 if nparams_per_oi > 1:
                     obs_id_use += ':{}'.format(nparams_per_oi)
-                if not obs_id_use in self.data or \
-                        not self.data[obs_id_use].mixing_matrix_exists:
+                if (nobs > 1 or nparams_per_oi > 1) \
+                        and obs_id_use not in self.data:
                     self.stack_mixing_matrices(obs_id_sorted, obs_id_use,
                                                nparams_per_oi)
                 params_eval = params
@@ -3072,7 +3072,7 @@ class PTEmu:
                         self.data[obs_id_use].bins_mixing_matrix[1])
                 spline = spline.reshape((spline.shape[0]*spline.shape[1],) \
                                         + spline.shape[2:], order='F')
-                if (isinstance(obs_id, list) and len(obs_id) > 1):
+                if nobs > 1 or self.data[obs_id_use].composition is not None:
                     if len(X_list) > 1:
                         spline = np.ascontiguousarray(
                             np.moveaxis(spline, -1, 0))
@@ -3113,12 +3113,12 @@ class PTEmu:
                         PX_ell_dict['ell{}'.format(m)] = np.squeeze(
                             PX_ell_convolved[ids + int(m/2)*nb])
             else:
-                print('Warning! Bins for mixing matrix and/or mixing matrix '
-                      'itself not provided. Returning unconvolved power '
-                      'spectrum.')
+                # print('Warning! Bins for mixing matrix and/or mixing matrix '
+                #       'itself not provided. Returning unconvolved power '
+                #       'spectrum.')
                 PX_ell_dict = self.PX_ell(k, params, ell, X_list, de_model,
-                                          binning, None, q_tr_lo, W_damping,
-                                          ell_for_recon)
+                                          binning, None, q_tr_lo, gamma_tr_lo,
+                                          W_damping, ell_for_recon)
 
         return PX_ell_dict
 
