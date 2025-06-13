@@ -124,6 +124,7 @@ class PTEmu:
         else:
             self.RSD_params_list = []
 
+        self.z_error_types = ['Gaussian','Voigt']
         self.obs_syst_params_list = ['sigma_z', 'gamma_z', 'f_out']
 
         self.cnloB_type = 'EggLeeSco'
@@ -1667,7 +1668,7 @@ class PTEmu:
         t = np.ones_like(k)
         # loop over nparams_per_oi, oi (if given) and spec
         if isinstance(z_error, list):
-            for z_error_type in ['Gaussian','Voigt']:
+            for z_error_type in self.z_error_types:
                 ids = np.where(np.array(z_error) == z_error_type)[0]
                 if len(ids) > 0:
                     match z_error_type:
