@@ -102,19 +102,19 @@ class MeasuredData:
                 if isinstance(W_mixing_matrix, dict):
                     W_stacked = np.stack(
                         [W_mixing_matrix[species]
-                         for species in self.composition
-                        ],
+                         for species in self.composition],
                         axis=0
                     )
                 else:
                     W_stacked = W_mixing_matrix
-                    # W_stacked = np.stack(
-                    #     [W_mixing_matrix for species in self.composition],
-                    #     axis=0
-                    # )
+                    W_stacked = np.stack(
+                        [W_mixing_matrix for species in self.composition],
+                        axis=0
+                    )
                 self.W_mixing_matrix = np.ascontiguousarray(W_stacked)
             else:
                 self.W_mixing_matrix = kwargs.get('W_mixing_matrix')
+                self.W_mixing_matrix = np.ascontiguousarray(self.W_mixing_matrix)
 
         if hasattr(self, 'bins_mixing_matrix') \
                 and hasattr(self, 'W_mixing_matrix'):
@@ -236,9 +236,8 @@ class MeasuredData:
                 W_mixing_matrix = kwargs.get('W_mixing_matrix')
                 if isinstance(W_mixing_matrix, dict):
                     W_stacked = np.stack(
-                        [W_mixing_matrix[species]
-                         for species in self.composition
-                        ],
+                        [W_mixing_matrix[species] 
+                         for species in self.composition],
                         axis=0
                     )
                 else:
@@ -249,6 +248,7 @@ class MeasuredData:
                 self.W_mixing_matrix = np.ascontiguousarray(W_stacked)
             else:
                 self.W_mixing_matrix = kwargs.get('W_mixing_matrix')
+                self.W_mixing_matrix = np.ascontiguousarray(self.W_mixing_matrix)
 
         if hasattr(self, 'bins_mixing_matrix') \
                 and hasattr(self, 'W_mixing_matrix'):

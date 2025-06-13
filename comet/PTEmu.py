@@ -654,7 +654,9 @@ class PTEmu:
             self.data[obs_id_stacked] = MeasuredData(
                 stat='powerspectrum',
                 bins_mixing_matrix=self.data[obs_id_list[0]].bins_mixing_matrix,
-                W_mixing_matrix=W_stacked, composition=composition)
+                W_mixing_matrix=W_stacked)
+            self.data[obs_id_stacked].update(stat='powerspectrum',
+                                             composition=composition)
         else:
             self.data[obs_id_stacked] = MeasuredData(
                 stat='powerspectrum', composition=composition)
@@ -687,10 +689,10 @@ class PTEmu:
                     " same number of occurrences.")
             nparams_per_oi = nparams_per_oi.pop()
             if nparams_per_oi > 1:
-                obs_id_use[0] += ':{}'.format(nparams_per_oi)
+                obs_id_use += ':{}'.format(nparams_per_oi)
             if (nobs > 1 or nparams_per_oi > 1) \
-                    and obs_id_use[0] not in self.data:
-                self.stack_mixing_matrices(obs_id, obs_id_use[0],
+                    and obs_id_use not in self.data:
+                self.stack_mixing_matrices(obs_id, obs_id_use,
                                             nparams_per_oi)
 
             for spec in params:
@@ -752,10 +754,10 @@ class PTEmu:
                     " number of occurrences.")
             nparams_per_oi = nparams_per_oi[0]
             if nparams_per_oi > 1:
-                obs_id_use[0] += ':{}'.format(nparams_per_oi)
+                obs_id_use += ':{}'.format(nparams_per_oi)
             if (nobs > 1 or nparams_per_oi > 1) \
-                    and obs_id_use[0] not in self.data:
-                self.stack_mixing_matrices(obs_id, obs_id_use[0], nparams_per_oi)
+                    and obs_id_use not in self.data:
+                self.stack_mixing_matrices(obs_id, obs_id_use, nparams_per_oi)
 
             ids_sorting = np.argsort(params['z'])[
                 np.arange(len(np.atleast_1d(params['z']))).reshape(
@@ -779,7 +781,8 @@ class PTEmu:
                 
         self.define_nbar(nbar)
         self.define_fiducial_cosmology(HDm_fid=HDm_fid)
-        return params_eval, inv_ids_sorting, gamma_tr_lo, fractions, ireduc
+        return params_eval, obs_id_use, inv_ids_sorting, gamma_tr_lo, fractions, \
+               ireduc
 
     def define_fiducial_cosmology(self, params_fid=None, HDm_fid=None,
                                   de_model='lambda'):
@@ -2427,20 +2430,19 @@ class PTEmu:
             if nobs > 1:
                 obs_id_sorted = sorted([oi for oi in obs_id],
                                         key=lambda x: self.data[x].zeff)
-                obs_id_use = [reduce(lambda s1, s2: s1+'|'+s2, obs_id_sorted)]
+                obs_id_use = reduce(lambda s1, s2: s1+'|'+s2, obs_id_sorted)
             else:
                 obs_id_sorted = obs_id
-                obs_id_use = obs_id.copy()
+                obs_id_use = obs_id[0]
                 
             if gamma_tr_lo is None:
-                params_eval, inv_sorting, gamma_tr_lo, fractions, ireduc = \
-                    self._match_params_with_obs_id(params, obs_id_sorted, 
-                                                   obs_id_use)
+                params_eval, obs_id_use, inv_sorting, gamma_tr_lo, fractions, \
+                    ireduc = self._match_params_with_obs_id(
+                        params, obs_id_sorted, obs_id_use)
             else:
-                params_eval, inv_sorting, _, fractions, ireduc = \
-                    self._match_params_with_obs_id(params, obs_id_sorted, 
-                                                   obs_id_use)
-            obs_id_use = obs_id_use[0]
+                params_eval, obs_id_use, inv_sorting, _, fractions, \
+                    ireduc = self._match_params_with_obs_id(
+                        params, obs_id_sorted, obs_id_use)
                 
             if self.data[obs_id_use].mixing_matrix_exists:
                 ell_for_mixing_matrix = [0,2,4] if not self.real_space else [0]
@@ -2458,10 +2460,11 @@ class PTEmu:
                         self.data[obs_id_use].bins_mixing_matrix[1])
                 spline = spline.reshape((spline.shape[0]*spline.shape[1],) \
                                         + spline.shape[2:], order='F')
+                
+                # convolve with mixing matrix and add up interloper contributions
                 if self.data[obs_id_use].composition is not None:
                     Pell_convolved = (self.data[obs_id_use].W_mixing_matrix \
                                       @ spline.T[...,None]).squeeze().T
-                    # (x) add up interloper contributions
                     if Pell_convolved.ndim > 1:
                         Pell_convolved = np.add.reduceat(Pell_convolved*fractions,
                                                          ireduc[:-1], axis=1)
@@ -2471,8 +2474,8 @@ class PTEmu:
                 else:
                     Pell_convolved = self.data[obs_id_use].W_mixing_matrix \
                                      @ spline
+                                     
                 nb = len(self.data[obs_id_use].bins_mixing_matrix[0])
-
                 Pell_dict = {}
                 if k.size != np.intersect1d(
                         k, self.data[obs_id_use].bins_mixing_matrix[0]).size:
@@ -2503,12 +2506,14 @@ class PTEmu:
                 Pell_dict = self.Pell(k, params_eval, ell, de_model, binning,
                                       None, q_tr_lo, gamma_tr_lo, W_damping,
                                       ell_for_recon)
+                # add up interloper contributions
                 if self.data[obs_id_use].composition is not None:
-                    # (x) add up interloper contributions
                     for ell in Pell_dict:
                         if Pell_dict[ell].ndim > 1:
                             Pell_dict[ell] = np.squeeze(np.add.reduceat(
                                 Pell_dict[ell]*fractions, ireduc[:-1], axis=1))
+                            
+            # in case obs_id was given unsorted, restore original sorting
             if preserve_param_order and len(inv_sorting) > 1:
                 for ell in Pell_dict:
                     Pell_dict[ell] = Pell_dict[ell][...,inv_sorting]
@@ -3068,8 +3073,9 @@ class PTEmu:
                 obs_id_sorted = obs_id
                 obs_id_use = obs_id[0]
                 
-            params_eval, inv_sorting, gamma_tr_lo, fractions, _ = \
-                self._match_params_with_obs_id(params, obs_id_sorted, obs_id_use)
+            params_eval, obs_id_use, inv_sorting, gamma_tr_lo, \
+                fractions, _, = self._match_params_with_obs_id(
+                    params, obs_id_sorted, obs_id_use)
                 
             if self.data[obs_id_use].mixing_matrix_exists:
                 ell_for_mixing_matrix = [0,2,4] if not self.real_space else [0]
@@ -3088,10 +3094,11 @@ class PTEmu:
                         self.data[obs_id_use].bins_mixing_matrix[1])
                 spline = spline.reshape((spline.shape[0]*spline.shape[1],) \
                                         + spline.shape[2:], order='F')
+                            
                 if nobs > 1 or self.data[obs_id_use].composition is not None:
-                    if len(X_list) > 1:
-                        spline = np.ascontiguousarray(
-                            np.moveaxis(spline, -1, 0))
+                    if len(X_list) > 1 and \
+                            len(self.data[obs_id_use].composition) > 1:
+                        spline = np.moveaxis(spline, -1, 0)
                         PX_ell_convolved = np.moveaxis(
                             self.data[obs_id_use].W_mixing_matrix @ spline,
                             0, -1
@@ -3718,10 +3725,10 @@ class PTEmu:
             elif x.ndim == 1:
                 return x[:, np.newaxis, np.newaxis]
             elif x.ndim == 2:
-                if n_samples_all > 1:
-                    return x[:, np.newaxis, :]
-                else:
+                if len(params_to_marg_all) > 1:
                     return x[..., np.newaxis]
+                else:
+                    return x[:, np.newaxis, :]
             else:
                 return x
             
@@ -3764,6 +3771,8 @@ class PTEmu:
                     params_to_marg[oi] = {}
                     diagrams_to_marg[oi] = {}
                     for spec in self.data[oi].composition:
+                        if spec not in AM_priors[oi]:
+                            AM_priors[oi][spec] = {}
                         params_to_marg[oi][spec] = [p for p in
                             AM_priors[oi][spec] if p in self.diagrams_to_marg]
                         diagrams_to_marg[oi][spec] = [
@@ -3829,7 +3838,6 @@ class PTEmu:
                              preserve_param_order=False)
 
             if any(do_analytic_marginalisation.values()):
-                # print(diagrams_to_marg_all)
                 PX_ell = self.PX_ell(bins_kmax, params, ell_joint,
                                      diagrams_to_marg_all, binning=binning,
                                      obs_id=convolve_obs_id, de_model=de_model,
@@ -3837,24 +3845,7 @@ class PTEmu:
                                      ell_for_recon=ell_for_recon,
                                      preserve_param_order=False)
                 bX = self._get_bias_coeff_for_AM(diagrams_to_marg_all)
-                ell_test = 'ell{}'.format(ell[obs_id[0]][0])
-                if len(diagrams_to_marg_all) > 1:   
-                    if PX_ell[ell_test].ndim > 2:
-                        n_samples_all = PX_ell[ell_test].shape[-1]
-                    else:
-                        n_samples_all = 1
-                elif PX_ell[ell_test].ndim > 1:
-                    n_samples_all = PX_ell[ell_test].shape[-1]
-                else:
-                    n_samples_all = 1
-                n_samples = int(n_samples_all/n_species_all)
-                ids_oi = [
-                    np.array(
-                        [np.arange(n_samples_all)[i:i+n_species[j]] for i in
-                         range(sum(n_species[:j]), n_samples_all, n_species_all)
-                        ]
-                    ).ravel() for j in range(n_obs)
-                ]
+ 
                 PX_ell_list = np.concatenate([PX_ell[ell] for ell in PX_ell])
                 PX_ell_list *= bX
                 if 'g21' in params_to_marg_all or 'bGam3' in params_to_marg_all:
@@ -3866,7 +3857,17 @@ class PTEmu:
                                                 diagrams_to_marg, 
                                                 diagrams_to_marg_all)
                 PX_ell_list = atleast_3d_last(PX_ell_list)
-
+                
+                n_samples_all = PX_ell_list.shape[-1]
+                n_samples = int(n_samples_all/n_species_all)
+                ids_oi = [
+                    np.array(
+                        [np.arange(n_samples_all)[i:i+n_species[j]] for i in
+                         range(sum(n_species[:j]), n_samples_all, n_species_all)
+                        ]
+                    ).ravel() for j in range(n_obs)
+                ]  
+                
             for n,oi in enumerate(obs_id):
                 ids_k = [np.intersect1d(bins_kmax[i], self.data[oi].bins_kmax[i],
                                       return_indices=True)[1]
@@ -3877,6 +3878,7 @@ class PTEmu:
                          for i,l in enumerate(ell[oi])]
                 )
                 diff = np.squeeze(Pell_list - self.data[oi].signal_kmax[:,None])
+                
                 if do_analytic_marginalisation[oi]:
                     PX_ell_list_oi = PX_ell_list[np.hstack([*ids_k])][..., 
                                                                       ids_oi[n]]
@@ -3888,18 +3890,15 @@ class PTEmu:
                                           in self.data[oi].composition for p \
                                           in params_to_marg[oi][spec]])
                         X_marg = np.tile(
-                            [diagrams_to_marg_all.index(d) for i,spec 
-                             in enumerate(self.data[oi].composition)
+                            [diagrams_to_marg_all.index(d) for spec 
+                             in self.data[oi].composition
                              for d in diagrams_to_marg[oi][spec]], (n_samples, 1)
                         ).T
                         spec_marg = np.r_[
                             tuple(slice(i, PX_ell_list_oi.shape[-1], n_species[n]) 
-                                  for i,spec in enumerate(
-                                      self.data[oi].composition)
+                                  for i,spec in enumerate(self.data[oi].composition)
                                   for d in diagrams_to_marg[oi][spec])
                         ].reshape(-1, n_samples)
-                        # print(n, PX_ell_list_oi.shape, X_marg, spec_marg)
-                        # print(diagrams_to_marg_all, diagrams_to_marg)
                         PX_ell_list_oi = PX_ell_list_oi[:, X_marg, 
                                                         spec_marg].squeeze()
                     else:
@@ -3909,7 +3908,6 @@ class PTEmu:
                                           in params_to_marg[oi]])
                         X_marg = [diagrams_to_marg_all.index(d) for d \
                                   in diagrams_to_marg[oi]]
-                        # print(n, PX_ell_list_oi.shape, X_marg)
                         PX_ell_list_oi = PX_ell_list_oi[:, X_marg].squeeze()
 
                 Cinv_diff = self.data[oi].inverse_cov_kmax @ diff
@@ -4216,9 +4214,8 @@ class PTEmu:
         return chi2
 
     def chi2(self, obs_id, params, kmax, de_model=None, binning=None,
-             convolve_window=False, q_tr_lo=None, W_damping=None,
-             chi2_decomposition=False, AM_priors=None, ell_for_recon=None,
-             cnloB_mapping=None):
+             q_tr_lo=None, W_damping=None, chi2_decomposition=False, 
+             AM_priors=None, ell_for_recon=None, cnloB_mapping=None):
         r"""Compute the :math:`\chi^2 for the given configurations`.
 
         Generates the selected power spectrum multipoles for the specified set
@@ -4336,6 +4333,11 @@ class PTEmu:
                         W_damping[stat] = lambda k, mu: 1.0
                     elif stat == 'bispectrum':
                         W_damping[stat] = lambda tri, mu1, mu2, mu3: 1.0
+                        
+        if all([self.data[oi].mixing_matrix_exists for oi in obs_id]):
+            convolve_window = True
+        else:
+            convolve_window = False
 
         if chi2_decomposition:
             # check if cosmological + RSD parameters have changed, if so,
@@ -4403,7 +4405,7 @@ class PTEmu:
         # - reorder the params arrays such that o1(1),o2(1),...,o1(2),o2(2),...,
         #   o1(N),o2(N),...
 
-        chi2 = 0.0
+        chi2 = np.array([0.0])
         for stat in obs_id_stat:
             # unique_z, counts = np.unique(params['z'], return_counts=True)
             # match_zeff = (unique_z == np.sort([self.data[oi].zeff
