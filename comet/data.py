@@ -88,6 +88,29 @@ class MeasuredData:
             self.composition = kwargs.get('composition')
         else:
             self.composition = None
+            
+        if 'z_error' in kwargs:
+            if self.composition is not None:
+                self.z_error = {}
+                z_error = kwargs.get('z_error')
+                if isinstance(z_error, dict):
+                    for spec in self.composition:
+                        if spec in z_error:
+                            self.z_error[spec] = z_error[spec]
+                        else:
+                            self.z_error[spec] = None
+                else:
+                    for spec in self.composition:
+                        self.z_error[spec] = z_error
+            else:
+                self.z_error = z_error
+        else:
+            if self.composition is not None:
+                self.z_error = {}
+                for spec in self.composition:
+                    self.z_error[spec] = None
+            else:
+                self.z_error = None
 
         if 'bins_mixing_matrix' in kwargs:
             self.bins_mixing_matrix = kwargs.get('bins_mixing_matrix')
@@ -223,6 +246,22 @@ class MeasuredData:
 
         if 'composition' in kwargs:
             self.composition = kwargs.get('composition')
+            
+        if 'z_error' in kwargs:
+            if self.composition is not None:
+                self.z_error = {}
+                z_error = kwargs.get('z_error')
+                if isinstance(z_error, dict):
+                    for spec in self.composition:
+                        if spec in z_error:
+                            self.z_error[spec] = z_error[spec]
+                        else:
+                            self.z_error[spec] = None
+                else:
+                    for spec in self.composition:
+                        self.z_error[spec] = z_error
+            else:
+                self.z_error = z_error
 
         if 'bins_mixing_matrix' in kwargs:
             self.bins_mixing_matrix = kwargs.get('bins_mixing_matrix')

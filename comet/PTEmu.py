@@ -124,7 +124,7 @@ class PTEmu:
         else:
             self.RSD_params_list = []
 
-        self.obs_syst_params_list = ['sigma_z', 'f_out']
+        self.obs_syst_params_list = ['sigma_z', 'gamma_z', 'f_out']
 
         self.cnloB_type = 'EggLeeSco'
 
@@ -712,6 +712,7 @@ class PTEmu:
             params_eval = {p:[] for p in params_list}
             fractions = []
             gamma_tr_lo = [[],[]]
+            z_error = []
             nbar = []
             HDm_fid = [[],[]]
             ids = {oi:{spec:np.where(np.array(params[spec]['z']) ==
@@ -733,6 +734,7 @@ class PTEmu:
                         for j in range(2):
                             gamma_tr_lo[j].append(
                                 self.data[oi].composition[spec]['gamma_tr_lo'][j])
+                        z_error.append(self.data[oi].z_error[spec])
                         i += 1
                     ireduc.append(i)
                     for j in range(2):
@@ -777,12 +779,13 @@ class PTEmu:
             params_eval = {}
             for p in params:
                 params_eval[p] = np.atleast_1d(params[p])[ids_sorting]
+            z_error = [self.data[oi].z_error for oi in obs_id]
             gamma_tr_lo, fractions, ireduc = None, None, None
                 
         self.define_nbar(nbar)
         self.define_fiducial_cosmology(HDm_fid=HDm_fid)
         return params_eval, obs_id_use, inv_ids_sorting, gamma_tr_lo, fractions, \
-               ireduc
+               z_error, ireduc
 
     def define_fiducial_cosmology(self, params_fid=None, HDm_fid=None,
                                   de_model='lambda'):
@@ -1624,8 +1627,17 @@ class PTEmu:
         )
         t = 1.0 + lsq*self.params['avirB']**2
         return 1.0/np.sqrt(t**3) * np.exp(-lsq*self.params['sv']**2/t)
+    
+    def _W_Gaussian(self, k, mu, sigma_r):
+        t = np.exp(-(k * mu * sigma_r)**2)
+        return t
+    
+    def _W_Voigt(self, k, mu, sigma_r, gamma_r):
+        kmu = k * mu
+        t = np.exp(-(kmu * sigma_r)**2 - np.abs(kmu) * gamma_r)
+        return t
 
-    def _W_obs_syst(self, k, mu):
+    def _W_obs_syst(self, k, mu, z_error=None):
         r"""Observational systematics damping function.
 
         Damping function introduced by the currently available systematic
@@ -1645,11 +1657,43 @@ class PTEmu:
         W_obs: np.ndarray
             Value of the observational systematics damping.
         """
-        if np.all(self.params['sigma_z'] == 0.0):
-            t = np.ones_like(k)
+        
+        # if np.all(self.params['sigma_z'] == 0.0):
+        #     t = np.ones_like(k)
+        # else:
+        #     sigma_r = self.cosmo.light_speed/self.H_fid * self.params['sigma_z']
+        #     t = np.exp(-(k * mu * sigma_r)**2)
+            
+        t = np.ones_like(k)
+        # loop over nparams_per_oi, oi (if given) and spec
+        if isinstance(z_error, list):
+            for z_error_type in ['Gaussian','Voigt']:
+                ids = np.where(np.array(z_error) == z_error_type)[0]
+                if len(ids) > 0:
+                    match z_error_type:
+                        case 'Gaussian':
+                            k_sub = k[...,ids]
+                            mu_sub = k[...,ids]
+                            sigma_r = self.cosmo.light_speed/self.H_fid[ids] \
+                                    * self.params['sigma_z'][ids]
+                            t[...,ids] = self._W_Gaussian(k_sub, mu_sub, sigma_r)
+                        case 'Voigt':
+                            k_sub = k[...,ids]
+                            mu_sub = k[...,ids]
+                            sigma_r = self.cosmo.light_speed/self.H_fid[ids] \
+                                    * self.params['sigma_z'][ids]
+                            gamma_r = self.cosmo.light_speed/self.H_fid[ids] \
+                                    * self.params['gamma_z'][ids]
+                            t[...,ids] = self._W_Voigt(k_sub, mu_sub, sigma_r, 
+                                                    gamma_r)
         else:
-            sigma_r = self.cosmo.light_speed/self.H_fid * self.params['sigma_z']
-            t = np.exp(-(k * mu * sigma_r)**2)
+            match z_error:
+                case 'Gaussian':
+                    t = self._W_Gaussian(k, mu, self.params['sigma_z'])
+                case 'Voigt':
+                    t = self._W_Voigt(k, mu, self.params['sigma_z'], 
+                                      self.params['gamma_z'])
+
         return t * (1.0 - self.params['f_out'])**2
 
     def PL(self, k, params, de_model=None):
@@ -2249,7 +2293,7 @@ class PTEmu:
     #     return Pell_dict
 
     def Pell(self, k, params, ell, de_model=None, binning=None, obs_id=None,
-             q_tr_lo=None, gamma_tr_lo=None, W_damping=None,
+             q_tr_lo=None, gamma_tr_lo=None, W_damping=None, z_error=None,
              ell_for_recon=None, preserve_param_order=True):
         r"""Compute the power spectrum multipoles.
 
@@ -2348,8 +2392,8 @@ class PTEmu:
             W_damping = self._W_obs_syst
         elif 'VDG_infty' in self.model:
             if W_damping is None:
-                W_damping = lambda k, mu: self._W_kurt(k,mu) \
-                                          * self._W_obs_syst(k, mu)
+                W_damping = lambda k, mu, z_error: \
+                    self._W_kurt(k,mu) * self._W_obs_syst(k, mu, z_error)
         else:
             raise ValueError('Unsupported RSD model.')
 
@@ -2371,7 +2415,8 @@ class PTEmu:
                 + np.divide.outer(1.0 - mu2, self.params['q_tr']**2))
             kp = np.multiply.outer(keff, APfac)
             mup = np.divide.outer(mu, self.params['q_lo'])/APfac
-            P2d_tot = P2d(kp, mup) * W_damping(kp, mup) + P2d_stoch(kp, mup)
+            P2d_tot = P2d(kp, mup) * W_damping(kp, mup, z_error) \
+                      + P2d_stoch(kp, mup)
             legendre = eval_legendre.outer(ell, mu)
             return 0.5 * np.einsum("abc,db,b->adc", P2d_tot, legendre,
                                    self.gl_weights) # nk x nell x N x nmu
@@ -2384,7 +2429,8 @@ class PTEmu:
             kp = self.grid.k[:,None] * APfac
             mup = np.divide.outer(self.grid.mu, self.params['q_lo'])/APfac
             legendre = eval_legendre.outer(ell, self.grid.mu)
-            P2d_tot = P2d(kp, mup) * W_damping(kp, mup) + P2d_stoch(kp, mup)
+            P2d_tot = P2d(kp, mup) * W_damping(kp, mup, z_error) \
+                      + P2d_stoch(kp, mup)
             avg = np.add.reduceat(
                 np.einsum("ab,bc,b->bac", legendre, P2d_tot,
                           self.grid.weights),
@@ -2437,10 +2483,10 @@ class PTEmu:
                 
             if gamma_tr_lo is None:
                 params_eval, obs_id_use, inv_sorting, gamma_tr_lo, fractions, \
-                    ireduc = self._match_params_with_obs_id(
+                    z_error, ireduc = self._match_params_with_obs_id(
                         params, obs_id_sorted, obs_id_use)
             else:
-                params_eval, obs_id_use, inv_sorting, _, fractions, \
+                params_eval, obs_id_use, inv_sorting, _, fractions, z_error, \
                     ireduc = self._match_params_with_obs_id(
                         params, obs_id_sorted, obs_id_use)
                 
@@ -2451,7 +2497,7 @@ class PTEmu:
                     params_eval, ell_for_mixing_matrix, de_model,
                     binning=None, obs_id=None, q_tr_lo=q_tr_lo,
                     gamma_tr_lo=gamma_tr_lo, W_damping=W_damping,
-                    ell_for_recon=ell_for_recon)
+                    z_error=z_error, ell_for_recon=ell_for_recon)
                 Pell_list = np.stack([Pell_model[ell] for ell in Pell_model],
                                      axis=1)
                 spline = make_interp_spline(
@@ -2806,7 +2852,7 @@ class PTEmu:
 
     def PX_ell(self, k, params, ell, X_list, de_model=None, binning=None,
                obs_id=None, q_tr_lo=None, gamma_tr_lo=None, W_damping=None,
-               ell_for_recon=None, preserve_param_order=True):
+               z_error=None, ell_for_recon=None, preserve_param_order=True):
         r"""Get the individual contribution to the power spectrum multipoles.
 
         Computes the individual contribution X to the galaxy power spectrum
@@ -2937,8 +2983,8 @@ class PTEmu:
             W_damping = self._W_obs_syst
         elif 'VDG_infty' in self.model:
             if W_damping is None:
-                W_damping = lambda k, mu: self._W_kurt(k, mu) \
-                                          * self._W_obs_syst(k, mu)
+                W_damping = lambda k, mu, z_error: \
+                    self._W_kurt(k, mu) * self._W_obs_syst(k, mu, z_error)
         else:
             raise ValueError('Unsupported RSD model.')
 
@@ -2957,7 +3003,8 @@ class PTEmu:
             kp = np.multiply.outer(keff, APfac)
             mup = np.divide.outer(mu, self.params['q_lo'])/APfac
             P2d_tot = P2d(XNL, kp, mup)
-            P2d_tot[:,col_for_damping[XNL]] *= W_damping(kp, mup)[:,None,...]
+            P2d_tot[:,col_for_damping[XNL]] *= \
+                W_damping(kp, mup, z_error)[:,None,...]
             legendre = eval_legendre.outer(ell, mu)
             return 0.5 * np.einsum("aebc,db,b->adec", P2d_tot, legendre,
                                    self.gl_weights) # nk x nell x nXNL x N
@@ -2971,7 +3018,7 @@ class PTEmu:
             mup = np.divide.outer(self.grid.mu, self.params['q_lo'])/APfac
             legendre = eval_legendre.outer(ell, self.grid.mu)
             P2d_tot = P2d(XNL, kp, mup)
-            P2d_tot[col_for_damping[XNL]] *= W_damping(kp, mup)
+            P2d_tot[col_for_damping[XNL]] *= W_damping(kp, mup, z_error)
             avg = np.add.reduceat(
                 np.einsum("ab,dbc,b->badc", legendre, P2d_tot,
                           self.grid.weights),
@@ -3074,7 +3121,7 @@ class PTEmu:
                 obs_id_use = obs_id[0]
                 
             params_eval, obs_id_use, inv_sorting, gamma_tr_lo, \
-                fractions, _, = self._match_params_with_obs_id(
+                fractions, z_error, _, = self._match_params_with_obs_id(
                     params, obs_id_sorted, obs_id_use)
                 
             if self.data[obs_id_use].mixing_matrix_exists:
@@ -3084,7 +3131,7 @@ class PTEmu:
                     params_eval, ell_for_mixing_matrix, X_list, de_model,
                     binning=None, obs_id=None, q_tr_lo=q_tr_lo,
                     gamma_tr_lo=gamma_tr_lo, W_damping=W_damping,
-                    ell_for_recon=ell_for_recon)
+                    z_error=z_error, ell_for_recon=ell_for_recon)
                 PX_ell_list = np.stack([PX_ell_model[ell]
                                         for ell in PX_ell_model],
                                        axis=1) # nk x nell x (nX) x (N)
