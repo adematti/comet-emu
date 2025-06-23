@@ -1671,29 +1671,27 @@ class PTEmu:
             for z_error_type in self.z_error_types:
                 ids = np.where(np.array(z_error) == z_error_type)[0]
                 if len(ids) > 0:
-                    match z_error_type:
-                        case 'Gaussian':
-                            k_sub = k[...,ids]
-                            mu_sub = k[...,ids]
-                            sigma_r = self.cosmo.light_speed/self.H_fid[ids] \
-                                    * self.params['sigma_z'][ids]
-                            t[...,ids] = self._W_Gaussian(k_sub, mu_sub, sigma_r)
-                        case 'Voigt':
-                            k_sub = k[...,ids]
-                            mu_sub = k[...,ids]
-                            sigma_r = self.cosmo.light_speed/self.H_fid[ids] \
-                                    * self.params['sigma_z'][ids]
-                            gamma_r = self.cosmo.light_speed/self.H_fid[ids] \
-                                    * self.params['gamma_z'][ids]
-                            t[...,ids] = self._W_Voigt(k_sub, mu_sub, sigma_r, 
+                    if z_error_type == 'Gaussian':
+                        k_sub = k[...,ids]
+                        mu_sub = k[...,ids]
+                        sigma_r = self.cosmo.light_speed/self.H_fid[ids] \
+                                * self.params['sigma_z'][ids]
+                        t[...,ids] = self._W_Gaussian(k_sub, mu_sub, sigma_r)
+                    elif z_error_type == 'Voigt':
+                        k_sub = k[...,ids]
+                        mu_sub = k[...,ids]
+                        sigma_r = self.cosmo.light_speed/self.H_fid[ids] \
+                                * self.params['sigma_z'][ids]
+                        gamma_r = self.cosmo.light_speed/self.H_fid[ids] \
+                                * self.params['gamma_z'][ids]
+                        t[...,ids] = self._W_Voigt(k_sub, mu_sub, sigma_r, 
                                                     gamma_r)
         else:
-            match z_error:
-                case 'Gaussian':
-                    t = self._W_Gaussian(k, mu, self.params['sigma_z'])
-                case 'Voigt':
-                    t = self._W_Voigt(k, mu, self.params['sigma_z'], 
-                                      self.params['gamma_z'])
+            if z_error == 'Gaussian':
+                t = self._W_Gaussian(k, mu, self.params['sigma_z'])
+            elif z_error == 'Voigt':
+                t = self._W_Voigt(k, mu, self.params['sigma_z'], 
+                                  self.params['gamma_z'])
 
         return t * (1.0 - self.params['f_out'])**2
 
