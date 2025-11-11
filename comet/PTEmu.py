@@ -2301,6 +2301,67 @@ class PTEmu:
     #
     #     return Pell_dict
 
+    def P2d_nostoch(self, k, mu, params, de_model=None, ell_for_recon=None):
+        r"""Compute the 2d anisotropic power spectrum including all
+            contributions from coupling of density and velocity fields
+            and counterterms. For the VDG model this does not include the
+            analytical damping function.
+
+        Parameters
+        ----------
+        k: float or numpy.ndarray
+            Wavemodes :math:`k` at which to evaluate the multipoles. If a list
+            is passed, it has to match the size of `ell`, and in that case
+            each wavemode refer to a given multipole.
+        mu: float or numpy.ndarray
+            Cosinus of the angle between the pair separation and the line of
+            sight.
+        params: dict
+            Dictionary containing the list of total model parameters which are
+            internally used by the emulator. The keyword/value pairs of the
+            dictionary specify the names and the values of the parameters,
+            respectively.
+        de_model: str, optional
+            String that determines the dark energy equation of state. Can be
+            chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
+            the standard cosmological parameters, or be left undefined to use
+            only :math:`\sigma_{12}`. Defaults to **None**.
+        ell_for_recon: list, optional
+            List of :math:`\ell` values used for the reconstruction of the
+            2d leading-order IR-resummed power spectrum. If **None**, all the
+            even multipoles up to :math:`\ell=6` are used in the
+            reconstruction. Defaults to **None**.
+
+        Returns
+        -------
+        P2d_rsd: numpy.ndarray
+            2d anisotropic power spectrum
+        """
+        if ell_for_recon is None:
+            ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
+
+        params_updated = [np.array(params[p]) != self.params[p] for p in
+                          params.keys()]
+        params_nonzero = [x for x in self.bias_params_list +
+                          self.RSD_params_list + self.obs_syst_params_list
+                          if np.any(self.params[x] != 0)]
+        diff_shape = np.any([np.array(params[p]).shape != self.params[p].shape
+                             for p in params.keys()])
+
+        if (np.any(params_updated) or
+                np.any([p not in params.keys() for p in params_nonzero]) or
+                not self.splines_up_to_date or diff_shape):
+            Pell = self._Pell_fid_ktable(params, ell=ell_for_recon,
+                                         de_model=de_model)
+            h = None if self.use_Mpc else self.params['h']
+            self.Pell_spline.build(self.k_table, Pell, h=h)
+            self.splines_up_to_date = True
+
+        t = np.einsum("...bcd,cbd->...bd", self.Pell_spline.eval_varx(k),
+                      eval_legendre.outer(np.array(ell_for_recon),mu))
+
+        return t
+
     def Pell(self, k, params, ell, de_model=None, binning=None, obs_id=None,
              q_tr_lo=None, gamma_tr_lo=None, W_damping=None, z_error=None,
              ell_for_recon=None, preserve_param_order=True):
