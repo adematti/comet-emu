@@ -508,6 +508,7 @@ class Nexus:
 
     def _generate_prior_loglik(self):
         if self.sampler == 'multinest':
+            from scipy.special import erfinv
             def prior(cube):
                 n = 0
                 for p in self.sampled_cosmo_params:
@@ -516,7 +517,7 @@ class Nexus:
                         cube[n] = a_min + (a_min - a_max) * cube[n]
                     else:
                         mean, std = self.sampled_cosmo_params[p]['prior']
-                        cube[n] = norm(mean, std).ppf(cube[n])
+                        cube[n] = mean + std * np.sqrt(2) * erfinv(2*cube[n]-1.0)
                     n += 1
                 for p in self.sampled_nuisance_params:
                     if self.sampled_nuisance_params[p]['type'] == 'flat':
@@ -524,7 +525,7 @@ class Nexus:
                         cube[n] = a_min + (a_min - a_max) * cube[n]
                     else:
                         mean, std = self.sampled_nuisance_params[p]['prior']
-                        cube[n] = norm(mean, std).ppf(cube[n])
+                        cube[n] = mean + std * np.sqrt(2) * erfinv(2*cube[n]-1.0)
                     n += 1
                 return cube
             
