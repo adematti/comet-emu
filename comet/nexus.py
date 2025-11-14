@@ -207,13 +207,13 @@ class Nexus:
                     }
         # by default assign fiducial cosmology as fixed parameters
         for p in self.fiducial_cosmology:
-            if p in self.cosmo_params:
+            if p in self.cosmo_params and p not in self.priors:
                 self.fixed_cosmo_params[p] = self.fiducial_cosmology[p]
         # overwrite fiducial cosmology if fixed cosmological parameters have been
         # given in "Parameters" section (note: this does not affect fiducial 
         # cosmology for computation of AP distortions)
         for p in self.fiducial_values:
-            if p in self.cosmo_params:
+            if p in self.cosmo_params and p not in self.priors:
                 self.fixed_cosmo_params[p] = self.fiducial_values[p]
         self.n_cosmo_params = len(self.sampled_cosmo_params)
         
@@ -514,7 +514,7 @@ class Nexus:
                 for p in self.sampled_cosmo_params:
                     if self.sampled_cosmo_params[p]['type'] == 'flat':
                         a_min, a_max = self.sampled_cosmo_params[p]['prior']
-                        cube[n] = a_min + (a_min - a_max) * cube[n]
+                        cube[n] = a_min + (a_max - a_min) * cube[n]
                     else:
                         mean, std = self.sampled_cosmo_params[p]['prior']
                         cube[n] = mean + std * np.sqrt(2) * erfinv(2*cube[n]-1.0)
@@ -522,7 +522,7 @@ class Nexus:
                 for p in self.sampled_nuisance_params:
                     if self.sampled_nuisance_params[p]['type'] == 'flat':
                         a_min, a_max = self.sampled_nuisance_params[p]['prior']
-                        cube[n] = a_min + (a_min - a_max) * cube[n]
+                        cube[n] = a_min + (a_max - a_min) * cube[n]
                     else:
                         mean, std = self.sampled_nuisance_params[p]['prior']
                         cube[n] = mean + std * np.sqrt(2) * erfinv(2*cube[n]-1.0)
