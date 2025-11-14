@@ -586,7 +586,8 @@ class PTEmu:
                     H_fid /= params_fid['h']
                     Dm_fid *= params_fid['h']
                 temp_kwargs['fiducial_cosmology'] = [H_fid,Dm_fid]
-        if 'composition' in kwargs and 'fiducial_cosmology' in kwargs:
+        if 'composition' in kwargs and kwargs['composition'] is not None \
+                and 'fiducial_cosmology' in kwargs:
             for species in kwargs['composition']:
                 if 'gamma_tr_lo' not in kwargs['composition'][species]:
                     params_fid = kwargs['fiducial_cosmology']
@@ -3142,8 +3143,7 @@ class PTEmu:
                                         + spline.shape[2:], order='F')
                             
                 if nobs > 1 or self.data[obs_id_use].composition is not None:
-                    if len(X_list) > 1 and \
-                            len(self.data[obs_id_use].composition) > 1:
+                    if len(X_list) > 1:
                         spline = np.moveaxis(spline, -1, 0)
                         PX_ell_convolved = np.moveaxis(
                             self.data[obs_id_use].W_mixing_matrix @ spline,
@@ -3668,8 +3668,8 @@ class PTEmu:
                                         de_model=de_model,
                                         w0=self.params['w0'],
                                         wa=self.params['wa'])
-            volume = volfac*np.squeeze(
-                self.cosmo.comoving_volume(zmin, zmax, fsky))
+            volume = volfac*np.atleast_1d(np.squeeze(
+                self.cosmo.comoving_volume(zmin, zmax, fsky)))
             if not self.use_Mpc:
                 volume *= self.params['h']**3
         elif de_model is None and volume is None:
@@ -4367,8 +4367,8 @@ class PTEmu:
                     binning[stat] = None
 
         if W_damping is None:
-            W_damping = {}
-            for stat in obs_id_stat:
+            W_damping = {stat:None for stat in obs_id_stat}
+            """ for stat in obs_id_stat:
                 if 'VDG_infty' in self.model:
                     if stat == 'powerspectrum':
                         W_damping[stat] = self._W_kurt
@@ -4378,7 +4378,7 @@ class PTEmu:
                     if stat == 'powerspectrum':
                         W_damping[stat] = lambda k, mu: 1.0
                     elif stat == 'bispectrum':
-                        W_damping[stat] = lambda tri, mu1, mu2, mu3: 1.0
+                        W_damping[stat] = lambda tri, mu1, mu2, mu3: 1.0 """
                         
         if all([self.data[oi].mixing_matrix_exists for oi in obs_id]):
             convolve_window = True
