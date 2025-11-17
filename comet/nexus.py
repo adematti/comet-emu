@@ -86,7 +86,7 @@ class Nexus:
                 self.priors[p] = {'value':val, 'type':ptype}
                 
     def read_yaml_sampling(self, config):
-        self.output_dir = config.get("output_dir", '.')
+        self.output_dir = config.get("output_dir", '')
         self.output_fname  = config.get("output_filename")
         self.sampler = config.get("sampler")
         self.n_live = config.get("n_live", 500)
@@ -122,7 +122,7 @@ class Nexus:
         self.data_model = config.get("data_model", 'LE3')
         self.mixing_matrix_kp_max_mult = config.get(
             "mixing_matrix_kp_max_multiplier", 1.75)
-        self.input_dir = config.get("input_dir", '.')
+        self.input_dir = config.get("input_dir", '')
         
         self.observables = list(config['observables'].keys())
         fractions = ['fraction' in config['observables'][oi] 
@@ -381,12 +381,13 @@ class Nexus:
         
         for oi in self.observables:
             if self.data_model == 'LE3':
-                data = fits.open(self.fname_data[oi])
-                cov = fits.open(self.fname_cov[oi])
+                data = fits.open(f'{self.input_dir}/{self.fname_data[oi]}')
+                cov = fits.open(f'{self.input_dir}/{self.fname_cov[oi]}')
                 k, k_eff, data_comet = self._data_LE3_to_Comet(data, [0,2,4])
                 cov_comet = self._cov_LE3_to_Comet(cov, [0,2,4])
                 if self.fname_mixing_matrix[oi] is not None:
-                    mixing_matrix = fits.open(self.fname_mixing_matrix[oi])
+                    mixing_matrix = fits.open(
+                        f'{self.input_dir}/P{self.fname_mixing_matrix[oi]}')
                     mm_k, mm_kp, mm_comet = self._mixing_matrix_LE3_to_Comet(
                         mixing_matrix, [0,2,4], np.amax(self.kmax[oi]), 
                         np.amax(self.kmax[oi])*self.mixing_matrix_kp_max_mult
