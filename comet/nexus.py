@@ -28,11 +28,13 @@ class Nexus:
 
         self.ctr_noise_basis = config.get("ctr_noise_basis", "Comet")
         if self.ctr_noise_basis == 'Comet':
-            ctr_noise_params = ['c0', 'c2', 'c4', 'cnlo', 'NP20', 'NP22']
+            ctr_noise_params = ['c0', 'c2', 'c4', 'cnlo', 'NP0', 'NP20', 'NP22']
         elif self.ctr_noise_basis ==  'ClassPT':
-            ctr_noise_params = ['c0*', 'c2*', 'c4*', 'cnlo*', 'NP20*', 'NP22*']
+            ctr_noise_params = ['c0*', 'c2*', 'c4*', 'cnlo*', 'NP0', 'NP20*', 
+                                'NP22*']
         elif self.ctr_noise_basis == 'PBJ':
-            ctr_noise_params = ['c0t', 'c2t', 'c4t', 'cnlot', 'eps0', 'eps2']
+            ctr_noise_params = ['c0t', 'c2t', 'c4t', 'cnlot', 'NP0', 'eps0', 
+                                'eps2']
         else:
             raise ValueError('Counterterm/noise parametrisation must be either '
                              '"Comet", "ClassPT", or "PBJ".')
