@@ -371,6 +371,7 @@ class Nexus:
         return k[:i_max], kp[:ip_max], w_all
     
     def init_comet(self):
+        self._create_params_setup()
         if self.emu is None or self.emu.model != self.model \
                 or self.emu.use_Mpc != self.use_Mpc \
                 or self.emu.bias_basis != self.bias_basis \
@@ -387,7 +388,7 @@ class Nexus:
                 cov_comet = self._cov_LE3_to_Comet(cov, [0,2,4])
                 if self.fname_mixing_matrix[oi] is not None:
                     mixing_matrix = fits.open(
-                        f'{self.input_dir}/P{self.fname_mixing_matrix[oi]}')
+                        f'{self.input_dir}/{self.fname_mixing_matrix[oi]}')
                     mm_k, mm_kp, mm_comet = self._mixing_matrix_LE3_to_Comet(
                         mixing_matrix, [0,2,4], np.amax(self.kmax[oi]), 
                         np.amax(self.kmax[oi])*self.mixing_matrix_kp_max_mult
@@ -406,8 +407,6 @@ class Nexus:
                         fiducial_cosmology=self.fiducial_cosmology[oi],
                         composition=self.composition[oi], nbar=self.nbar[oi])
             self.emu.data[oi].set_kmax(self.kmax[oi])
-            
-        self._create_params_setup()
         
     def _g2bG2_relation(self, relation, b1):
         if relation == 'LL' or relation == 'coevolution':

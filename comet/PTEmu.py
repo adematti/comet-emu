@@ -579,7 +579,7 @@ class PTEmu:
                     wa = 0.0
                 self.cosmo.update_cosmology(Om0, H0, Ok0=Ok0, de_model=de_model,
                                             w0=w0, wa=wa)
-                if 'composition' not in kwargs:
+                if 'composition' not in kwargs or kwargs['composition'] is None:
                     H_fid = self.cosmo.Hz(np.atleast_1d(params_fid['z']))
                     Dm_fid = self.cosmo.comoving_transverse_distance(
                         params_fid['z'])
@@ -3124,6 +3124,8 @@ class PTEmu:
                                 for i, m in enumerate(ell_eval_emu):
                                     PXNL_ell[self.nk-(ids[1]-ids[0]):,nx,i] = \
                                         self.Pk_ratios[m][ids[0]:ids[1]]
+                                    if int(X_emu[-1]) != m:
+                                        PXNL_ell[:5,nx,i] = 0.0
                             else:
                                 for i, m in enumerate(ell_for_recon):
                                     if m != 6:
@@ -3874,6 +3876,7 @@ class PTEmu:
                                           for oi in obs_id \
                                           if l in self.data[oi].ell]))
                      for i,l in enumerate(ell_joint)]
+        nbins_kmax = [len(bins) for bins in bins_kmax]
         n_obs = len(obs_id)
 
         do_analytic_marginalisation = {oi:False for oi in obs_id}
@@ -3985,7 +3988,7 @@ class PTEmu:
 
             for n,oi in enumerate(obs_id):
                 ids_k = [np.intersect1d(bins_kmax[i], self.data[oi].bins_kmax[i],
-                                      return_indices=True)[1]
+                                        return_indices=True)[1]
                          for i,l in enumerate(ell[oi])]
                 Pell_list = np.concatenate(
                         [atleast_2d_last(
@@ -3995,6 +3998,10 @@ class PTEmu:
                 diff = np.squeeze(Pell_list - self.data[oi].signal_kmax[:,None])
 
                 if do_analytic_marginalisation[oi]:
+                    for i,l in enumerate(ell[oi]):
+                        ids_k[i] += np.sum([len(bins_kmax[j]) 
+                                            for j,L in enumerate(ell_joint) 
+                                            if L < l])
                     PX_ell_list_oi = PX_ell_list[np.hstack([*ids_k])][...,
                                                                       ids_oi[n]]
                     if self.data[oi].composition is not None:
