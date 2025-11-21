@@ -114,10 +114,9 @@ class MeasuredData:
 
         if 'bins_mixing_matrix' in kwargs:
             self.bins_mixing_matrix = kwargs.get('bins_mixing_matrix')
-            self.bins_mixing_matrix_compressed = np.logspace(
-                np.log10(self.bins_mixing_matrix[1][0]),
-                np.log10(self.bins_mixing_matrix[1][-1]),
-                int(self.bins_mixing_matrix[1][-1]/0.5*100))
+            self.bins_mixing_matrix_compressed = self.get_kvec_compression(
+                self.bins_mixing_matrix[1][0], self.bins_mixing_matrix[1][-1]
+            )
 
         if 'W_mixing_matrix' in kwargs:
             if self.composition is not None:
@@ -265,10 +264,9 @@ class MeasuredData:
 
         if 'bins_mixing_matrix' in kwargs:
             self.bins_mixing_matrix = kwargs.get('bins_mixing_matrix')
-            self.bins_mixing_matrix_compressed = np.logspace(
-                np.log10(self.bins_mixing_matrix[1][0]),
-                np.log10(self.bins_mixing_matrix[1][-1]),
-                int(self.bins_mixing_matrix[1][-1]/0.5*100))
+            self.bins_mixing_matrix_compressed = self.get_kvec_compression(
+                self.bins_mixing_matrix[1][0], self.bins_mixing_matrix[1][-1]
+            )
 
         if 'W_mixing_matrix' in kwargs:
             if self.composition is not None:
@@ -332,6 +330,26 @@ class MeasuredData:
         self.W_mixing_matrix = None
         self.kmax_is_set = False
         self.mixing_matrix_exists = False
+        
+    def get_kvec_compression(self, kmin, kmax, nk=100):
+        def croot(x, p):
+            return np.sign(x) * np.abs(x)**(1.0 / p)
+        
+        kcenter = 0.65
+        power = 1.5
+        qmin = np.log10(kmin)
+        qmax = np.log10(kmax)
+        qmin = croot(qmin + kcenter, power)
+        qmax = croot(qmax + kcenter, power)
+
+        kvec = np.zeros(nk, dtype=float)
+        for i in range(nk):
+            k = (qmax - qmin) * (i / (nk - 1)) + qmin
+            k = np.sign(k) * np.abs(k)**power - kcenter
+            kvec[i] = k
+
+        kvec = 10.0**kvec
+        return kvec
 
     def transpose_mixing_matrix(self, axes):
         if hasattr(self, 'W_mixing_matrix'):
