@@ -4001,7 +4001,7 @@ class PTEmu:
                     for i,l in enumerate(ell[oi]):
                         ids_k[i] += np.sum([len(bins_kmax[j]) 
                                             for j,L in enumerate(ell_joint) 
-                                            if L < l])
+                                            if L < l], dtype=int)
                     PX_ell_list_oi = PX_ell_list[np.hstack([*ids_k])][...,
                                                                       ids_oi[n]]
                     if self.data[oi].composition is not None:
