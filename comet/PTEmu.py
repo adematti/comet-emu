@@ -2583,6 +2583,8 @@ class PTEmu:
                     if Pell_convolved.ndim > 1:
                         Pell_convolved = np.add.reduceat(Pell_convolved*fractions,
                                                          ireduc[:-1], axis=1)
+                    else:
+                        Pell_convolved *= fractions
                 elif len(obs_id) > 1:
                     Pell_convolved = (self.data[obs_id_use].W_mixing_matrix \
                                       @ spline.T[...,None]).squeeze().T
@@ -2609,8 +2611,8 @@ class PTEmu:
                 else:
                     for i, m in enumerate(ell):
                         ids = np.intersect1d(
-                            k_list[i],
                             self.data[obs_id_use].bins_mixing_matrix[0],
+                            k_list[i],
                             return_indices=True)[1]
                         Pell_dict['ell{}'.format(m)] = np.squeeze(
                             Pell_convolved[ids + int(m/2)*nb])
@@ -2627,6 +2629,8 @@ class PTEmu:
                         if Pell_dict[ell].ndim > 1:
                             Pell_dict[ell] = np.squeeze(np.add.reduceat(
                                 Pell_dict[ell]*fractions, ireduc[:-1], axis=1))
+                        else:
+                            Pell_dict[ell] *= fractions
 
             # in case obs_id was given unsorted, restore original sorting
             if preserve_param_order and len(inv_sorting) > 1:
@@ -3212,8 +3216,11 @@ class PTEmu:
                         self.data[obs_id_use].bins_mixing_matrix[1])
                 spline = spline.reshape((spline.shape[0]*spline.shape[1],) \
                                         + spline.shape[2:], order='F')
+                
+                nspec = 0 if self.data[obs_id_use].composition is None else \
+                        len(self.data[obs_id_use].composition)
 
-                if nobs > 1 or self.data[obs_id_use].composition is not None:
+                if nobs > 1 or nspec > 1:
                     if len(X_list) > 1:
                         spline = np.moveaxis(spline, -1, 0)
                         PX_ell_convolved = np.moveaxis(
@@ -3224,11 +3231,11 @@ class PTEmu:
                         PX_ell_convolved = \
                             (self.data[obs_id_use].W_mixing_matrix \
                              @ spline.T[...,None]).squeeze().T
-                    if self.data[obs_id_use].composition is not None:
-                        PX_ell_convolved *= fractions
                 else:
                     PX_ell_convolved = \
                         self.data[obs_id_use].W_mixing_matrix @ spline
+                if nspec > 0:
+                    PX_ell_convolved *= fractions
                 nb = len(self.data[obs_id_use].bins_mixing_matrix[0])
 
                 PX_ell_dict = {}
@@ -3249,8 +3256,8 @@ class PTEmu:
                 else:
                     for i, m in enumerate(ell):
                         ids = np.intersect1d(
-                            k_list[i],
                             self.data[obs_id_use].bins_mixing_matrix[0],
+                            k_list[i],
                             return_indices=True)[1]
                         PX_ell_dict['ell{}'.format(m)] = np.squeeze(
                             PX_ell_convolved[ids + int(m/2)*nb])

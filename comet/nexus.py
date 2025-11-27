@@ -139,7 +139,7 @@ class Nexus:
             self.sample = {}
         
         self.fname_data, self.fname_cov, self.fname_mixing_matrix = {}, {}, {}
-        self.stat, self.kmax, self.zeff = {}, {}, {}
+        self.stat, self.kmax, self.kmin, self.zeff = {}, {}, {}, {}
         self.nbar, self.fiducial_cosmology_obs = {}, {}
         
         for oi in self.observables:
@@ -149,6 +149,7 @@ class Nexus:
                 "fname_mixing_matrix", None)
             self.stat[oi] = config['observables'][oi].get("stat")
             self.kmax[oi] = config['observables'][oi].get("kmax")
+            self.kmin[oi] = config['observables'][oi].get("kmin", [0,0,0])
             self.zeff[oi] = config['observables'][oi].get("zeff")
             self.nbar[oi] = config['observables'][oi].get("nbar", 1.0)
             self.fiducial_cosmology_obs[oi] = self.fiducial_cosmology.copy()
@@ -408,7 +409,7 @@ class Nexus:
                         bins=k_eff, signal=data_comet, cov=cov_comet, 
                         fiducial_cosmology=self.fiducial_cosmology[oi],
                         composition=self.composition[oi], nbar=self.nbar[oi])
-            self.emu.data[oi].set_kmax(self.kmax[oi])
+            self.emu.data[oi].set_kmax(self.kmax[oi], self.kmin[oi])
         
     def _g2bG2_relation(self, relation, b1):
         if relation == 'LL' or relation == 'coevolution':

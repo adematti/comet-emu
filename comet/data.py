@@ -315,7 +315,12 @@ class MeasuredData:
                 self.kmax = []
                 for n in range(self.n_ell):
                     self.kmax.append(kmax_copy[n] if n < len(kmax_copy) else 0)
-            self.set_kmax(self.kmax)
+            if len(self.kmin) != self.n_ell:
+                kmin_copy = self.kmin.copy()
+                self.kmin = []
+                for n in range(self.n_ell):
+                    self.kmin.append(kmin_copy[n] if n < len(kmin_copy) else 0)
+            self.set_kmax(self.kmax, self.kmin)
 
     def clear_data(self):
         r"""Clear the data.
@@ -370,7 +375,7 @@ class MeasuredData:
                         j*nbin_per_block:(j+1)*nbin_per_block])
         return np.all(check)
 
-    def set_kmax(self, kmax):
+    def set_kmax(self, kmax, kmin=0):
         r"""Set the maximum mode used in the computation of the :math:`\chi^2`.
 
         Sets the class attribute corresponding to the maximum wavemode
@@ -394,6 +399,11 @@ class MeasuredData:
             self.kmax = [kmax for i in range(self.n_ell)]
         else:
             self.kmax = kmax
+            
+        if not isinstance(kmin, list):
+            self.kmin = [kmin for i in range(self.n_ell)]
+        else:
+            self.kmin = kmin
 
         nbin_total = self.bins.shape[0]
 
@@ -401,7 +411,8 @@ class MeasuredData:
         ids_kmax = []
         for ell in range(self.n_ell):
             ids_kmax.append(np.where(
-                np.all(self.bins[:,None] < self.kmax[ell], axis=-1))[0])
+                np.all(self.bins[:,None] < self.kmax[ell], axis=-1) & \
+                np.all(self.bins[:,None] > self.kmin[ell], axis=-1))[0])
             self.nbins[ell] = len(ids_kmax[ell])
             # for i in range(nbin_total):
             #     if np.all(self.bins[i] < self.kmax[ell]):
