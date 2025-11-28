@@ -6,7 +6,7 @@ from astropy.io import fits
 from comet import comet
 
 class Nexus:
-    
+
     def __init__(self):
         self.cosmo_params = ['h','wc','wb','ns','As','w0','wa','Ok','Mnu']
         self.fiducial_values = {}
@@ -30,15 +30,15 @@ class Nexus:
         if self.ctr_noise_basis == 'Comet':
             ctr_noise_params = ['c0', 'c2', 'c4', 'cnlo', 'NP0', 'NP20', 'NP22']
         elif self.ctr_noise_basis ==  'ClassPT':
-            ctr_noise_params = ['c0*', 'c2*', 'c4*', 'cnlo*', 'NP0', 'NP20*', 
+            ctr_noise_params = ['c0*', 'c2*', 'c4*', 'cnlo*', 'NP0', 'NP20*',
                                 'NP22*']
         elif self.ctr_noise_basis == 'PBJ':
-            ctr_noise_params = ['c0t', 'c2t', 'c4t', 'cnlot', 'NP0', 'eps0', 
+            ctr_noise_params = ['c0t', 'c2t', 'c4t', 'cnlot', 'NP0', 'eps0',
                                 'eps2']
         else:
             raise ValueError('Counterterm/noise parametrisation must be either '
                              '"Comet", "ClassPT", or "PBJ".')
-            
+
         self.nuisance_params = bias_params + ctr_noise_params
         if 'VDG_infty' in self.model:
             self.nuisance_params += ['avir']
@@ -49,12 +49,12 @@ class Nexus:
         self.use_BAO = config.get("use_BAO", False)
         self.use_SN = config.get("use_SN", False)
         self.use_Jeffreys = config.get("use_Jeffreys", False)
-        
+
     def read_yaml_fiducial_cosmology(self, config):
         self.fiducial_cosmology = {}
         for p in config:
             self.fiducial_cosmology[p] = config.get(p)
-            
+
     def _identify_prior(self, x, p):
         patterns = {}
         #patterns['flat'] = r'U\(([^,]+)\s*,\s*([^)]+)\)'
@@ -63,7 +63,7 @@ class Nexus:
         patterns['Gaussian'] = r'N\(\s*([^|]+?)\s*\|\s*([^)]+?)\s*\)'
         #patterns['AM'] = r'A\(([^,]+)\s*,\s*([^)]+)\)'
         patterns['AM'] = r'A\(\s*([^|]+?)\s*\|\s*([^)]+?)\s*\)'
-        
+
         if isinstance(x, (int, float)):
             return x, 'fixed'
         elif x in ['LL','coevolution','excursion_set']:
@@ -76,7 +76,7 @@ class Nexus:
                     return prior, ptype
             else:
                 raise ValueError(f'Prior for {p} not correctly specified.')
-            
+
     def read_yaml_parameters(self, config):
         for p in config:
             val, ptype = self._identify_prior(config[p], p)
@@ -86,7 +86,7 @@ class Nexus:
                 self.relations[p] = ptype
             else:
                 self.priors[p] = {'value':val, 'type':ptype}
-                
+
     def read_yaml_sampling(self, config):
         self.output_dir = config.get("output_dir", '')
         self.output_fname  = config.get("output_filename")
@@ -94,7 +94,7 @@ class Nexus:
         self.n_live = config.get("n_live", 500)
         self.sampling_efficiency = config.get("sampling_efficiency",0.5)
         self.evidence_tolerance  = config.get("evidence_tolerance", 0.4)
-                    
+
     def read_yaml_data(self, config):
         def read_yaml_sample_info(config, container):
             container['fiducials'] = {}
@@ -117,17 +117,17 @@ class Nexus:
                     container['relations'][p] = ptype
                 else:
                     container['priors'][p] = {'value':val, 'type':ptype}
-                    
+
         def get_redshift(correct, interloper):
             return correct['lambda']/interloper['lambda']*(1+correct['zeff']) - 1
-                
+
         self.data_model = config.get("data_model", 'LE3')
         self.mixing_matrix_kp_max_mult = config.get(
             "mixing_matrix_kp_max_multiplier", 1.75)
         self.input_dir = config.get("input_dir", '')
-        
+
         self.observables = list(config['observables'].keys())
-        fractions = ['fraction' in config['observables'][oi] 
+        fractions = ['fraction' in config['observables'][oi]
                      for oi in self.observables]
         self.has_composition = True if any(fractions) else False
         if self.has_composition:
@@ -137,11 +137,11 @@ class Nexus:
                 self.nuisance_params += ['fraction']
         else:
             self.sample = {}
-        
+
         self.fname_data, self.fname_cov, self.fname_mixing_matrix = {}, {}, {}
         self.stat, self.kmax, self.kmin, self.zeff = {}, {}, {}, {}
         self.nbar, self.fiducial_cosmology_obs = {}, {}
-        
+
         for oi in self.observables:
             self.fname_data[oi] = config['observables'][oi].get("fname_data")
             self.fname_cov[oi] = config['observables'][oi].get("fname_cov")
@@ -154,7 +154,7 @@ class Nexus:
             self.nbar[oi] = config['observables'][oi].get("nbar", 1.0)
             self.fiducial_cosmology_obs[oi] = self.fiducial_cosmology.copy()
             self.fiducial_cosmology_obs[oi]['z'] = self.zeff[oi]
-            
+
             if self.has_composition:
                 self.composition[oi] = {'correct':{}}
                 read_yaml_sample_info(config['observables'][oi],
@@ -168,14 +168,14 @@ class Nexus:
                         config['observables'][oi]['interlopers'][species],
                         self.composition[oi][species])
                     self.composition[oi][species]['zeff'] = get_redshift(
-                        self.composition[oi]['correct'], 
+                        self.composition[oi]['correct'],
                         self.composition[oi][species]
                     )
             else:
                 self.sample[oi] = {}
                 read_yaml_sample_info(config['observables'][oi],
                                       self.sample[oi])
-                
+
         if self.has_composition:
             self.n_obs = {s:0 for s in self.species}
             self.obs_id = {s:{} for s in self.species}
@@ -183,14 +183,14 @@ class Nexus:
                 for oi in self.observables:
                     if s in self.composition[oi]:
                         self.obs_id[s][oi] = np.copy(self.n_obs[s])
-                        self.n_obs[s] += 1          
+                        self.n_obs[s] += 1
         else:
             self.composition = {oi:None for oi in self.observables}
             self.n_obs = len(self.observables)
             self.obs_id = {}
             for i,oi in enumerate(self.observables):
                 self.obs_id[oi] = i
-                
+
     def _create_params_setup(self):
         # create dictionaries of all sampled and fixed parameters
         self.sampled_cosmo_params = {}
@@ -199,13 +199,13 @@ class Nexus:
         self.fixed_nuisance_params = {}
         self.relation_nuisance_params = {}
         self.AM_priors = {oi:{} for oi in self.observables}
-        
+
         # cosmological parameters with prior information -> sampled (unless AM)
         for p in self.priors:
             if p in self.cosmo_params:
                 if self.priors[p]['type'] != 'AM':
                     self.sampled_cosmo_params[p] = {
-                        'prior':self.priors[p]['value'], 
+                        'prior':self.priors[p]['value'],
                         'type':self.priors[p]['type']
                     }
         # by default assign fiducial cosmology as fixed parameters
@@ -213,20 +213,20 @@ class Nexus:
             if p in self.cosmo_params and p not in self.priors:
                 self.fixed_cosmo_params[p] = self.fiducial_cosmology[p]
         # overwrite fiducial cosmology if fixed cosmological parameters have been
-        # given in "Parameters" section (note: this does not affect fiducial 
+        # given in "Parameters" section (note: this does not affect fiducial
         # cosmology for computation of AP distortions)
         for p in self.fiducial_values:
             if p in self.cosmo_params and p not in self.priors:
                 self.fixed_cosmo_params[p] = self.fiducial_values[p]
         self.n_cosmo_params = len(self.sampled_cosmo_params)
-        
+
         if 'wa' in self.sampled_cosmo_params or 'wa' in self.fixed_cosmo_params:
             self.de_model = 'w0wa'
         elif 'w0' in self.sampled_cosmo_params or 'w0' in self.fixed_cosmo_params:
             self.de_model = 'w0'
         else:
             self.de_model = 'lambda'
-            
+
         nonu = False
         if 'Mnu' not in self.sampled_cosmo_params:
             if 'Mnu' not in self.fixed_cosmo_params:
@@ -235,7 +235,7 @@ class Nexus:
                 nonu = True
         if nonu and 'nonu' not in self.model:
             self.model += '_nonu'
-        
+
         if self.has_composition:
             for oi in self.observables:
                 for s in self.composition[oi]:
@@ -247,7 +247,7 @@ class Nexus:
                         priors_os = self.composition[oi][s]['priors']
                         fixed_os = self.composition[oi][s]['fiducials']
                         relation_os = self.composition[oi][s]['relations']
-                         # first check if sample specific information was given, 
+                         # first check if sample specific information was given,
                          # otherwise resort to global information
                         if p in priors_os:
                             if priors_os[p]['type'] != 'AM':
@@ -308,7 +308,7 @@ class Nexus:
                         self.relation_nuisance_params[po] = self.relations[p]
         self.n_nuisance_params = len(self.sampled_nuisance_params)
         self.n_params_total = self.n_cosmo_params + self.n_nuisance_params
-        
+
         self.n_AM_params = 0
         for oi in self.AM_priors:
             if self.has_composition:
@@ -318,14 +318,14 @@ class Nexus:
             else:
                 for p in self.AM_priors[oi]:
                     self.n_AM_params += 1
-                        
+
     def read_yaml(self, obj, type='file'):
         if type in ['f', 'file']:
             with open(obj, 'r') as f:
                 config = yaml.safe_load(f)
         elif type in ['t','text']:
             config = yaml.safe_load(obj)
-        
+
         if 'Configuration' in config:
             self.read_yaml_configuration(config['Configuration'])
         if 'FiducialCosmology' in config:
@@ -335,14 +335,14 @@ class Nexus:
         if 'Sampling' in config:
             self.read_yaml_sampling(config['Sampling'])
         if 'Data' in config:
-            self.read_yaml_data(config['Data'])        
-        
+            self.read_yaml_data(config['Data'])
+
     def _data_LE3_to_Comet(self, datafile, ell):
         ell = [ell] if not isinstance(ell, list) else ell
         k = datafile['spectrum'].data['k']
         k_eff = datafile['spectrum'].data['k_eff']
         data = np.stack(
-            [datafile['spectrum'].data['PK{}'.format(l)] for l in ell], 
+            [datafile['spectrum'].data['PK{}'.format(l)] for l in ell],
             axis=-1
         )
         return k, k_eff, data
@@ -372,17 +372,17 @@ class Nexus:
                 w_all[i*i_max:(i+1)*i_max, j*ip_max:(j+1)*ip_max] = \
                     wfile['mixing_matrix'].data['W{}{}'.format(l,lp)][:i_max,:ip_max]
         return k[:i_max], kp[:ip_max], w_all
-    
+
     def init_comet(self):
         self._create_params_setup()
         if self.emu is None or self.emu.model != self.model \
                 or self.emu.use_Mpc != self.use_Mpc \
                 or self.emu.bias_basis != self.bias_basis \
                 or self.emu.counterterm_basis != self.ctr_noise_basis:
-            self.emu = comet(model=self.model, use_Mpc=self.use_Mpc, 
+            self.emu = comet(model=self.model, use_Mpc=self.use_Mpc,
                             bias_basis=self.bias_basis,
                             counterterm_basis=self.ctr_noise_basis)
-        
+
         for oi in self.observables:
             if self.data_model == 'LE3':
                 data = fits.open(f'{self.input_dir}/{self.fname_data[oi]}')
@@ -393,37 +393,37 @@ class Nexus:
                     mixing_matrix = fits.open(
                         f'{self.input_dir}/{self.fname_mixing_matrix[oi]}')
                     mm_k, mm_kp, mm_comet = self._mixing_matrix_LE3_to_Comet(
-                        mixing_matrix, [0,2,4], np.amax(self.kmax[oi]), 
+                        mixing_matrix, [0,2,4], np.amax(self.kmax[oi]),
                         np.amax(self.kmax[oi])*self.mixing_matrix_kp_max_mult
                     )
                     self.emu.define_data_set(
-                        obs_id=oi, stat=self.stat[oi], zeff=self.zeff[oi], 
-                        bins=k_eff, signal=data_comet, cov=cov_comet, 
-                        bins_mixing_matrix=[mm_k,mm_kp], 
+                        obs_id=oi, stat=self.stat[oi], zeff=self.zeff[oi],
+                        bins=k_eff, signal=data_comet, cov=cov_comet,
+                        bins_mixing_matrix=[mm_k,mm_kp],
                         W_mixing_matrix=mm_comet,
                         fiducial_cosmology=self.fiducial_cosmology_obs[oi],
                         composition=self.composition[oi], nbar=self.nbar[oi])
                 else:
                     self.emu.define_data_set(
-                        obs_id=oi, stat=self.stat[oi], zeff=self.zeff[oi], 
-                        bins=k_eff, signal=data_comet, cov=cov_comet, 
+                        obs_id=oi, stat=self.stat[oi], zeff=self.zeff[oi],
+                        bins=k_eff, signal=data_comet, cov=cov_comet,
                         fiducial_cosmology=self.fiducial_cosmology[oi],
                         composition=self.composition[oi], nbar=self.nbar[oi])
             self.emu.data[oi].set_kmax(self.kmax[oi], self.kmin[oi])
-        
+
     def _g2bG2_relation(self, relation, b1):
         if relation == 'LL' or relation == 'coevolution':
             return - 2./7 * (b1 - 1)
         elif relation == 'excursion_set':
             return 0.524 - 0.547*b1 + 0.046*b1**2
-        
+
     def _g21bGam3_relation(self, relation, b1, g2bG2):
         if relation == 'coevolution':
             if self.bias_basis == 'EggScoSmi':
                 return 2.0/21.0 * (b1 - 1) + 6.0/7.0 * g2bG2
             elif self.bias_basis == 'AssBauGre':
                 return -1./6. * (b1 - 1) - 5./2. * g2bG2
-            
+
     def _assign_params(self, cube):
         n = 0
         if self.has_composition:
@@ -434,7 +434,7 @@ class Nexus:
                 n += 1
             for p in self.fixed_cosmo_params:
                 for s in self.species:
-                    params[s][p] = np.repeat(self.fixed_cosmo_params[p], 
+                    params[s][p] = np.repeat(self.fixed_cosmo_params[p],
                                              self.n_obs[s])
             for pos in self.sampled_nuisance_params:
                 p, oi, s = pos.split('.')
@@ -466,10 +466,9 @@ class Nexus:
                         params[s][p][noi] = self._g21bGam3_relation(
                             rel, params[s]['b1'][noi], params[s]['bG2'][noi])
             for s in self.species:
-                params[s]['z'] = []
-                for oi in self.observables:
-                    if s in self.composition[oi]:
-                        params[s]['z'].append(self.composition[oi][s]['zeff'])
+                params[s]['z'] = np.array([self.composition[oi][s]['zeff']
+                                           for oi in self.observables
+                                           if s in self.composition[oi]])
         else:
             params = {}
             for p in self.sampled_cosmo_params:
@@ -531,15 +530,15 @@ class Nexus:
                         cube[n] = mean + std * np.sqrt(2) * erfinv(2*cube[n]-1.0)
                     n += 1
                 return cube
-            
+
             def loglik(cube):
                 params = self._assign_params(cube)
-                chi2 = self.emu.chi2(self.observables, params, self.kmax, 
+                chi2 = self.emu.chi2(self.observables, params, self.kmax,
                                      self.de_model, AM_priors=self.AM_priors)
                 return -0.5 * chi2
-            
+
             return prior, loglik
-        
+
     def run_chain(self, resume=False, verbose=True):
         if self.sampler == 'multinest':
             import pymultinest
