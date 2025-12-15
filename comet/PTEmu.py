@@ -901,8 +901,10 @@ class PTEmu:
             self.params['h'] = np.zeros_like(self.params['wc'])
             check_ranges(self.params_list)
         elif de_model is None and not self.use_Mpc:
-            emu_params_updated = np.any([params[p] != self.params[p] for p
-                                         in self.params_list + ['h']])
+            emu_params_updated = np.any([
+              not np.array_equal(params[p], self.params[p])
+              for p in self.params_list + ['h']
+            ])
             for p in self.params_list + ['h']:
                 self.params[p] = np.atleast_1d(params[p])
             #self.params['As'] = np.zeros_like(self.params['wc'])
@@ -915,8 +917,10 @@ class PTEmu:
                 expected_params.remove('s12')
             if 'Ok' not in params:
                 expected_params.remove('Ok')
-            emu_params_updated = np.any([params[p] != self.params[p] for p
-                                         in expected_params])
+            emu_params_updated = np.any([
+              not np.array_equal(params[p], self.params[p])
+              for p in expected_params
+            ])
             for p in expected_params:
                 self.params[p] = np.atleast_1d(params[p])
             if de_model == 'lambda' and \
@@ -2339,8 +2343,10 @@ class PTEmu:
         if ell_for_recon is None:
             ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
 
-        params_updated = [np.array(params[p]) != self.params[p] for p in
-                          params.keys()]
+        params_updated = [
+            not np.array_equal(np.array(params[p]), self.params[p])
+            for p in params.keys()
+        ]
         params_nonzero = [x for x in self.bias_params_list +
                           self.RSD_params_list + self.obs_syst_params_list
                           if np.any(self.params[x] != 0)]
@@ -2508,8 +2514,10 @@ class PTEmu:
             return avg
 
         if obs_id is None:
-            params_updated = [np.array(params[p]) != self.params[p] for p in
-                              params.keys()]
+            params_updated = [
+                not np.array_equal(np.array(params[p]), self.params[p])
+                for p in params.keys()
+            ]
             params_nonzero = [x for x in self.bias_params_list +
                               self.RSD_params_list + self.obs_syst_params_list
                               if np.any(self.params[x] != 0)]
@@ -3100,8 +3108,10 @@ class PTEmu:
             return avg # nk x nell x nXNL x N
 
         if obs_id is None:
-            params_updated = [params[p] != self.params[p] for p in
-                              params.keys()]
+            params_updated = [
+                not np.array_equal(np.array(params[p]), self.params[p])
+                for p in params.keys()
+            ]
             params_nonzero = [x for x in self.bias_params_list +
                               self.RSD_params_list + self.obs_syst_params_list
                               if np.any(self.params[x] != 0)]
@@ -3113,53 +3123,67 @@ class PTEmu:
             for XNL_list in X_grouped_list:
                 XNL = '|'.join(XNL_list)
                 if not self.X_splines_up_to_date[XNL]:
-                    PXNL_ell = np.zeros([self.nk, len(XNL_list),
+                    nk_safety = 15
+                    PXNL_ell = np.zeros([self.nk - nk_safety, len(XNL_list),
                                          len(ell_for_recon), self.nparams])
                     for nx, X_emu in enumerate(XNL_list):
                         if X_emu in self.diagrams_emulated:
                             for n, diagram in enumerate(self.diagrams_emulated):
                                 if diagram == X_emu:
                                     if n < 9:
-                                        ids = [n*self.nk, (n+1)*self.nk]
+                                        ids = [n*self.nk + nk_safety, 
+                                               (n+1)*self.nk]
                                     else:
-                                        ids = [9*self.nk + (n-9)*self.nkloop,
+                                        ids = [9*self.nk + (n-9)*self.nkloop 
+                                               + nk_safety,
                                                9*self.nk + (n-8)*self.nkloop]
                             if X_emu in ['Pctr_c0', 'Pctr_c2', 'Pctr_c4']:
                                 for i, m in enumerate(ell_eval_emu):
-                                    PXNL_ell[self.nk-(ids[1]-ids[0]):,nx,i] = \
-                                        self.Pk_ratios[m][ids[0]:ids[1]]
-                                    if int(X_emu[-1]) != m:
-                                        PXNL_ell[:5,nx,i] = 0.0
+                                    PXNL_ell[
+                                        self.nk - nk_safety - (ids[1]-ids[0]):, 
+                                        nx, i
+                                    ] = self.Pk_ratios[m][ids[0]:ids[1]]
+                                    # if int(X_emu[-1]) != m:
+                                    #     PXNL_ell[:5,nx,i] = 0.0
                             else:
                                 for i, m in enumerate(ell_for_recon):
                                     if m != 6:
-                                        PXNL_ell[self.nk-(ids[1]-ids[0]):,
-                                               nx,i] = \
-                                            self.Pk_ratios[m][ids[0]:ids[1]]
+                                        PXNL_ell[
+                                            self.nk - nk_safety - (ids[1]-ids[0]):,
+                                            nx,i
+                                        ] = self.Pk_ratios[m][ids[0]:ids[1]]
                                     else:
                                         PXNL_ell[:, nx, i] = \
-                                            self._PX_ell6_novir_noAP(X_emu)
+                                            self._PX_ell6_novir_noAP(X_emu)[
+                                                nk_safety:]
                             PXNL_ell[:, nx, :len(ell_eval_emu)] = \
-                                np.einsum("abc,ac->abc",
+                                np.einsum(
+                                    "abc,ac->abc",
                                     PXNL_ell[:, nx, :len(ell_eval_emu)],
-                                    self.Pk_lin)
+                                    self.Pk_lin[nk_safety:]
+                                )
                         else:
                             if X_emu == 'Pnoise_NP0':
                                 PXNL_ell[:, nx, 0] = \
-                                    np.ones_like(self.k_table)[:,None]
+                                    np.ones_like(self.k_table)[:nk_safety, None]
                             elif X_emu == 'Pnoise_NP20':
-                                PXNL_ell[:, nx, 0] = (self.k_table**2)[:,None]
+                                PXNL_ell[:, nx, 0] = (self.k_table**2)[
+                                    :nk_safety, None]
                             elif X_emu == 'Pnoise_NP22' \
                                     and len(ell_for_recon) > 1:
                                 if self.counterterm_basis == 'Comet':
-                                    PXNL_ell[:, nx, 1] = (self.k_table**2)[:,None]
+                                    PXNL_ell[:, nx, 1] = (self.k_table**2)[
+                                        :nk_safety, None]
                                 elif self.counterterm_basis == 'ClassPT':
-                                    PXNL_ell[:, nx, 0] = (1.0/3.0*self.k_table**2)[:,None]
-                                    PXNL_ell[:, nx, 1] = (2.0/3.0*self.k_table**2)[:,None]
+                                    PXNL_ell[:, nx, 0] = (1.0/3.0*self.k_table**2)[
+                                        :nk_safety, None]
+                                    PXNL_ell[:, nx, 1] = (2.0/3.0*self.k_table**2)[
+                                        :nk_safety, None]
 
 
                     h = None if self.use_Mpc else self.params['h']
-                    self.PX_ell_spline[XNL].build(self.k_table, PXNL_ell, h=h)
+                    self.PX_ell_spline[XNL].build(self.k_table[nk_safety:], 
+                                                  PXNL_ell, h=h)
                     self.X_splines_up_to_date[XNL] = True
 
             self._update_AP_params(params, de_model=de_model,
