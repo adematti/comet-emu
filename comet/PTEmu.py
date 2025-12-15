@@ -3123,67 +3123,58 @@ class PTEmu:
             for XNL_list in X_grouped_list:
                 XNL = '|'.join(XNL_list)
                 if not self.X_splines_up_to_date[XNL]:
-                    nk_safety = 15
-                    PXNL_ell = np.zeros([self.nk - nk_safety, len(XNL_list),
+                    PXNL_ell = np.zeros([self.nk, len(XNL_list),
                                          len(ell_for_recon), self.nparams])
                     for nx, X_emu in enumerate(XNL_list):
                         if X_emu in self.diagrams_emulated:
                             for n, diagram in enumerate(self.diagrams_emulated):
                                 if diagram == X_emu:
                                     if n < 9:
-                                        ids = [n*self.nk + nk_safety, 
-                                               (n+1)*self.nk]
+                                        ids = [n*self.nk, (n+1)*self.nk]
                                     else:
-                                        ids = [9*self.nk + (n-9)*self.nkloop 
-                                               + nk_safety,
+                                        ids = [9*self.nk + (n-9)*self.nkloop,
                                                9*self.nk + (n-8)*self.nkloop]
                             if X_emu in ['Pctr_c0', 'Pctr_c2', 'Pctr_c4']:
                                 for i, m in enumerate(ell_eval_emu):
-                                    PXNL_ell[
-                                        self.nk - nk_safety - (ids[1]-ids[0]):, 
-                                        nx, i
-                                    ] = self.Pk_ratios[m][ids[0]:ids[1]]
+                                    PXNL_ell[self.nk-(ids[1]-ids[0]):, nx, i] = \
+                                        self.Pk_ratios[m][ids[0]:ids[1]]
                                     # if int(X_emu[-1]) != m:
                                     #     PXNL_ell[:5,nx,i] = 0.0
                             else:
                                 for i, m in enumerate(ell_for_recon):
                                     if m != 6:
-                                        PXNL_ell[
-                                            self.nk - nk_safety - (ids[1]-ids[0]):,
-                                            nx,i
-                                        ] = self.Pk_ratios[m][ids[0]:ids[1]]
+                                        PXNL_ell[self.nk-(ids[1]-ids[0]):,nx,i] = \
+                                            self.Pk_ratios[m][ids[0]:ids[1]]
                                     else:
                                         PXNL_ell[:, nx, i] = \
-                                            self._PX_ell6_novir_noAP(X_emu)[
-                                                nk_safety:]
+                                            self._PX_ell6_novir_noAP(X_emu)
                             PXNL_ell[:, nx, :len(ell_eval_emu)] = \
                                 np.einsum(
                                     "abc,ac->abc",
                                     PXNL_ell[:, nx, :len(ell_eval_emu)],
-                                    self.Pk_lin[nk_safety:]
+                                    self.Pk_lin
                                 )
                         else:
                             if X_emu == 'Pnoise_NP0':
                                 PXNL_ell[:, nx, 0] = \
-                                    np.ones_like(self.k_table)[:nk_safety, None]
+                                    np.ones_like(self.k_table)[:, None]
                             elif X_emu == 'Pnoise_NP20':
-                                PXNL_ell[:, nx, 0] = (self.k_table**2)[
-                                    :nk_safety, None]
+                                PXNL_ell[:, nx, 0] = (self.k_table**2)[:, None]
                             elif X_emu == 'Pnoise_NP22' \
                                     and len(ell_for_recon) > 1:
                                 if self.counterterm_basis == 'Comet':
-                                    PXNL_ell[:, nx, 1] = (self.k_table**2)[
-                                        :nk_safety, None]
+                                    PXNL_ell[:, nx, 1] = (self.k_table**2)[:, None]
                                 elif self.counterterm_basis == 'ClassPT':
                                     PXNL_ell[:, nx, 0] = (1.0/3.0*self.k_table**2)[
-                                        :nk_safety, None]
+                                        :, None]
                                     PXNL_ell[:, nx, 1] = (2.0/3.0*self.k_table**2)[
-                                        :nk_safety, None]
+                                        :, None]
 
 
+                    nk_safety = 15
                     h = None if self.use_Mpc else self.params['h']
                     self.PX_ell_spline[XNL].build(self.k_table[nk_safety:], 
-                                                  PXNL_ell, h=h)
+                                                  PXNL_ell[nk_safety:], h=h)
                     self.X_splines_up_to_date[XNL] = True
 
             self._update_AP_params(params, de_model=de_model,
