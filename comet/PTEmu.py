@@ -3159,7 +3159,7 @@ class PTEmu:
 
 
                     h = None if self.use_Mpc else self.params['h']
-                    self.PX_ell_spline[XNL].build(self.k_table, PXNL_ell, h=h)
+                    self.PX_ell_spline[XNL].build(self.k_table[15:], PXNL_ell[15:], h=h)
                     self.X_splines_up_to_date[XNL] = True
 
             self._update_AP_params(params, de_model=de_model,

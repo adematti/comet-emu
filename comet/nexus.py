@@ -671,7 +671,7 @@ class Nexus:
                 noi = self.obs_id[oi]
                 if p not in params:
                     params[p] = np.zeros(self.n_obs)
-                params[p][noi] = get_value(pos)
+                params[p][noi] = get_value(po)
 
             for po in self.fixed_nuisance_params:
                 p, oi = po.split('.')
@@ -791,10 +791,10 @@ class Nexus:
             import nautilus
             prior, loglike = self._generate_prior_loglike()
             base, _ = os.path.splitext(f'{self.output_dir}/{self.output_filename}')
-            checkpoint = base + ".hdf5"
+            #checkpoint = base + ".hdf5"
             sampler = nautilus.Sampler(prior, loglike, n_live=self.n_live,
-                                       pool=self.pool, filepath=checkpoint,
-                                       resume=resume)
+                                       pool=self.pool)#, filepath=checkpoint,
+                                       #resume=resume)
             sampler.run(f_live=self.f_live, n_eff=self.n_eff,
                         verbose=verbose, discard_exploration=True)
             log_z = sampler.evidence()
