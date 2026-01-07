@@ -628,11 +628,10 @@ class PTEmu:
                     H_measured = self.cosmo.Hz(np.atleast_1d(kwargs['zeff']))
                     H_true = self.cosmo.Hz(
                         np.atleast_1d(kwargs['composition'][species]['zeff']))
-                    gamma_tr = np.squeeze(Dm_measured/Dm_true)
+                    gamma_tr = np.squeeze(Dm_true/Dm_measured)
                     gamma_lo = np.squeeze(
-                        (1.0 + kwargs['zeff']) \
-                        / (1.0 + kwargs['composition'][species]['zeff'])\
-                        * H_true / H_measured
+                        (1.0 + kwargs['composition'][species]['zeff']) \
+                        / (1.0 + kwargs['zeff']) * H_measured / H_true
                     )
                     temp_kwargs['composition'][species]['gamma_tr_lo'] = \
                         [gamma_tr,gamma_lo]
@@ -901,8 +900,10 @@ class PTEmu:
             self.params['h'] = np.zeros_like(self.params['wc'])
             check_ranges(self.params_list)
         elif de_model is None and not self.use_Mpc:
-            emu_params_updated = np.any([params[p] != self.params[p] for p
-                                         in self.params_list + ['h']])
+            emu_params_updated = np.any([
+              not np.array_equal(params[p], self.params[p])
+              for p in self.params_list + ['h']
+            ])
             for p in self.params_list + ['h']:
                 self.params[p] = np.atleast_1d(params[p])
             #self.params['As'] = np.zeros_like(self.params['wc'])
@@ -915,8 +916,10 @@ class PTEmu:
                 expected_params.remove('s12')
             if 'Ok' not in params:
                 expected_params.remove('Ok')
-            emu_params_updated = np.any([params[p] != self.params[p] for p
-                                         in expected_params])
+            emu_params_updated = np.any([
+              not np.array_equal(params[p], self.params[p])
+              for p in expected_params
+            ])
             for p in expected_params:
                 self.params[p] = np.atleast_1d(params[p])
             if de_model == 'lambda' and \
@@ -1693,13 +1696,13 @@ class PTEmu:
                                 * self.params['sigma_z'][ids]
                         gamma_r = self.cosmo.light_speed/self.H_fid[ids] \
                                 * self.params['gamma_z'][ids]
-                        t[...,ids] = self._W_Voigt(k_sub, mu_sub, sigma_r, 
+                        t[...,ids] = self._W_Voigt(k_sub, mu_sub, sigma_r,
                                                     gamma_r)
         else:
             if z_error == 'Gaussian':
                 t = self._W_Gaussian(k, mu, self.params['sigma_z'])
             elif z_error == 'Voigt':
-                t = self._W_Voigt(k, mu, self.params['sigma_z'], 
+                t = self._W_Voigt(k, mu, self.params['sigma_z'],
                                   self.params['gamma_z'])
 
         return t * (1.0 - self.params['f_out'])**2
@@ -2339,8 +2342,10 @@ class PTEmu:
         if ell_for_recon is None:
             ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
 
-        params_updated = [np.array(params[p]) != self.params[p] for p in
-                          params.keys()]
+        params_updated = [
+            not np.array_equal(np.array(params[p]), self.params[p])
+            for p in params.keys()
+        ]
         params_nonzero = [x for x in self.bias_params_list +
                           self.RSD_params_list + self.obs_syst_params_list
                           if np.any(self.params[x] != 0)]
@@ -2508,8 +2513,10 @@ class PTEmu:
             return avg
 
         if obs_id is None:
-            params_updated = [np.array(params[p]) != self.params[p] for p in
-                              params.keys()]
+            params_updated = [
+                not np.array_equal(np.array(params[p]), self.params[p])
+                for p in params.keys()
+            ]
             params_nonzero = [x for x in self.bias_params_list +
                               self.RSD_params_list + self.obs_syst_params_list
                               if np.any(self.params[x] != 0)]
@@ -2854,6 +2861,137 @@ class PTEmu:
     #
     #     return PX_2d
 
+    def PX_2d(self, k, mu, params, X_list, de_model=None, ell_for_recon=None):
+        r"""Compute the 2d anisotropic power spectrum for a specific list
+        of terms from X_list
+
+        Parameters
+        ----------
+        k: float or numpy.ndarray
+            Wavemodes :math:`k` at which to evaluate the multipoles. If a list
+            is passed, it has to match the size of `ell`, and in that case
+            each wavemode refer to a given multipole.
+        mu: float or numpy.ndarray
+            Cosinus of the angle between the pair separation and the line of
+            sight.
+        params: dict
+            Dictionary containing the list of total model parameters which are
+            internally used by the emulator. The keyword/value pairs of the
+            dictionary specify the names and the values of the parameters,
+            respectively.
+        X_list: list
+            Terms to be evaluated.
+        de_model: str, optional
+            String that determines the dark energy equation of state. Can be
+            chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
+            the standard cosmological parameters, or be left undefined to use
+            only :math:`\sigma_{12}`. Defaults to **None**.
+        ell_for_recon: list, optional
+            List of :math:`\ell` values used for the reconstruction of the
+            2d leading-order IR-resummed power spectrum. If **None**, all the
+            even multipoles up to :math:`\ell=6` are used in the
+            reconstruction. Defaults to **None**.
+
+        Returns
+        -------
+        P2d_rsd: numpy.ndarray
+            2d anisotropic power spectrum
+        """
+        if ell_for_recon is None:
+            ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
+        ell_eval_emu = ell_for_recon.copy()
+        if 6 in ell_eval_emu:
+            ell_eval_emu.remove(6)
+
+        params_updated = [params[p] != self.params[p] for p in
+                          params.keys()]
+        params_nonzero = [x for x in self.bias_params_list +
+                          self.RSD_params_list + self.obs_syst_params_list
+                          if np.any(self.params[x] != 0)]
+
+        if np.any(params_updated) \
+                or np.any([p not in params.keys() for p in params_nonzero]):
+            self._eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
+
+        X_list = [X_list] if not isinstance(X_list, list) else X_list
+        X0L_list = [t for t in X_list if not 'P1L' in t]
+        X1L_list = [t for t in X_list if 'P1L' in t]
+        X_grouped_list = [t for t in [X0L_list,X1L_list] if len(t) > 0]
+        X_grouped_list_flat = [t for tt in X_grouped_list for t in tt]
+        col_for_damping = [X_list.index(X) for X in X_list if 'Pnoise' not in X]
+        ordering = [X_grouped_list_flat.index(x) for x in X_list]
+        nXNL = np.insert(np.cumsum([len(t) for t in X_grouped_list]),0,0)
+        for XNL_list in X_grouped_list:
+            XNL = '|'.join(XNL_list)
+            id_min = self.nk - self.nkloop if 'P1L' in XNL else 0
+            if not XNL in self.PX_ell_spline:
+                self.PX_ell_spline[XNL] = Splines(
+                    use_Mpc=self.use_Mpc, ncol=(len(XNL_list),self.ncol),
+                    id_min=id_min, crossover_check=True)
+                self.X_splines_up_to_date[XNL] = False
+
+        for XNL_list in X_grouped_list:
+            XNL = '|'.join(XNL_list)
+            if not self.X_splines_up_to_date[XNL]:
+                PXNL_ell = np.zeros([self.nk, len(XNL_list),
+                                     len(ell_for_recon), self.nparams])
+                for nx, X_emu in enumerate(XNL_list):
+                    if X_emu in self.diagrams_emulated:
+                        for n, diagram in enumerate(self.diagrams_emulated):
+                            if diagram == X_emu:
+                                if n < 9:
+                                    ids = [n*self.nk, (n+1)*self.nk]
+                                else:
+                                    ids = [9*self.nk + (n-9)*self.nkloop,
+                                           9*self.nk + (n-8)*self.nkloop]
+                        if X_emu in ['Pctr_c0', 'Pctr_c2', 'Pctr_c4']:
+                            for i, m in enumerate(ell_eval_emu):
+                                PXNL_ell[self.nk-(ids[1]-ids[0]):,nx,i] = \
+                                    self.Pk_ratios[m][ids[0]:ids[1]]
+                        else:
+                            for i, m in enumerate(ell_for_recon):
+                                if m != 6:
+                                    PXNL_ell[self.nk-(ids[1]-ids[0]):,
+                                           nx,i] = \
+                                        self.Pk_ratios[m][ids[0]:ids[1]]
+                                else:
+                                    PXNL_ell[:, nx, i] = \
+                                        self._PX_ell6_novir_noAP(X_emu)
+                        PXNL_ell[:, nx, :len(ell_eval_emu)] = \
+                            np.einsum("abc,ac->abc",
+                                PXNL_ell[:, nx, :len(ell_eval_emu)],
+                                self.Pk_lin)
+                    else:
+                        if X_emu == 'Pnoise_NP0':
+                            PXNL_ell[:, nx, 0] = \
+                                np.ones_like(self.k_table)[:,None]
+                        elif X_emu == 'Pnoise_NP20':
+                            PXNL_ell[:, nx, 0] = (self.k_table**2)[:,None]
+                        elif X_emu == 'Pnoise_NP22' \
+                                and len(ell_for_recon) > 1:
+                            if self.counterterm_basis == 'Comet':
+                                PXNL_ell[:, nx, 1] = (self.k_table**2)[:,None]
+                            elif self.counterterm_basis == 'ClassPT':
+                                PXNL_ell[:, nx, 0] = (1.0/3.0*self.k_table**2)[:,None]
+                                PXNL_ell[:, nx, 1] = (2.0/3.0*self.k_table**2)[:,None]
+
+                nk_safety = 15
+                h = None if self.use_Mpc else self.params['h']
+                self.PX_ell_spline[XNL].build(self.k_table[nk_safety:], PXNL_ell[nk_safety:], h=h)
+                self.X_splines_up_to_date[XNL] = True
+
+        PX2d = np.empty((len(X_list), *k.shape))
+        for i, XNL_list in enumerate(X_grouped_list):
+            XNL = '|'.join(XNL_list)
+            n1 = nXNL[i]
+            n2 = nXNL[i+1]
+            PX2d[n1:n2] = np.einsum("...bacd,cbd->a...bd",
+                self.PX_ell_spline[XNL].eval_varx(k),
+                eval_legendre.outer(np.array(ell_for_recon), mu))
+        PX2d = PX2d[ordering]
+
+        return PX2d
+
     def _PX_ell6_novir_noAP(self, X):
         r"""Compute the individual contribution X to the octopole.
 
@@ -3100,8 +3238,10 @@ class PTEmu:
             return avg # nk x nell x nXNL x N
 
         if obs_id is None:
-            params_updated = [params[p] != self.params[p] for p in
-                              params.keys()]
+            params_updated = [
+                not np.array_equal(np.array(params[p]), self.params[p])
+                for p in params.keys()
+            ]
             params_nonzero = [x for x in self.bias_params_list +
                               self.RSD_params_list + self.obs_syst_params_list
                               if np.any(self.params[x] != 0)]
@@ -3126,40 +3266,45 @@ class PTEmu:
                                                9*self.nk + (n-8)*self.nkloop]
                             if X_emu in ['Pctr_c0', 'Pctr_c2', 'Pctr_c4']:
                                 for i, m in enumerate(ell_eval_emu):
-                                    PXNL_ell[self.nk-(ids[1]-ids[0]):,nx,i] = \
+                                    PXNL_ell[self.nk-(ids[1]-ids[0]):, nx, i] = \
                                         self.Pk_ratios[m][ids[0]:ids[1]]
-                                    if int(X_emu[-1]) != m:
-                                        PXNL_ell[:5,nx,i] = 0.0
+                                    # if int(X_emu[-1]) != m:
+                                    #     PXNL_ell[:5,nx,i] = 0.0
                             else:
                                 for i, m in enumerate(ell_for_recon):
                                     if m != 6:
-                                        PXNL_ell[self.nk-(ids[1]-ids[0]):,
-                                               nx,i] = \
+                                        PXNL_ell[self.nk-(ids[1]-ids[0]):,nx,i] = \
                                             self.Pk_ratios[m][ids[0]:ids[1]]
                                     else:
                                         PXNL_ell[:, nx, i] = \
                                             self._PX_ell6_novir_noAP(X_emu)
                             PXNL_ell[:, nx, :len(ell_eval_emu)] = \
-                                np.einsum("abc,ac->abc",
+                                np.einsum(
+                                    "abc,ac->abc",
                                     PXNL_ell[:, nx, :len(ell_eval_emu)],
-                                    self.Pk_lin)
+                                    self.Pk_lin
+                                )
                         else:
                             if X_emu == 'Pnoise_NP0':
                                 PXNL_ell[:, nx, 0] = \
-                                    np.ones_like(self.k_table)[:,None]
+                                    np.ones_like(self.k_table)[:, None]
                             elif X_emu == 'Pnoise_NP20':
-                                PXNL_ell[:, nx, 0] = (self.k_table**2)[:,None]
+                                PXNL_ell[:, nx, 0] = (self.k_table**2)[:, None]
                             elif X_emu == 'Pnoise_NP22' \
                                     and len(ell_for_recon) > 1:
                                 if self.counterterm_basis == 'Comet':
-                                    PXNL_ell[:, nx, 1] = (self.k_table**2)[:,None]
+                                    PXNL_ell[:, nx, 1] = (self.k_table**2)[:, None]
                                 elif self.counterterm_basis == 'ClassPT':
-                                    PXNL_ell[:, nx, 0] = (1.0/3.0*self.k_table**2)[:,None]
-                                    PXNL_ell[:, nx, 1] = (2.0/3.0*self.k_table**2)[:,None]
+                                    PXNL_ell[:, nx, 0] = (1.0/3.0*self.k_table**2)[
+                                        :, None]
+                                    PXNL_ell[:, nx, 1] = (2.0/3.0*self.k_table**2)[
+                                        :, None]
 
 
+                    nk_safety = 15
                     h = None if self.use_Mpc else self.params['h']
-                    self.PX_ell_spline[XNL].build(self.k_table[15:], PXNL_ell[15:], h=h)
+                    self.PX_ell_spline[XNL].build(self.k_table[nk_safety:],
+                                                  PXNL_ell[nk_safety:], h=h)
                     self.X_splines_up_to_date[XNL] = True
 
             self._update_AP_params(params, de_model=de_model,
@@ -3216,7 +3361,7 @@ class PTEmu:
                         self.data[obs_id_use].bins_mixing_matrix[1])
                 spline = spline.reshape((spline.shape[0]*spline.shape[1],) \
                                         + spline.shape[2:], order='F')
-                
+
                 nspec = 0 if self.data[obs_id_use].composition is None else \
                         len(self.data[obs_id_use].composition)
 
@@ -3265,7 +3410,7 @@ class PTEmu:
                 # print('Warning! Bins for mixing matrix and/or mixing matrix '
                 #       'itself not provided. Returning unconvolved power '
                 #       'spectrum.')
-                PX_ell_dict = self.PX_ell(k, params, ell, X_list, de_model,
+                PX_ell_dict = self.PX_ell(k, params_eval, ell, X_list, de_model,
                                           binning, None, q_tr_lo, gamma_tr_lo,
                                           W_damping, ell_for_recon)
                 if self.data[obs_id_use].composition is not None:
@@ -4006,8 +4151,8 @@ class PTEmu:
 
                 if do_analytic_marginalisation[oi]:
                     for i,l in enumerate(ell[oi]):
-                        ids_k[i] += np.sum([len(bins_kmax[j]) 
-                                            for j,L in enumerate(ell_joint) 
+                        ids_k[i] += np.sum([len(bins_kmax[j])
+                                            for j,L in enumerate(ell_joint)
                                             if L < l], dtype=int)
                     PX_ell_list_oi = PX_ell_list[np.hstack([*ids_k])][...,
                                                                       ids_oi[n]]
@@ -4462,7 +4607,7 @@ class PTEmu:
                         W_damping[stat] = lambda k, mu: 1.0
                     elif stat == 'bispectrum':
                         W_damping[stat] = lambda tri, mu1, mu2, mu3: 1.0 """
-                        
+
         if all([self.data[oi].mixing_matrix_exists for oi in obs_id]):
             convolve_window = True
         else:
@@ -4591,3 +4736,266 @@ class PTEmu:
                       'contribution to chi-square.')
 
         return chi2
+
+    # currently only applicable for Pell
+    def conditional_posterior(self, obs_id, params, kmax, AM_priors,
+                              de_model=None, binning=None, q_tr_lo=None,
+                              W_damping=None, ell_for_recon=None):
+        def atleast_2d_last(x):
+            x = np.asarray(x)
+            if x.ndim == 0:
+                return x.reshape((1, 1))
+            elif x.ndim == 1:
+                return x[:, np.newaxis]
+            else:
+                return x
+
+        def atleast_3d_last(x):
+            x = np.asarray(x)
+            if x.ndim == 0:
+                return x.reshape((1, 1, 1))
+            elif x.ndim == 1:
+                return x[:, np.newaxis, np.newaxis]
+            elif x.ndim == 2:
+                if len(params_to_marg_all) > 1:
+                    return x[..., np.newaxis]
+                else:
+                    return x[:, np.newaxis, :]
+            else:
+                return x
+
+        def join_diagrams(PX_ell, p_list, diagrams_to_marg, diagrams_to_marg_all):
+            diagrams_to_join = [x for x in self.diagrams_to_marg[p_list[0]][1:]]
+            col_to_join = [diagrams_to_marg_all.index(x) for x in diagrams_to_join]
+            col_to_keep = np.delete(
+                np.arange(len(diagrams_to_marg_all)), col_to_join)
+            PX_ell = np.add.reduceat(PX_ell, col_to_keep, axis=1)
+            for d in diagrams_to_join:
+                diagrams_to_marg_all.remove(d)
+            for oi in obs_id:
+                if self.data[oi].composition is not None:
+                    for spec in self.data[oi].composition:
+                        if any([p in params_to_marg[oi][spec] for p in p_list]):
+                            diagrams_to_marg[oi][spec] = [
+                                x for x in diagrams_to_marg[oi][spec]
+                                if x not in diagrams_to_join
+                            ]
+                else:
+                    if any([p in params_to_marg[oi] for p in p_list]):
+                        diagrams_to_marg[oi] = [x for x in diagrams_to_marg[oi]
+                                                if x not in diagrams_to_join]
+            return PX_ell
+
+        obs_id = [obs_id] if not isinstance(obs_id, list) else obs_id
+        n_obs = len(obs_id)
+
+        if not isinstance(kmax, dict):
+            kmax_dict = {}
+            for oi in obs_id:
+                kmax_dict[oi] = kmax
+            kmax = kmax_dict
+
+        ell = {}
+        for oi in obs_id:
+            if (not self.data[oi].kmax_is_set or
+                (self.data[oi].kmax != kmax[oi] and self.data[oi].kmax !=
+                    [kmax[oi] for i in range(self.data[oi].n_ell)])):
+                        self.data[oi].set_kmax(kmax[oi])
+                        if self.data[oi].stat == 'powerspectrum':
+                            self.chi2_decomposition = None
+                        elif self.data[oi].stat == 'bispectrum':
+                            self.Bisp_chi2_decomposition = None
+            ell[oi] = self.data[oi].ell
+        ell_joint = np.unique(np.hstack([ell[oi] for oi in obs_id])).tolist()
+        bins_kmax = [np.unique(np.hstack([self.data[oi].bins_kmax[i]
+                                          for oi in obs_id \
+                                          if l in self.data[oi].ell]))
+                     for i,l in enumerate(ell_joint)]
+        nbins_kmax = [len(bins) for bins in bins_kmax]
+
+        if all([self.data[oi].mixing_matrix_exists for oi in obs_id]):
+            convolve_window = True
+        else:
+            convolve_window = False
+
+        check_obs = [x in obs_id for x in AM_priors]
+        if not any(check_obs):
+            temp = {}
+            for oi in obs_id:
+                temp[oi] = AM_priors
+            AM_priors = temp
+        else:
+            for oi in obs_id:
+                if oi not in AM_priors:
+                    AM_priors[oi] = {}
+
+        params_to_marg = {}
+        diagrams_to_marg = {}
+        n_species = []
+        for oi in obs_id:
+            if self.data[oi].composition is not None:
+                params_to_marg[oi] = {}
+                diagrams_to_marg[oi] = {}
+                for spec in self.data[oi].composition:
+                    if spec not in AM_priors[oi]:
+                        AM_priors[oi][spec] = {}
+                    params_to_marg[oi][spec] = [p for p in
+                        AM_priors[oi][spec] if p in self.diagrams_to_marg]
+                    diagrams_to_marg[oi][spec] = [
+                        d for p in params_to_marg[oi][spec] \
+                        if p in self.diagrams_to_marg for d in
+                        self.diagrams_to_marg[p]
+                    ]
+                n_species.append(len(self.data[oi].composition))
+            else:
+                params_to_marg[oi] = [p for p in AM_priors[oi] \
+                                        if p in self.diagrams_to_marg]
+                diagrams_to_marg[oi] = [
+                    d for p in params_to_marg[oi]
+                    if p in self.diagrams_to_marg
+                    for d in self.diagrams_to_marg[p]
+                ]
+                n_species.append(1)
+        n_species_all = sum(n_species)
+        if self.data[oi].composition is not None:
+            params_to_marg_all = list(set(
+                [p for oi in obs_id for spec in params_to_marg[oi]
+                    for p in params_to_marg[oi][spec]]
+            ))
+            for oi in obs_id:
+                for spec in params_to_marg[oi]:
+                    ids_oi = np.where(params[spec]['z'] == \
+                        self.data[oi].composition[spec]['zeff'])
+                    for p in params_to_marg[oi][spec]:
+                        if p in params[spec]:
+                            params[spec][p][ids_oi] = 0.0
+        else:
+            params_to_marg_all = list(set([p for oi in obs_id for p \
+                                            in params_to_marg[oi]]))
+            for oi in obs_id:
+                ids_oi = np.where(params['z'] == self.data[oi].zeff)
+                for p in params_to_marg[oi]:
+                    if p in params:
+                        params[p][ids_oi] = 0.0
+        diagrams_to_marg_all = [
+            d for p in params_to_marg_all if p in self.diagrams_to_marg
+            for d in self.diagrams_to_marg[p]
+        ]
+
+        convolve_obs_id = obs_id if convolve_window else None
+        Pell = self.Pell(bins_kmax, params, ell_joint,
+                         de_model=de_model, binning=binning,
+                         obs_id=convolve_obs_id, q_tr_lo=q_tr_lo,
+                         W_damping=W_damping, ell_for_recon=ell_for_recon,
+                         preserve_param_order=False)
+
+        PX_ell = self.PX_ell(bins_kmax, params, ell_joint,
+                             diagrams_to_marg_all, binning=binning,
+                             obs_id=convolve_obs_id, de_model=de_model,
+                             q_tr_lo=q_tr_lo, W_damping=W_damping,
+                             ell_for_recon=ell_for_recon,
+                             preserve_param_order=False)
+        bX = self._get_bias_coeff_for_AM(diagrams_to_marg_all)
+
+        PX_ell_list = np.concatenate([PX_ell[ell] for ell in PX_ell])
+        PX_ell_list *= bX
+        if 'g21' in params_to_marg_all or 'bGam3' in params_to_marg_all:
+            PX_ell_list = join_diagrams(PX_ell_list, ['g21','bGam3'],
+                                        diagrams_to_marg,
+                                        diagrams_to_marg_all)
+        if 'cnlo' in params_to_marg_all:
+            PX_ell_list = join_diagrams(PX_ell_list, ['cnlo'], diagrams_to_marg,
+                                        diagrams_to_marg_all)
+        PX_ell_list = atleast_3d_last(PX_ell_list)
+
+        n_samples_all = PX_ell_list.shape[-1]
+        n_samples = int(n_samples_all/n_species_all)
+        ids_oi = [
+            np.array(
+                [np.arange(n_samples_all)[i:i+n_species[j]] for i in
+                 range(sum(n_species[:j]), n_samples_all, n_species_all)
+                ]
+            ).ravel() for j in range(n_obs)
+        ]
+
+        cpd_mu = {}
+        cpd_var = {}
+
+        for n,oi in enumerate(obs_id):
+            ids_k = [np.intersect1d(bins_kmax[i], self.data[oi].bins_kmax[i],
+                                    return_indices=True)[1]
+                        for i,l in enumerate(ell[oi])]
+            Pell_list = np.concatenate(
+                    [atleast_2d_last(
+                        Pell['ell{}'.format(l)])[ids_k[i],n::n_obs]
+                        for i,l in enumerate(ell[oi])]
+            )
+            diff = np.squeeze(Pell_list - self.data[oi].signal_kmax[:,None])
+
+            for i,l in enumerate(ell[oi]):
+                ids_k[i] += np.sum([len(bins_kmax[j])
+                                    for j,L in enumerate(ell_joint)
+                                    if L < l], dtype=int)
+            PX_ell_list_oi = PX_ell_list[np.hstack([*ids_k])][..., ids_oi[n]]
+            if self.data[oi].composition is not None:
+                mu = np.array([AM_priors[oi][spec][p][0] for spec
+                                in self.data[oi].composition for p \
+                                in params_to_marg[oi][spec]])
+                sigma = np.array([AM_priors[oi][spec][p][1] for spec
+                                    in self.data[oi].composition for p \
+                                    in params_to_marg[oi][spec]])
+                X_marg = np.tile(
+                    [diagrams_to_marg_all.index(d) for spec
+                        in self.data[oi].composition
+                        for d in diagrams_to_marg[oi][spec]], (n_samples, 1)
+                ).T
+                spec_marg = np.r_[
+                    tuple(slice(i, PX_ell_list_oi.shape[-1], n_species[n])
+                            for i,spec in enumerate(self.data[oi].composition)
+                            for d in diagrams_to_marg[oi][spec])
+                ].reshape(-1, n_samples)
+                PX_ell_list_oi = PX_ell_list_oi[:, X_marg,
+                                                spec_marg].squeeze()
+            else:
+                mu = np.array([AM_priors[oi][p][0] for p \
+                                in params_to_marg[oi]])
+                sigma = np.array([AM_priors[oi][p][1] for p \
+                                    in params_to_marg[oi]])
+                X_marg = [diagrams_to_marg_all.index(d) for d \
+                            in diagrams_to_marg[oi]]
+                PX_ell_list_oi = PX_ell_list_oi[:, X_marg].squeeze()
+
+            Cinv_diff = self.data[oi].inverse_cov_kmax @ diff
+            if self.data[oi].composition is not None:
+                n_params_to_marg = sum([len(p) for p
+                                        in params_to_marg[oi].values()])
+            else:
+                n_params_to_marg = len(params_to_marg[oi])
+            if n_params_to_marg > 1:
+                Aij = np.einsum(
+                    "mi...,mj...->ij...", PX_ell_list_oi,
+                    np.tensordot(self.data[oi].inverse_cov_kmax,
+                                    PX_ell_list_oi, axes=1)
+                )
+                Aij += np.diag(
+                    1.0 / sigma**2)[(...,)+(np.newaxis,)*(Aij.ndim-2)]
+                Aij_inv = np.linalg.inv(Aij.T).T
+                Bi = -np.einsum("mi...,m...->i...", PX_ell_list_oi,
+                                Cinv_diff)
+                Bi += (mu / sigma**2)[(...,)+(np.newaxis,)*(Bi.ndim-1)]
+                cpd_mu[oi] = Aij_inv @ Bi
+                cpd_var[oi] = Aij_inv
+            else:
+                A = np.einsum(
+                    "m...,m...", PX_ell_list_oi,
+                        self.data[oi].inverse_cov_kmax @ PX_ell_list_oi
+                )
+                A += 1.0 / sigma**2
+                A_inv = 1.0 / A
+                B = -np.einsum("m...,m...", PX_ell_list_oi, Cinv_diff)
+                B += mu / sigma**2
+                cpd_mu[oi] = A_inv * B
+                cpd_var[oi] = A_inv
+
+        cpd_dict = {'mean':cpd_mu, 'covariance':cpd_var}
+        return cpd_dict
