@@ -2861,6 +2861,137 @@ class PTEmu:
     #
     #     return PX_2d
 
+    def PX_2d(self, k, mu, params, X_list, de_model=None, ell_for_recon=None):
+        r"""Compute the 2d anisotropic power spectrum for a specific list
+        of terms from X_list
+
+        Parameters
+        ----------
+        k: float or numpy.ndarray
+            Wavemodes :math:`k` at which to evaluate the multipoles. If a list
+            is passed, it has to match the size of `ell`, and in that case
+            each wavemode refer to a given multipole.
+        mu: float or numpy.ndarray
+            Cosinus of the angle between the pair separation and the line of
+            sight.
+        params: dict
+            Dictionary containing the list of total model parameters which are
+            internally used by the emulator. The keyword/value pairs of the
+            dictionary specify the names and the values of the parameters,
+            respectively.
+        X_list: list
+            Terms to be evaluated.
+        de_model: str, optional
+            String that determines the dark energy equation of state. Can be
+            chosen from the list [`"lambda"`, `"w0"`, `"w0wa"`] to work with
+            the standard cosmological parameters, or be left undefined to use
+            only :math:`\sigma_{12}`. Defaults to **None**.
+        ell_for_recon: list, optional
+            List of :math:`\ell` values used for the reconstruction of the
+            2d leading-order IR-resummed power spectrum. If **None**, all the
+            even multipoles up to :math:`\ell=6` are used in the
+            reconstruction. Defaults to **None**.
+
+        Returns
+        -------
+        P2d_rsd: numpy.ndarray
+            2d anisotropic power spectrum
+        """
+        if ell_for_recon is None:
+            ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
+        ell_eval_emu = ell_for_recon.copy()
+        if 6 in ell_eval_emu:
+            ell_eval_emu.remove(6)
+
+        params_updated = [params[p] != self.params[p] for p in
+                          params.keys()]
+        params_nonzero = [x for x in self.bias_params_list +
+                          self.RSD_params_list + self.obs_syst_params_list
+                          if np.any(self.params[x] != 0)]
+
+        if np.any(params_updated) \
+                or np.any([p not in params.keys() for p in params_nonzero]):
+            self._eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
+
+        X_list = [X_list] if not isinstance(X_list, list) else X_list
+        X0L_list = [t for t in X_list if not 'P1L' in t]
+        X1L_list = [t for t in X_list if 'P1L' in t]
+        X_grouped_list = [t for t in [X0L_list,X1L_list] if len(t) > 0]
+        X_grouped_list_flat = [t for tt in X_grouped_list for t in tt]
+        col_for_damping = [X_list.index(X) for X in X_list if 'Pnoise' not in X]
+        ordering = [X_grouped_list_flat.index(x) for x in X_list]
+        nXNL = np.insert(np.cumsum([len(t) for t in X_grouped_list]),0,0)
+        for XNL_list in X_grouped_list:
+            XNL = '|'.join(XNL_list)
+            id_min = self.nk - self.nkloop if 'P1L' in XNL else 0
+            if not XNL in self.PX_ell_spline:
+                self.PX_ell_spline[XNL] = Splines(
+                    use_Mpc=self.use_Mpc, ncol=(len(XNL_list),self.ncol),
+                    id_min=id_min, crossover_check=True)
+                self.X_splines_up_to_date[XNL] = False
+
+        for XNL_list in X_grouped_list:
+            XNL = '|'.join(XNL_list)
+            if not self.X_splines_up_to_date[XNL]:
+                PXNL_ell = np.zeros([self.nk, len(XNL_list),
+                                     len(ell_for_recon), self.nparams])
+                for nx, X_emu in enumerate(XNL_list):
+                    if X_emu in self.diagrams_emulated:
+                        for n, diagram in enumerate(self.diagrams_emulated):
+                            if diagram == X_emu:
+                                if n < 9:
+                                    ids = [n*self.nk, (n+1)*self.nk]
+                                else:
+                                    ids = [9*self.nk + (n-9)*self.nkloop,
+                                           9*self.nk + (n-8)*self.nkloop]
+                        if X_emu in ['Pctr_c0', 'Pctr_c2', 'Pctr_c4']:
+                            for i, m in enumerate(ell_eval_emu):
+                                PXNL_ell[self.nk-(ids[1]-ids[0]):,nx,i] = \
+                                    self.Pk_ratios[m][ids[0]:ids[1]]
+                        else:
+                            for i, m in enumerate(ell_for_recon):
+                                if m != 6:
+                                    PXNL_ell[self.nk-(ids[1]-ids[0]):,
+                                           nx,i] = \
+                                        self.Pk_ratios[m][ids[0]:ids[1]]
+                                else:
+                                    PXNL_ell[:, nx, i] = \
+                                        self._PX_ell6_novir_noAP(X_emu)
+                        PXNL_ell[:, nx, :len(ell_eval_emu)] = \
+                            np.einsum("abc,ac->abc",
+                                PXNL_ell[:, nx, :len(ell_eval_emu)],
+                                self.Pk_lin)
+                    else:
+                        if X_emu == 'Pnoise_NP0':
+                            PXNL_ell[:, nx, 0] = \
+                                np.ones_like(self.k_table)[:,None]
+                        elif X_emu == 'Pnoise_NP20':
+                            PXNL_ell[:, nx, 0] = (self.k_table**2)[:,None]
+                        elif X_emu == 'Pnoise_NP22' \
+                                and len(ell_for_recon) > 1:
+                            if self.counterterm_basis == 'Comet':
+                                PXNL_ell[:, nx, 1] = (self.k_table**2)[:,None]
+                            elif self.counterterm_basis == 'ClassPT':
+                                PXNL_ell[:, nx, 0] = (1.0/3.0*self.k_table**2)[:,None]
+                                PXNL_ell[:, nx, 1] = (2.0/3.0*self.k_table**2)[:,None]
+
+                nk_safety = 15
+                h = None if self.use_Mpc else self.params['h']
+                self.PX_ell_spline[XNL].build(self.k_table[nk_safety:], PXNL_ell[nk_safety:], h=h)
+                self.X_splines_up_to_date[XNL] = True
+
+        PX2d = np.empty((len(X_list), *k.shape))
+        for i, XNL_list in enumerate(X_grouped_list):
+            XNL = '|'.join(XNL_list)
+            n1 = nXNL[i]
+            n2 = nXNL[i+1]
+            PX2d[n1:n2] = np.einsum("...bacd,cbd->a...bd",
+                self.PX_ell_spline[XNL].eval_varx(k),
+                eval_legendre.outer(np.array(ell_for_recon), mu))
+        PX2d = PX2d[ordering]
+
+        return PX2d
+
     def _PX_ell6_novir_noAP(self, X):
         r"""Compute the individual contribution X to the octopole.
 
