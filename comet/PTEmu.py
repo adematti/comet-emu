@@ -628,11 +628,10 @@ class PTEmu:
                     H_measured = self.cosmo.Hz(np.atleast_1d(kwargs['zeff']))
                     H_true = self.cosmo.Hz(
                         np.atleast_1d(kwargs['composition'][species]['zeff']))
-                    gamma_tr = np.squeeze(Dm_measured/Dm_true)
+                    gamma_tr = np.squeeze(Dm_true/Dm_measured)
                     gamma_lo = np.squeeze(
-                        (1.0 + kwargs['zeff']) \
-                        / (1.0 + kwargs['composition'][species]['zeff'])\
-                        * H_true / H_measured
+                        (1.0 + kwargs['composition'][species]['zeff']) \
+                        / (1.0 + kwargs['zeff']) * H_measured / H_true
                     )
                     temp_kwargs['composition'][species]['gamma_tr_lo'] = \
                         [gamma_tr,gamma_lo]
@@ -3280,7 +3279,7 @@ class PTEmu:
                 # print('Warning! Bins for mixing matrix and/or mixing matrix '
                 #       'itself not provided. Returning unconvolved power '
                 #       'spectrum.')
-                PX_ell_dict = self.PX_ell(k, params, ell, X_list, de_model,
+                PX_ell_dict = self.PX_ell(k, params_eval, ell, X_list, de_model,
                                           binning, None, q_tr_lo, gamma_tr_lo,
                                           W_damping, ell_for_recon)
                 if self.data[obs_id_use].composition is not None:
