@@ -1696,13 +1696,13 @@ class PTEmu:
                                 * self.params['sigma_z'][ids]
                         gamma_r = self.cosmo.light_speed/self.H_fid[ids] \
                                 * self.params['gamma_z'][ids]
-                        t[...,ids] = self._W_Voigt(k_sub, mu_sub, sigma_r, 
+                        t[...,ids] = self._W_Voigt(k_sub, mu_sub, sigma_r,
                                                     gamma_r)
         else:
             if z_error == 'Gaussian':
                 t = self._W_Gaussian(k, mu, self.params['sigma_z'])
             elif z_error == 'Voigt':
-                t = self._W_Voigt(k, mu, self.params['sigma_z'], 
+                t = self._W_Voigt(k, mu, self.params['sigma_z'],
                                   self.params['gamma_z'])
 
         return t * (1.0 - self.params['f_out'])**2
@@ -3303,7 +3303,7 @@ class PTEmu:
 
                     nk_safety = 15
                     h = None if self.use_Mpc else self.params['h']
-                    self.PX_ell_spline[XNL].build(self.k_table[nk_safety:], 
+                    self.PX_ell_spline[XNL].build(self.k_table[nk_safety:],
                                                   PXNL_ell[nk_safety:], h=h)
                     self.X_splines_up_to_date[XNL] = True
 
@@ -3361,7 +3361,7 @@ class PTEmu:
                         self.data[obs_id_use].bins_mixing_matrix[1])
                 spline = spline.reshape((spline.shape[0]*spline.shape[1],) \
                                         + spline.shape[2:], order='F')
-                
+
                 nspec = 0 if self.data[obs_id_use].composition is None else \
                         len(self.data[obs_id_use].composition)
 
@@ -4151,8 +4151,8 @@ class PTEmu:
 
                 if do_analytic_marginalisation[oi]:
                     for i,l in enumerate(ell[oi]):
-                        ids_k[i] += np.sum([len(bins_kmax[j]) 
-                                            for j,L in enumerate(ell_joint) 
+                        ids_k[i] += np.sum([len(bins_kmax[j])
+                                            for j,L in enumerate(ell_joint)
                                             if L < l], dtype=int)
                     PX_ell_list_oi = PX_ell_list[np.hstack([*ids_k])][...,
                                                                       ids_oi[n]]
@@ -4607,7 +4607,7 @@ class PTEmu:
                         W_damping[stat] = lambda k, mu: 1.0
                     elif stat == 'bispectrum':
                         W_damping[stat] = lambda tri, mu1, mu2, mu3: 1.0 """
-                        
+
         if all([self.data[oi].mixing_matrix_exists for oi in obs_id]):
             convolve_window = True
         else:
@@ -4738,8 +4738,8 @@ class PTEmu:
         return chi2
 
     # currently only applicable for Pell
-    def conditional_posterior(self, obs_id, params, kmax, AM_priors, 
-                              de_model=None, binning=None, q_tr_lo=None, 
+    def conditional_posterior(self, obs_id, params, kmax, AM_priors,
+                              de_model=None, binning=None, q_tr_lo=None,
                               W_damping=None, ell_for_recon=None):
         def atleast_2d_last(x):
             x = np.asarray(x)
@@ -4785,7 +4785,7 @@ class PTEmu:
                         diagrams_to_marg[oi] = [x for x in diagrams_to_marg[oi]
                                                 if x not in diagrams_to_join]
             return PX_ell
-        
+
         obs_id = [obs_id] if not isinstance(obs_id, list) else obs_id
         n_obs = len(obs_id)
 
@@ -4794,7 +4794,7 @@ class PTEmu:
             for oi in obs_id:
                 kmax_dict[oi] = kmax
             kmax = kmax_dict
-        
+
         ell = {}
         for oi in obs_id:
             if (not self.data[oi].kmax_is_set or
@@ -4812,12 +4812,12 @@ class PTEmu:
                                           if l in self.data[oi].ell]))
                      for i,l in enumerate(ell_joint)]
         nbins_kmax = [len(bins) for bins in bins_kmax]
-            
+
         if all([self.data[oi].mixing_matrix_exists for oi in obs_id]):
             convolve_window = True
         else:
             convolve_window = False
-            
+
         check_obs = [x in obs_id for x in AM_priors]
         if not any(check_obs):
             temp = {}
@@ -4828,7 +4828,7 @@ class PTEmu:
             for oi in obs_id:
                 if oi not in AM_priors:
                     AM_priors[oi] = {}
-        
+
         params_to_marg = {}
         diagrams_to_marg = {}
         n_species = []
@@ -4881,14 +4881,14 @@ class PTEmu:
             d for p in params_to_marg_all if p in self.diagrams_to_marg
             for d in self.diagrams_to_marg[p]
         ]
-        
+
         convolve_obs_id = obs_id if convolve_window else None
         Pell = self.Pell(bins_kmax, params, ell_joint,
                          de_model=de_model, binning=binning,
                          obs_id=convolve_obs_id, q_tr_lo=q_tr_lo,
                          W_damping=W_damping, ell_for_recon=ell_for_recon,
                          preserve_param_order=False)
-        
+
         PX_ell = self.PX_ell(bins_kmax, params, ell_joint,
                              diagrams_to_marg_all, binning=binning,
                              obs_id=convolve_obs_id, de_model=de_model,
@@ -4917,10 +4917,10 @@ class PTEmu:
                 ]
             ).ravel() for j in range(n_obs)
         ]
-        
+
         cpd_mu = {}
         cpd_var = {}
-        
+
         for n,oi in enumerate(obs_id):
             ids_k = [np.intersect1d(bins_kmax[i], self.data[oi].bins_kmax[i],
                                     return_indices=True)[1]
@@ -4931,10 +4931,10 @@ class PTEmu:
                         for i,l in enumerate(ell[oi])]
             )
             diff = np.squeeze(Pell_list - self.data[oi].signal_kmax[:,None])
-            
+
             for i,l in enumerate(ell[oi]):
-                ids_k[i] += np.sum([len(bins_kmax[j]) 
-                                    for j,L in enumerate(ell_joint) 
+                ids_k[i] += np.sum([len(bins_kmax[j])
+                                    for j,L in enumerate(ell_joint)
                                     if L < l], dtype=int)
             PX_ell_list_oi = PX_ell_list[np.hstack([*ids_k])][..., ids_oi[n]]
             if self.data[oi].composition is not None:
@@ -4964,7 +4964,7 @@ class PTEmu:
                 X_marg = [diagrams_to_marg_all.index(d) for d \
                             in diagrams_to_marg[oi]]
                 PX_ell_list_oi = PX_ell_list_oi[:, X_marg].squeeze()
-                
+
             Cinv_diff = self.data[oi].inverse_cov_kmax @ diff
             if self.data[oi].composition is not None:
                 n_params_to_marg = sum([len(p) for p
@@ -4996,6 +4996,6 @@ class PTEmu:
                 B += mu / sigma**2
                 cpd_mu[oi] = A_inv * B
                 cpd_var[oi] = A_inv
-                
+
         cpd_dict = {'mean':cpd_mu, 'covariance':cpd_var}
         return cpd_dict

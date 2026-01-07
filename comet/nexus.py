@@ -1,14 +1,40 @@
 import yaml
 import numpy as np
-import re
+import re, os
 from scipy.stats import norm
 from astropy.io import fits
 from comet import comet
+from pyfiglet import Figlet
+
+def boldtext(text):
+    return f"\033[1m{text}\033[0m"
+
+def is_flat_dict(d):
+    return not any(isinstance(v, dict) for v in d.values())
+
+def pretty_nested(d, indent=2, level=1):
+    pad = " " * (indent * level)
+    lines = []
+
+    for k, v in d.items():
+        if isinstance(v, dict) and not is_flat_dict(v):
+            lines.append(f"{pad}{boldtext(k)}:")
+            lines.append(pretty_nested(v, indent, level+1))
+        else:
+            lines.append(f"{pad}{boldtext(k)}: {v}")
+
+    return "\n".join(lines)
+
 
 class Nexus:
 
     def __init__(self):
-        self.cosmo_params = ['h','wc','wb','ns','As','w0','wa','Ok','Mnu']
+
+        f = Figlet(font='standard')
+        print(f.renderText('Welcome to NEXUS'))
+
+        self.cosmo_params = ['wc', 'wb', 'ns', 'Mnu',
+                             'h', 'As', 'w0', 'wa', 'Ok']
         self.fiducial_values = {}
         self.relations = {}
         self.priors = {}
@@ -16,44 +42,85 @@ class Nexus:
         self.emu = None
 
     def read_yaml_configuration(self, config):
-        self.model = config.get("model")
-        self.bias_basis = config.get("bias_basis", 'EggScoSmi')
-        if self.bias_basis == 'EggScoSmi':
-            bias_params = ['b1','b2','g2','g21']
-        elif self.bias_basis == 'AssBauGre':
-            bias_params = ['b1','b2','bG2','bGam3']
-        else:
-            raise ValueError('Bias parametrisation must be either "EggScoSmi" or '
-                             '"AssBauGre".')
+        r"""Reader/handler of main configurations
 
-        self.ctr_noise_basis = config.get("ctr_noise_basis", "Comet")
-        if self.ctr_noise_basis == 'Comet':
-            ctr_noise_params = ['c0', 'c2', 'c4', 'cnlo', 'NP0', 'NP20', 'NP22']
-        elif self.ctr_noise_basis ==  'ClassPT':
-            ctr_noise_params = ['c0*', 'c2*', 'c4*', 'cnlo*', 'NP0', 'NP20*',
-                                'NP22*']
-        elif self.ctr_noise_basis == 'PBJ':
-            ctr_noise_params = ['c0t', 'c2t', 'c4t', 'cnlot', 'NP0', 'eps0',
-                                'eps2']
+        Parameters
+        ----------
+        config: dict
+            Configuration dictionary
+        """
+        print (boldtext("Reading configurations...\n"))
+
+        expected_keys = {
+            "model": None,
+            "bias_basis": "EggScoSmi",
+            "ctr_noise_basis": "Comet",
+            "use_Mpc": True,
+            "use_Planck": False,
+            "use_BAO": False,
+            "use_SN": False,
+            "use_Jeffreys": False
+        }
+
+        maxlen = max(len(k) for k in expected_keys.keys())
+
+        for key, default in expected_keys.items():
+            value = config.get(key, default)
+            setattr(self, key, value)
+            print(f"{boldtext(key.ljust(maxlen))} = {value}")
+
+        if self.bias_basis == 'EggScoSmi':
+            bias_params = ['b1', 'b2', 'g2', 'g21']
+        elif self.bias_basis == 'AssBauGre':
+            bias_params = ['b1', 'b2', 'bG2', 'bGam3']
         else:
-            raise ValueError('Counterterm/noise parametrisation must be either '
-                             '"Comet", "ClassPT", or "PBJ".')
+            raise ValueError('Bias parametrisation must be either "EggScoSmi" '
+                             'or "AssBauGre".')
+
+        if self.ctr_noise_basis == 'Comet':
+            ctr_noise_params = ['c0', 'c2', 'c4', 'NP0', 'NP20', 'NP22']
+        elif self.ctr_noise_basis ==  'ClassPT':
+            ctr_noise_params = ['c0*', 'c2*', 'c4*', 'NP0', 'NP20*', 'NP22*']
+        elif self.ctr_noise_basis == 'PBJ':
+            ctr_noise_params = ['c0t', 'c2t', 'c4t', 'NP0', 'eps0', 'eps2']
+        else:
+            raise ValueError('Counterterm and noise parametrisation must be '
+                             'either "Comet", "ClassPT", or "PBJ".')
 
         self.nuisance_params = bias_params + ctr_noise_params
-        if 'VDG_infty' in self.model:
+        if self.model == 'EFT':
+            if self.ctr_noise_basis == 'Comet':
+                self.nuisance_params += ['cnlo']
+            elif self.ctr_noise_basis == 'ClassPT':
+                self.nuisance_params += ['cnlo*']
+            elif self.ctr_noise_basis == 'PBJ':
+                self.nuisance_params += ['cnlot']
+        if self.model == 'VDG_infty':
             self.nuisance_params += ['avir']
-        self.nuisance_params += ['sigma','gamma']
+        self.nuisance_params += ['sigma', 'gamma']
+        print (boldtext("\n↳ nuisance parameters ="), self.nuisance_params)
 
-        self.use_Mpc = config.get("use_Mpc", True)
-        self.use_Planck = config.get("use_Planck", False)
-        self.use_BAO = config.get("use_BAO", False)
-        self.use_SN = config.get("use_SN", False)
-        self.use_Jeffreys = config.get("use_Jeffreys", False)
+        print ()
 
     def read_yaml_fiducial_cosmology(self, config):
+        r"""Reader/handler of fiducial cosmology
+
+        Parameters
+        ----------
+        config: dict
+            Fiducial cosmology dictionary
+        """
+        print (boldtext("Reading fiducial cosmology...\n"))
+
+        maxlen = max(len(p) for p in self.cosmo_params)
+
         self.fiducial_cosmology = {}
-        for p in config:
-            self.fiducial_cosmology[p] = config.get(p)
+        for key in self.cosmo_params:
+            value = config.get(key)
+            self.fiducial_cosmology[key] = value
+            print(f"{boldtext(key.ljust(maxlen))} = {value}")
+
+        print ()
 
     def _identify_prior(self, x, p):
         patterns = {}
@@ -78,24 +145,83 @@ class Nexus:
                 raise ValueError(f'Prior for {p} not correctly specified.')
 
     def read_yaml_parameters(self, config):
-        for p in config:
-            val, ptype = self._identify_prior(config[p], p)
+        r"""Reader/handler of priors
+
+        Parameters
+        ----------
+        config: dict
+            Priors dictionary
+        """
+        print (boldtext("Reading priors...\n"))
+
+        for p, cfg_val in config.items():
+            val, ptype = self._identify_prior(cfg_val, p)
+
             if ptype == 'fixed':
                 self.fiducial_values[p] = val
-            elif ptype in ['LL','coevolution','excursion_set']:
+                msg = f"fixed to {val}"
+            elif ptype in ['LL', 'coevolution', 'excursion_set']:
                 self.relations[p] = ptype
+                msg = f"fixed to {ptype.replace('_', ' ')} relation"
             else:
-                self.priors[p] = {'value':val, 'type':ptype}
+                self.priors[p] = {'value': val, 'type': ptype}
+                msg = f"{ptype} {val}"
+
+            print(f"{boldtext(p.ljust(5) + '→')} {msg}")
+
+        print ()
 
     def read_yaml_sampling(self, config):
-        self.output_dir = config.get("output_dir", '')
-        self.output_fname  = config.get("output_filename")
-        self.sampler = config.get("sampler")
-        self.n_live = config.get("n_live", 500)
-        self.sampling_efficiency = config.get("sampling_efficiency",0.5)
-        self.evidence_tolerance  = config.get("evidence_tolerance", 0.4)
+        r"""Reader/handler of sampler setup
+
+        Parameters
+        ----------
+        config: dict
+            Sampler dictionary
+        """
+        print(boldtext("Reading sampler setup...\n"))
+
+        expected_keys = {
+            "common": {
+                "output_dir": '',
+                "output_filename": None,
+                "sampler": None,
+                "n_live": 500,
+            },
+            "multinest": {
+                "sampling_efficiency": 0.5,
+                "evidence_tolerance": 0.4,
+            },
+            "nautilus": {
+                "f_live": 0.01,
+                "n_eff": 10000,
+                "pool": None
+            }
+        }
+
+        sampler = config.get("sampler")
+
+        cdict = expected_keys["common"].copy()
+        cdict.update(expected_keys.get(sampler, {}))
+        maxlen = max(len(k) for k in cdict.keys())
+
+        for key, default in cdict.items():
+            value = config.get(key, default)
+            setattr(self, key, value)
+            print(f"{boldtext(key.ljust(maxlen))} = {value}")
+
+        print()
 
     def read_yaml_data(self, config):
+        r"""Reader/handler of data structure
+
+        Parameters
+        ----------
+        config: dict
+            Data dictionary
+        """
+        print(boldtext("Reading data...\n"))
+
         def read_yaml_sample_info(config, container):
             container['fiducials'] = {}
             container['priors'] = {}
@@ -106,7 +232,7 @@ class Nexus:
             if ptype == 'fixed':
                 container['fiducials']['fraction'] = val
             else:
-                container['priors']['fraction'] = {'value':val, 'type':ptype}
+                container['priors']['fraction'] = {'value': val, 'type': ptype}
             container['lambda'] = config.get("lambda", None)
             container['zerror'] = config.get("zerror", None)
             for p in config.get("parameters", {}):
@@ -116,15 +242,24 @@ class Nexus:
                 elif ptype in ['LL','coevolution','excursion_set']:
                     container['relations'][p] = ptype
                 else:
-                    container['priors'][p] = {'value':val, 'type':ptype}
+                    container['priors'][p] = {'value': val, 'type': ptype}
 
         def get_redshift(correct, interloper):
-            return correct['lambda']/interloper['lambda']*(1+correct['zeff']) - 1
+            return (correct['lambda'] / interloper['lambda']
+                    * (1.0 + correct['zeff']) - 1.0)
 
-        self.data_model = config.get("data_model", 'LE3')
-        self.mixing_matrix_kp_max_mult = config.get(
-            "mixing_matrix_kp_max_multiplier", 1.75)
-        self.input_dir = config.get("input_dir", '')
+        expected_keys = {
+            "data_model": "LE3",
+            "mixing_matrix_kp_max_multiplier": 1.75,
+            "input_dir": ""
+        }
+        maxlen = max(len(k) for k in expected_keys.keys())
+
+        for key, default in expected_keys.items():
+            value = config.get(key, default)
+            setattr(self, key, value)
+            print(f"{boldtext(key.ljust(maxlen))} = {value}")
+        print ()
 
         self.observables = list(config['observables'].keys())
         fractions = ['fraction' in config['observables'][oi]
@@ -139,7 +274,7 @@ class Nexus:
             self.sample = {}
 
         self.fname_data, self.fname_cov, self.fname_mixing_matrix = {}, {}, {}
-        self.stat, self.kmax, self.kmin, self.zeff = {}, {}, {}, {}
+        self.stat, self.kmax, self.zeff = {}, {}, {}
         self.nbar, self.fiducial_cosmology_obs = {}, {}
 
         for oi in self.observables:
@@ -149,7 +284,6 @@ class Nexus:
                 "fname_mixing_matrix", None)
             self.stat[oi] = config['observables'][oi].get("stat")
             self.kmax[oi] = config['observables'][oi].get("kmax")
-            self.kmin[oi] = config['observables'][oi].get("kmin", [0,0,0])
             self.zeff[oi] = config['observables'][oi].get("zeff")
             self.nbar[oi] = config['observables'][oi].get("nbar", 1.0)
             self.fiducial_cosmology_obs[oi] = self.fiducial_cosmology.copy()
@@ -177,21 +311,44 @@ class Nexus:
                                       self.sample[oi])
 
         if self.has_composition:
-            self.n_obs = {s:0 for s in self.species}
-            self.obs_id = {s:{} for s in self.species}
+            self.n_obs = {s: 0 for s in self.species}
+            self.obs_id = {s: {} for s in self.species}
             for s in self.species:
                 for oi in self.observables:
                     if s in self.composition[oi]:
                         self.obs_id[s][oi] = np.copy(self.n_obs[s])
                         self.n_obs[s] += 1
         else:
-            self.composition = {oi:None for oi in self.observables}
+            self.composition = {oi: None for oi in self.observables}
             self.n_obs = len(self.observables)
             self.obs_id = {}
             for i,oi in enumerate(self.observables):
                 self.obs_id[oi] = i
+        print (boldtext("n_obs ="), self.n_obs)
+        print (boldtext("obs_id ="), self.obs_id)
+        print ()
+
+        expected_keys = ["fname_data", "fname_cov", "fname_mixing_matrix",
+                         "stat", "kmax", "zeff", "nbar", "fiducial_cosmology_obs"]
+        expected_keys += ["composition" if self.has_composition else "sample"]
+        maxlen = max(len(k) for k in expected_keys)
+
+        for oi in self.observables:
+            print("▮"*30 + boldtext(" Observable ") + f"{boldtext(oi)} " + "▮"*30 + "\n")
+
+            for key in expected_keys:
+                value = getattr(self, key)[oi]
+
+                if isinstance(value, dict) and not is_flat_dict(value):
+                    print(f"{boldtext(key.ljust(maxlen))} =")
+                    print(pretty_nested(value, indent=4, level=1))
+                else:
+                    print(f"{boldtext(key.ljust(maxlen))} = {value}")
+
+            print()
 
     def _create_params_setup(self):
+        print(boldtext("Creating parameter structure...\n"))
         # create dictionaries of all sampled and fixed parameters
         self.sampled_cosmo_params = {}
         self.fixed_cosmo_params = {}
@@ -203,38 +360,51 @@ class Nexus:
         # cosmological parameters with prior information -> sampled (unless AM)
         for p in self.priors:
             if p in self.cosmo_params:
-                if self.priors[p]['type'] != 'AM':
-                    self.sampled_cosmo_params[p] = {
-                        'prior':self.priors[p]['value'],
-                        'type':self.priors[p]['type']
-                    }
+                self.sampled_cosmo_params[p] = {
+                    'prior':self.priors[p]['value'],
+                    'type':self.priors[p]['type']
+                }
+
         # by default assign fiducial cosmology as fixed parameters
         for p in self.fiducial_cosmology:
             if p in self.cosmo_params and p not in self.priors:
                 self.fixed_cosmo_params[p] = self.fiducial_cosmology[p]
+
         # overwrite fiducial cosmology if fixed cosmological parameters have been
         # given in "Parameters" section (note: this does not affect fiducial
         # cosmology for computation of AP distortions)
+        # AP: if a parameter is in self.fiducial_values it cannot be also in
+        # self.priors
         for p in self.fiducial_values:
-            if p in self.cosmo_params and p not in self.priors:
+            if p in self.cosmo_params:
                 self.fixed_cosmo_params[p] = self.fiducial_values[p]
         self.n_cosmo_params = len(self.sampled_cosmo_params)
 
-        if 'wa' in self.sampled_cosmo_params or 'wa' in self.fixed_cosmo_params:
+        print (boldtext("↳ Sampled cosmo params ="), self.sampled_cosmo_params)
+        print (boldtext("↳ Fixed cosmo params ="), self.fixed_cosmo_params)
+
+        if 'wa' in self.sampled_cosmo_params or (
+                'wa' in self.fixed_cosmo_params and
+                self.fixed_cosmo_params['wa'] != 0.0):
             self.de_model = 'w0wa'
-        elif 'w0' in self.sampled_cosmo_params or 'w0' in self.fixed_cosmo_params:
+        elif 'w0' in self.sampled_cosmo_params or (
+                'w0' in self.fixed_cosmo_params and
+                self.fixed_cosmo_params['w0'] != -1.0):
             self.de_model = 'w0'
         else:
             self.de_model = 'lambda'
+        print (boldtext("↳ Dark energy model ="), self.de_model)
 
         nonu = False
-        if 'Mnu' not in self.sampled_cosmo_params:
-            if 'Mnu' not in self.fixed_cosmo_params:
-                nonu = True
-            elif self.fixed_cosmo_params['Mnu'] == 0.0:
-                nonu = True
-        if nonu and 'nonu' not in self.model:
+        if not ('Mnu' in self.sampled_cosmo_params or (
+                'Mnu' in self.fixed_cosmo_params and
+                self.fixed_cosmo_params['Mnu'] != 0.0)):
+            nonu = True
+        if nonu:
             self.model += '_nonu'
+            self.fixed_cosmo_params.pop('Mnu')
+
+        print (boldtext("↳ RSD model ="), self.model)
 
         if self.has_composition:
             for oi in self.observables:
@@ -252,8 +422,8 @@ class Nexus:
                         if p in priors_os:
                             if priors_os[p]['type'] != 'AM':
                                 self.sampled_nuisance_params[pos] = {
-                                    'prior':priors_os[p]['value'],
-                                    'type':priors_os[p]['type']
+                                    'prior': priors_os[p]['value'],
+                                    'type': priors_os[p]['type']
                                 }
                             else:
                                 self.AM_priors[oi][s][p] = priors_os[p]['value']
@@ -308,6 +478,19 @@ class Nexus:
                         self.relation_nuisance_params[po] = self.relations[p]
         self.n_nuisance_params = len(self.sampled_nuisance_params)
         self.n_params_total = self.n_cosmo_params + self.n_nuisance_params
+
+        expected_keys = ["sampled_nuisance_params", "fixed_nuisance_params",
+                         "relation_nuisance_params", "AM_priors"]
+        maxlen = max(len(k) for k in expected_keys)
+
+        for key in expected_keys:
+            value = getattr(self, key)
+
+            if isinstance(value, dict) and not is_flat_dict(value):
+                print("↳ " + f"{boldtext(key.ljust(maxlen))} =")
+                print("↳ " + pretty_nested(value, indent=4, level=1))
+            else:
+                print("↳ " + f"{boldtext(key.ljust(maxlen))} = {value}")
 
         self.n_AM_params = 0
         for oi in self.AM_priors:
@@ -394,101 +577,109 @@ class Nexus:
                         f'{self.input_dir}/{self.fname_mixing_matrix[oi]}')
                     mm_k, mm_kp, mm_comet = self._mixing_matrix_LE3_to_Comet(
                         mixing_matrix, [0,2,4], np.amax(self.kmax[oi]),
-                        np.amax(self.kmax[oi])*self.mixing_matrix_kp_max_mult
+                        np.amax(self.kmax[oi])*self.mixing_matrix_kp_max_multiplier
                     )
-                    self.emu.define_data_set(
-                        obs_id=oi, stat=self.stat[oi], zeff=self.zeff[oi],
-                        bins=k_eff, signal=data_comet, cov=cov_comet,
-                        bins_mixing_matrix=[mm_k,mm_kp],
-                        W_mixing_matrix=mm_comet,
-                        fiducial_cosmology=self.fiducial_cosmology_obs[oi],
-                        composition=self.composition[oi], nbar=self.nbar[oi])
+                    bins_mixing_matrix = [mm_k, mm_kp]
+                    W_mixing_matrix = mm_comet
                 else:
-                    self.emu.define_data_set(
-                        obs_id=oi, stat=self.stat[oi], zeff=self.zeff[oi],
-                        bins=k_eff, signal=data_comet, cov=cov_comet,
-                        fiducial_cosmology=self.fiducial_cosmology[oi],
-                        composition=self.composition[oi], nbar=self.nbar[oi])
-            self.emu.data[oi].set_kmax(self.kmax[oi], self.kmin[oi])
+                    bins_mixing_matrix = None
+                    W_mixing_matrix = None
+                self.emu.define_data_set(
+                    obs_id=oi, stat=self.stat[oi], zeff=self.zeff[oi],
+                    bins=k_eff, signal=data_comet, cov=cov_comet,
+                    bins_mixing_matrix=[mm_k,mm_kp],
+                    W_mixing_matrix=mm_comet,
+                    fiducial_cosmology=self.fiducial_cosmology_obs[oi],
+                    composition=self.composition[oi], nbar=self.nbar[oi])
+            self.emu.data[oi].set_kmax(self.kmax[oi])
 
     def _g2bG2_relation(self, relation, b1):
         if relation == 'LL' or relation == 'coevolution':
-            return - 2./7 * (b1 - 1)
+            return - 2.0 / 7.0 * (b1 - 1.0)
         elif relation == 'excursion_set':
-            return 0.524 - 0.547*b1 + 0.046*b1**2
+            return 0.524 - 0.547 * b1 + 0.046 * b1**2
 
     def _g21bGam3_relation(self, relation, b1, g2bG2):
         if relation == 'coevolution':
             if self.bias_basis == 'EggScoSmi':
-                return 2.0/21.0 * (b1 - 1) + 6.0/7.0 * g2bG2
+                return 2.0 / 21.0 * (b1 - 1.0) + 6.0 / 7.0 * g2bG2
             elif self.bias_basis == 'AssBauGre':
-                return -1./6. * (b1 - 1) - 5./2. * g2bG2
+                return -1.0 / 6.0 * (b1 - 1.0) - 5.0 / 2.0 * g2bG2
 
-    def _assign_params(self, cube):
-        n = 0
+    def _assign_params(self, get_value):
+
         if self.has_composition:
-            params = {s:{} for s in self.species}
+            params = {s: {} for s in self.species}
+
             for p in self.sampled_cosmo_params:
+                val = get_value(p)
                 for s in self.species:
-                    params[s][p] = np.repeat(cube[n], self.n_obs[s])
-                n += 1
+                    params[s][p] = np.repeat(val, self.n_obs[s])
+
             for p in self.fixed_cosmo_params:
                 for s in self.species:
-                    params[s][p] = np.repeat(self.fixed_cosmo_params[p],
-                                             self.n_obs[s])
+                    params[s][p] = np.repeat(
+                        self.fixed_cosmo_params[p], self.n_obs[s])
+
             for pos in self.sampled_nuisance_params:
                 p, oi, s = pos.split('.')
                 noi = self.obs_id[s][oi]
                 if p not in params[s]:
                     params[s][p] = np.zeros(self.n_obs[s])
-                params[s][p][noi] = cube[n]
-                n += 1
+                params[s][p][noi] = get_value(pos)
+
             for pos in self.fixed_nuisance_params:
                 p, oi, s = pos.split('.')
                 noi = self.obs_id[s][oi]
                 if p not in params[s]:
                     params[s][p] = np.zeros(self.n_obs[s])
                 params[s][p][noi] = self.fixed_nuisance_params[pos]
+
             for pos in self.relation_nuisance_params:
                 p, oi, s = pos.split('.')
                 noi = self.obs_id[s][oi]
                 if p not in params[s]:
                     params[s][p] = np.zeros(self.n_obs[s])
                 rel = self.relation_nuisance_params[pos]
-                if p in ['g2','bG2']:
+                if p in ['g2', 'bG2']:
                     params[s][p][noi] = self._g2bG2_relation(
                         rel, params[s]['b1'][noi])
-                elif p in ['g21','bGam3']:
+                elif p in ['g21', 'bGam3']:
                     if self.bias_basis == 'EggScoSmi':
                         params[s][p][noi] = self._g21bGam3_relation(
                             rel, params[s]['b1'][noi], params[s]['g2'][noi])
                     elif self.bias_basis == 'AssBauGre':
                         params[s][p][noi] = self._g21bGam3_relation(
                             rel, params[s]['b1'][noi], params[s]['bG2'][noi])
+
             for s in self.species:
-                params[s]['z'] = np.array([self.composition[oi][s]['zeff']
-                                           for oi in self.observables
-                                           if s in self.composition[oi]])
+                params[s]['z'] = np.array([
+                    self.composition[oi][s]['zeff']
+                    for oi in self.observables if s in self.composition[oi]])
+
         else:
             params = {}
+
             for p in self.sampled_cosmo_params:
-                params[p] = np.repeat(cube[n], self.n_obs)
-                n += 1
+                params[p] = np.repeat(get_value(p), self.n_obs)
+
             for p in self.fixed_cosmo_params:
                 params[p] = np.repeat(self.fixed_cosmo_params[p], self.n_obs)
+
             for po in self.sampled_nuisance_params:
                 p, oi = po.split('.')
                 noi = self.obs_id[oi]
                 if p not in params:
                     params[p] = np.zeros(self.n_obs)
-                params[p][noi] = cube[n]
-                n += 1
+                params[p][noi] = get_value(po)
+
             for po in self.fixed_nuisance_params:
                 p, oi = po.split('.')
                 noi = self.obs_id[oi]
                 if p not in params:
                     params[p] = np.zeros(self.n_obs)
                 params[p][noi] = self.fixed_nuisance_params[po]
+
             for po in self.relation_nuisance_params:
                 p, oi = po.split('.')
                 noi = self.obs_id[oi]
@@ -505,10 +696,31 @@ class Nexus:
                     elif self.bias_basis == 'AssBauGre':
                         params[p][noi] = self._g21bGam3_relation(
                             rel, params['b1'][noi], params['bG2'][noi])
+
             params['z'] = np.array([self.zeff[oi] for oi in self.observables])
+
         return params
 
-    def _generate_prior_loglik(self):
+    def _assign_params_multinest(self, cube):
+        n = 0
+
+        def get_value(key):
+            nonlocal n
+            val = cube[n]
+            n += 1
+            return val
+
+        return self._assign_params(get_value)
+
+    def _assign_params_nautilus(self, params_dict):
+
+        def get_value(key):
+            return params_dict[key]
+
+        return self._assign_params(get_value)
+
+
+    def _generate_prior_loglike(self):
         if self.sampler == 'multinest':
             from scipy.special import erfinv
             def prior(cube):
@@ -531,22 +743,61 @@ class Nexus:
                     n += 1
                 return cube
 
-            def loglik(cube):
-                params = self._assign_params(cube)
+            def loglike(cube):
+                params = self._assign_params_multinest(cube)
                 chi2 = self.emu.chi2(self.observables, params, self.kmax,
                                      self.de_model, AM_priors=self.AM_priors)
                 return -0.5 * chi2
 
-            return prior, loglik
+        elif self.sampler == "nautilus":
+
+            import nautilus
+            prior = nautilus.Prior()
+            for p in self.sampled_cosmo_params:
+                if self.sampled_cosmo_params[p]['type'] == 'flat':
+                    p_min, p_max = self.sampled_cosmo_params[p]['prior']
+                    prior.add_parameter(p, dist=(p_min, p_max))
+                else:
+                    mean, std = self.sampled_cosmo_params[p]['prior']
+                    prior.add_parameter(p, dist=norm(loc=mean, scale=std))
+            for p in self.sampled_nuisance_params:
+                if self.sampled_nuisance_params[p]['type'] == 'flat':
+                    p_min, p_max = self.sampled_nuisance_params[p]['prior']
+                    prior.add_parameter(p, dist=(p_min, p_max))
+                else:
+                    mean, std = self.sampled_nuisance_params[p]['prior']
+                    prior.add_parameter(p, dist=norm(loc=mean, scale=std))
+
+            def loglike(params_dict):
+                params = self._assign_params_nautilus(params_dict)
+                chi2 = self.emu.chi2(self.observables, params, self.kmax,
+                                     self.de_model, AM_priors=self.AM_priors)
+                return -0.5 * chi2.squeeze()
+
+        return prior, loglike
 
     def run_chain(self, resume=False, verbose=True):
         if self.sampler == 'multinest':
             import pymultinest
-            prior, loglik = self._generate_prior_loglik()
+            prior, loglike = self._generate_prior_loglike()
             pymultinest.solve(
-                loglik, prior, self.n_params_total,
-                outputfiles_basename=f'{self.output_dir}/{self.output_fname}',
+                loglike, prior, self.n_params_total,
+                outputfiles_basename=f'{self.output_dir}/{self.output_filename}',
                 resume=resume, verbose=verbose, n_live_points=self.n_live,
                 sampling_efficiency=self.sampling_efficiency,
                 evidence_tolerance=self.evidence_tolerance
             )
+        elif self.sampler == 'nautilus':
+            import nautilus
+            prior, loglike = self._generate_prior_loglike()
+            base, _ = os.path.splitext(f'{self.output_dir}/{self.output_filename}')
+            #checkpoint = base + ".hdf5"
+            sampler = nautilus.Sampler(prior, loglike, n_live=self.n_live,
+                                       pool=self.pool)#, filepath=checkpoint,
+                                       #resume=resume)
+            sampler.run(f_live=self.f_live, n_eff=self.n_eff,
+                        verbose=verbose, discard_exploration=True)
+            log_z = sampler.evidence()
+            points, log_w, log_l = sampler.posterior()
+            np.save(f'{self.output_dir}/{self.output_filename}',
+                    np.c_[log_w, log_l, points])
