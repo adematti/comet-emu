@@ -90,9 +90,9 @@ class MeasuredData:
             self.composition = None
             
         if 'z_error' in kwargs:
+            z_error = kwargs.get('z_error')
             if self.composition is not None:
                 self.z_error = {}
-                z_error = kwargs.get('z_error')
                 if isinstance(z_error, dict):
                     for spec in self.composition:
                         if spec in z_error:

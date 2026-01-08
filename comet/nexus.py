@@ -567,6 +567,11 @@ class Nexus:
                             counterterm_basis=self.ctr_noise_basis)
 
         for oi in self.observables:
+            if self.has_composition:
+                z_error = {spec:self.composition[oi][spec]['zerror'] 
+                           for spec in self.composition[oi]}
+            else:
+                z_error = self.sample[oi]['zerror']
             if self.data_model == 'LE3':
                 data = fits.open(f'{self.input_dir}/{self.fname_data[oi]}')
                 cov = fits.open(f'{self.input_dir}/{self.fname_cov[oi]}')
@@ -590,7 +595,9 @@ class Nexus:
                     bins_mixing_matrix=[mm_k,mm_kp],
                     W_mixing_matrix=mm_comet,
                     fiducial_cosmology=self.fiducial_cosmology_obs[oi],
-                    composition=self.composition[oi], nbar=self.nbar[oi])
+                    composition=self.composition[oi], nbar=self.nbar[oi],
+                    z_error=z_error
+                )
             self.emu.data[oi].set_kmax(self.kmax[oi])
 
     def _g2bG2_relation(self, relation, b1):
