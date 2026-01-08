@@ -97,7 +97,7 @@ class Nexus:
                 self.nuisance_params += ['cnlot']
         if self.model == 'VDG_infty':
             self.nuisance_params += ['avir']
-        self.nuisance_params += ['sigma', 'gamma']
+        self.nuisance_params += ['sigma_z', 'gamma_z']
         print (boldtext("\n↳ nuisance parameters ="), self.nuisance_params)
 
         print ()
