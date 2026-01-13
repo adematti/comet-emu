@@ -4709,6 +4709,7 @@ class PTEmu:
             # for p in params:
             #     params_eval[p] = np.atleast_1d(params[p])[ids_sorting]
             # params_eval = self._order_params_for_obs_id(params, obs_id_stat[stat])
+            params = {k: v.copy() for k, v in params.items()}
             if stat == 'powerspectrum':
                 chi2 += self._chi2_powerspectrum(
                     obs_id_stat[stat], params,
