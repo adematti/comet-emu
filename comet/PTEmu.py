@@ -3968,7 +3968,7 @@ class PTEmu:
                             convolve_window=False, q_tr_lo=None,
                             W_damping=None, chi2_decomposition=False,
                             compute_chi2_decomposition=True, AM_priors=None,
-                            ell_for_recon=None):
+                            ell_for_recon=None, use_Jeffreys=False):
         r"""Compute the analytical  marginalization.
 
         Return a matrix (array of array) where every array correspond to a redshift bin and all the the components to the relative PX_ell template.
@@ -4205,9 +4205,9 @@ class PTEmu:
                         Bi = -np.einsum("mi...,m...->i...", PX_ell_list_oi,
                                         Cinv_diff)
                         Bi += (mu / sigma**2)[(...,)+(np.newaxis,)*(Bi.ndim-1)]
-                        C = np.log(np.linalg.det(Aij.T)) + np.sum((mu/sigma)**2)
-                        chi2 += C - np.einsum("a...,ab...,b...", Bi,
-                                              Aij_inv, Bi)
+                        chi2 += (np.sum((mu/sigma)**2)
+                            - np.einsum("a...,ab...,b...", Bi, Aij_inv, Bi))
+                        if not use_Jeffreys: chi2 += np.log(np.linalg.det(Aij.T))
                     else:
                         A = np.einsum(
                             "m...,m...", PX_ell_list_oi,
@@ -4217,8 +4217,8 @@ class PTEmu:
                         A_inv = 1.0 / A
                         B = -np.einsum("m...,m...", PX_ell_list_oi, Cinv_diff)
                         B += mu / sigma**2
-                        C = np.log(A) + (mu/sigma)**2
-                        chi2 += C - B**2 / A
+                        chi2 += (mu/sigma)**2 - B**2 / A
+                        if not use_Jeffreys: chi2 += np.log(A)
         #TO DO IMPLEMENT AM FOR CHI2DEC
         else:
             if compute_chi2_decomposition:
@@ -4489,7 +4489,8 @@ class PTEmu:
 
     def chi2(self, obs_id, params, kmax, de_model=None, binning=None,
              q_tr_lo=None, W_damping=None, chi2_decomposition=False,
-             AM_priors=None, ell_for_recon=None, cnloB_mapping=None):
+             AM_priors=None, ell_for_recon=None, cnloB_mapping=None,
+             use_Jeffreys=False):
         r"""Compute the :math:`\chi^2 for the given configurations`.
 
         Generates the selected power spectrum multipoles for the specified set
@@ -4719,7 +4720,8 @@ class PTEmu:
                     q_tr_lo=q_tr_lo, W_damping=W_damping[stat],
                     chi2_decomposition=chi2_decomposition,
                     compute_chi2_decomposition=compute_chi2_decomposition,
-                    AM_priors=AM_priors, ell_for_recon=ell_for_recon
+                    AM_priors=AM_priors, ell_for_recon=ell_for_recon,
+                    use_Jeffreys=use_Jeffreys
                 )
             elif stat == 'bispectrum':
                 chi2 += self._chi2_bispectrum(
