@@ -1425,8 +1425,7 @@ class PTEmu:
 
         return np.array([bias[x] for x in diagrams_to_marg]).squeeze()
 
-    def _eval_emulator(self, params, ell, de_model=None,
-                       q_tr_lo=None, gamma_tr_lo=None):
+    def _eval_emulator(self, params, ell, de_model=None):
         r"""Evaluate the emulators for the different terms.
 
         Sets up the internal parameters of the class, and evaluate the
@@ -1601,11 +1600,6 @@ class PTEmu:
                 self.Pk_ratios[m] = self.training['FULL'].transform_inv(
                     ratios_all[:,i*self.emu_output_length:(i+1) \
                                *self.emu_output_length], m).T
-
-        self._update_AP_params(params, de_model=de_model,
-                               q_tr_lo=q_tr_lo, gamma_tr_lo=gamma_tr_lo)
-        self._update_bias_params(params, include_RSD_params=True,
-                                 include_obs_syst_params=True)
 
     def _rescale_params(self):
         if self.reparametrisation == 'TCM':
@@ -2047,8 +2041,7 @@ class PTEmu:
         Pdw = np.squeeze(self.Pdw_spline.eval(k))
         return Pdw
 
-    def _Pell_fid_ktable(self, params, ell, de_model=None,
-                         q_tr_lo=None, gamma_tr_lo=None):
+    def _Pell_fid_ktable(self, params, ell, de_model=None):
         r"""Compute the power spectrum multipoles at the training wavemodes.
 
         Returns the specified multipole at a fixed :math:`k` grid
@@ -2082,12 +2075,7 @@ class PTEmu:
             :math:`k` grid used for the training of the emulator.
         """
         ell = [ell] if not isinstance(ell, list) else ell
-        ell_eval_emu = ell.copy()
-        if 6 in ell_eval_emu:
-            ell_eval_emu.remove(6)
 
-        self._eval_emulator(params, ell_eval_emu, de_model=de_model,
-                            q_tr_lo=q_tr_lo, gamma_tr_lo=gamma_tr_lo)
         bij = self._get_bias_coeff()
 
         Pell = np.zeros([self.nk, len(ell), self.nparams])
@@ -2509,6 +2497,9 @@ class PTEmu:
             ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
 
         ell = [ell] if not isinstance(ell, list) else ell
+        ell_eval_emu = ell.copy()
+        if 6 in ell_eval_emu:
+            ell_eval_emu.remove(6)
 
         if isinstance(k, list):
             if len(k) != len(ell):
@@ -2603,10 +2594,13 @@ class PTEmu:
             if (np.any(params_updated) or
                     np.any([p not in params.keys() for p in params_nonzero]) or
                     not self.splines_up_to_date or diff_shape):
+                self._eval_emulator(params, ell_eval_emu, de_model=de_model)
+                self._update_AP_params(params, de_model=de_model,
+                                       q_tr_lo=q_tr_lo, gamma_tr_lo=gamma_tr_lo)
+                self._update_bias_params(params, include_RSD_params=True,
+                                         include_obs_syst_params=True)
                 Pell = self._Pell_fid_ktable(params, ell=ell_for_recon,
-                                             de_model=de_model,
-                                             q_tr_lo=q_tr_lo,
-                                             gamma_tr_lo=gamma_tr_lo)
+                                             de_model=de_model)
                 h = None if self.use_Mpc else self.params['h']
                 self.Pell_spline.build(self.k_table, Pell, h=h)
                 self.splines_up_to_date = True

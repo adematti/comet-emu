@@ -59,7 +59,8 @@ class Nexus:
             "use_Planck": False,
             "use_BAO": False,
             "use_SN": False,
-            "use_Jeffreys": False
+            "use_Jeffreys": False,
+            "reparametrisation": None
         }
 
         maxlen = max(len(k) for k in expected_keys.keys())
@@ -564,11 +565,12 @@ class Nexus:
                 or self.emu.counterterm_basis != self.ctr_noise_basis:
             self.emu = comet(model=self.model, use_Mpc=self.use_Mpc,
                             bias_basis=self.bias_basis,
-                            counterterm_basis=self.ctr_noise_basis)
+                            counterterm_basis=self.ctr_noise_basis,
+                            reparametrisation=self.reparametrisation)
 
         for oi in self.observables:
             if self.has_composition:
-                z_error = {spec:self.composition[oi][spec]['zerror'] 
+                z_error = {spec:self.composition[oi][spec]['zerror']
                            for spec in self.composition[oi]}
             else:
                 z_error = self.sample[oi]['zerror']
@@ -598,6 +600,16 @@ class Nexus:
                     composition=self.composition[oi], nbar=self.nbar[oi],
                     z_error=z_error
                 )
+            elif self.data_model == 'FStxt':
+                data = np.loadtxt(f'{self.input_dir}/{self.fname_data[oi]}', unpack=True)
+                k = k_eff = data[0]
+                data_comet = data[1:].T
+                cov_comet = np.loadtxt(f'{self.input_dir}/{self.fname_cov[oi]}')
+                self.emu.define_data_set(
+                    obs_id=oi, stat=self.stat[oi], zeff=self.zeff[oi],
+                    bins=k_eff, signal=data_comet, cov=cov_comet,
+                    fiducial_cosmology=self.fiducial_cosmology_obs[oi],
+                    composition=self.composition[oi], nbar=self.nbar[oi])
             self.emu.data[oi].set_kmax(self.kmax[oi])
 
     def _g2bG2_relation(self, relation, b1):
