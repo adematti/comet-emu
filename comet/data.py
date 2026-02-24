@@ -88,7 +88,7 @@ class MeasuredData:
             self.composition = kwargs.get('composition')
         else:
             self.composition = None
-            
+
         if 'z_error' in kwargs:
             z_error = kwargs.get('z_error')
             if self.composition is not None:
@@ -245,7 +245,7 @@ class MeasuredData:
 
         if 'composition' in kwargs:
             self.composition = kwargs.get('composition')
-            
+
         if 'z_error' in kwargs:
             if self.composition is not None:
                 self.z_error = {}
@@ -273,7 +273,7 @@ class MeasuredData:
                 W_mixing_matrix = kwargs.get('W_mixing_matrix')
                 if isinstance(W_mixing_matrix, dict):
                     W_stacked = np.stack(
-                        [W_mixing_matrix[species] 
+                        [W_mixing_matrix[species]
                          for species in self.composition],
                         axis=0
                     )
@@ -335,11 +335,11 @@ class MeasuredData:
         self.W_mixing_matrix = None
         self.kmax_is_set = False
         self.mixing_matrix_exists = False
-        
+
     def get_kvec_compression(self, kmin, kmax, nk=100):
         def croot(x, p):
             return np.sign(x) * np.abs(x)**(1.0 / p)
-        
+
         kcenter = 0.65
         power = 1.5
         qmin = np.log10(kmin)
@@ -399,7 +399,7 @@ class MeasuredData:
             self.kmax = [kmax for i in range(self.n_ell)]
         else:
             self.kmax = kmax
-            
+
         if not isinstance(kmin, list):
             self.kmin = [kmin for i in range(self.n_ell)]
         else:
@@ -411,8 +411,8 @@ class MeasuredData:
         ids_kmax = []
         for ell in range(self.n_ell):
             ids_kmax.append(np.where(
-                np.all(self.bins[:,None] < self.kmax[ell], axis=-1) & \
-                np.all(self.bins[:,None] > self.kmin[ell], axis=-1))[0])
+                np.all(self.bins[:,None] <= self.kmax[ell], axis=-1) & \
+                np.all(self.bins[:,None] >= self.kmin[ell], axis=-1))[0])
             self.nbins[ell] = len(ids_kmax[ell])
             # for i in range(nbin_total):
             #     if np.all(self.bins[i] < self.kmax[ell]):

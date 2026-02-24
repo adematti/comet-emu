@@ -1,22 +1,21 @@
 """Main PTEmu module."""
 
 import numpy as np
+import os, pickle
+from copy import deepcopy
 from scipy.interpolate import UnivariateSpline, make_interp_spline
 from scipy.integrate import quad_vec, quad, dblquad
 from scipy.special import eval_legendre
 from astropy.io import fits
 from functools import reduce
-import pickle
 from comet.cosmology import Cosmology
 from comet.data import MeasuredData
 from comet.tables import Tables
 from comet.splines import Splines
 from comet.grid import Grid
 from comet.bispectrum import Bispectrum
-import os
 
 base_dir = os.path.join(os.path.dirname(__file__))
-
 
 
 class PTEmu:
@@ -73,15 +72,19 @@ class PTEmu:
         ['EggScoSmi', 'AssBauGre', AmiGleKok]. Defaults to 'EggScoSmi'.
     counterterm_basis: str, optional
         Identifier for the counterterm basis convention, possible choices
-        are "Comet" (default) and "ClassPT".
+        are "Comet" (default), "ClassPT", and "PBJ". Defaults to "Comet"
+    reparametrisation: str, optional
+        Scheme for the reparametrisation of nuisance parameters, possible
+        choices are None and "TCM". Defaults to None.
     """
 
     def __init__(self, model, use_Mpc=True, bias_basis='EggScoSmi',
-                 counterterm_basis='Comet'):
+                 counterterm_basis='Comet', reparametrisation=None):
 
         self.model = model
         self.bias_basis = bias_basis
         self.counterterm_basis = counterterm_basis
+        self.reparametrisation = reparametrisation
 
         self.bias_params_list = []
 
@@ -101,6 +104,8 @@ class PTEmu:
             self.bias_params_list += ['c0', 'c2', 'c4', 'cnlo', 'NP0', 'NP20', 'NP22']
         elif self.counterterm_basis == 'ClassPT':
             self.bias_params_list += ['c0*', 'c2*', 'c4*', 'cnlo*', 'NP0', 'NP20*', 'NP22*']
+        elif self.counterterm_basis == 'PBJ':
+            self.bias_params_list += ['c0t', 'c2t', 'c4t', 'cnlo', 'NP0', 'eps0', 'eps2']
         else:
             print('Warning. Counterterms and noise basis not recognised, defaulting to '
                   '"Comet".')
@@ -152,6 +157,9 @@ class PTEmu:
                                  'c0*': ['Pctr_c0'],
                                  'c2*': ['Pctr_c2'],
                                  'c4*': ['Pctr_c4'],
+                                 'c0t': ['Pctr_c0'],
+                                 'c2t': ['Pctr_c2'],
+                                 'c4t': ['Pctr_c4'],
                                  'cnlo': ['Pctr_b1b1cnlo', 'Pctr_b1cnlo',
                                           'Pctr_cnlo'],
                                  'cnlo*': ['Pctr_b1b1cnlo', 'Pctr_b1cnlo',
@@ -160,7 +168,9 @@ class PTEmu:
                                  'NP20': ['Pnoise_NP20'],
                                  'NP22': ['Pnoise_NP22'],
                                  'NP20*': ['Pnoise_NP20'],
-                                 'NP22*': ['Pnoise_NP22']
+                                 'NP22*': ['Pnoise_NP22'],
+                                 'eps0': ['Pnoise_NP20'],
+                                 'eps2': ['Pnoise_NP22'],
                                  }
 
         if 'EFT' in self.model:
@@ -255,6 +265,7 @@ class PTEmu:
         self.params['q_tr'] = np.array([1.0])
         self.params['q_lo'] = np.array([1.0])
         self.nparams = 1
+        self.params_check = deepcopy(self.params)
 
     def _load_emulator_data(self, fname):
         r"""Load tables of the emulator.
@@ -457,9 +468,13 @@ class PTEmu:
         counterterm_params = []
 
         for param in self.bias_params_list:
-            if param in ['b1', 'b2', 'g2', 'g21', 'bG2', 'bGam3', 'b1t', 'b2t', 'b3t', 'b4t']:
+            if param in ['b1', 'b2', 'g2', 'g21',
+                         'bG2', 'bGam3',
+                         'b1t', 'b2t', 'b3t', 'b4t']:
                 bias_params.append(param)
-            elif param in ['c0', 'c2', 'c4', 'cnlo', 'NP0', 'NP20', 'NP22', 'c0*', 'c2*', 'c4*', 'cnlo*', 'NP20*', 'NP22*']:
+            elif param in ['c0', 'c2', 'c4', 'cnlo', 'NP0', 'NP20', 'NP22',
+                           'c0*', 'c2*', 'c4*', 'cnlo*', 'NP20*', 'NP22*',
+                           'c0t', 'c2t', 'c4t', 'eps0', 'eps2']:
                 counterterm_params.append(param)
 
         if bias_basis is not None and bias_basis != self.bias_basis:
@@ -490,6 +505,9 @@ class PTEmu:
             elif counterterm_basis == 'ClassPT':
                 counterterm_params.extend(['c0*', 'c2*', 'c4*', 'cnlo*',
                                            'NP0', 'NP20*', 'NP22*'])
+            elif counterterm_basis == 'PBJ':
+                counterterm_params.extend(['c0t', 'c2t', 'c4t', 'cnlo',
+                                           'NP0', 'eps0', 'eps2'])
             else:
                 print('Warning. Counterterm basis not recognised, choose '
                       'between "Comet" or "ClassPT". Defaulting to "EggScoSmi"')
@@ -922,6 +940,9 @@ class PTEmu:
             ])
             for p in expected_params:
                 self.params[p] = np.atleast_1d(params[p])
+            for p in ['w0', 'wa']:
+                if self.params[p].size != self.params['wc'].size:
+                    self.params[p] = np.full_like(self.params['wc'], self.params[p].item())
             if de_model == 'lambda' and \
                     (np.any(self.params['w0'] != -1.0) or \
                      np.any(self.params['wa'] != 0.0)):
@@ -961,8 +982,7 @@ class PTEmu:
             self.chi2_decomposition = None
             self.Bisp_chi2_decomposition = None
 
-        self._update_bias_params(params, include_RSD_params=True,
-                                 include_obs_syst_params=True)
+        self.params_check.update(deepcopy(self.params))
 
         return emu_params_updated
 
@@ -997,7 +1017,7 @@ class PTEmu:
 
         for p in params_list:
             if p in params.keys():
-                self.params[p] = np.atleast_1d(params[p])
+                self.params[p] = deepcopy(np.atleast_1d(params[p]))
             else:
                 self.params[p] = np.zeros_like(self.params['wc'])
 
@@ -1020,6 +1040,31 @@ class PTEmu:
             self.params['g21'] = -2.0/147.0 * (11*self.params['b1t']
                                                - 18*self.params['b2t']
                                                + 7*self.params['b3t'])
+
+        if self.counterterm_basis == 'ClassPT':
+            self.params['c0'] = self.params['c0*']
+            self.params['c2'] = 2.0/3.0 * self.params['f'] * self.params['c2*']
+            self.params['c4'] = 8.0/35.0 * self.params['f']**2 \
+                                * self.params['c4*']
+            self.params['cnlo'] = - self.params['cnlo*']
+            self.params['NP20'] = self.params['NP20*'] + 1.0/3.0 \
+                                  * self.params['NP22*']
+            self.params['NP22'] = 2.0/3.0 * self.params['NP22*']
+        elif self.counterterm_basis == 'PBJ':
+            self.params['c0'] = (
+                self.params['c0t']
+                + 1.0/3.0*self.params['f']*self.params['c2t']
+                + 1.0/5.0*self.params['f']**2*self.params['c4t'])
+            self.params['c2'] = (
+                2.0/3.0*self.params['f']*self.params['c2t']
+                + 4.0/7.0*self.params['f']**2*self.params['c4t'])
+            self.params['c4'] = 8.0/35.0*self.params['f']**2*self.params['c4t']
+            self.params['NP20'] = (
+                self.params['eps0'] + 1.0/3.0* self.params['eps2'])
+            self.params['NP22'] = 2.0/3.0 * self.params['eps2']
+
+        self.params_check.update(deepcopy(self.params))
+        if self.reparametrisation: self._rescale_params()
 
     def _update_AP_params(self, params, de_model=None, q_tr_lo=None,
                           gamma_tr_lo=None):
@@ -1087,6 +1132,8 @@ class PTEmu:
         if gamma_tr_lo is not None:
             self.params['q_lo'] *= gamma_tr_lo[1]
             self.params['q_tr'] *= gamma_tr_lo[0]
+
+        self.params_check.update(deepcopy(self.params))
 
     def _get_bias_coeff(self):
         r"""Get bias coefficients for the emulated terms.
@@ -1335,6 +1382,8 @@ class PTEmu:
         h = np.ones_like(b1) if self.use_Mpc else self.params['h']
         h2 = h**2
         h4 = h**4
+        s12 = self.params['s12']
+        Aap = 1.0 / (self.params['q_tr']**2 * self.params['q_lo'])
 
         bias = {}
         if self.bias_basis == 'EggScoSmi':
@@ -1361,10 +1410,23 @@ class PTEmu:
             bias['Pctr_b1b1cnlo'] = -bias['Pctr_b1b1cnlo']
             bias['Pctr_b1cnlo'] = -bias['Pctr_b1cnlo']
             bias['Pctr_cnlo'] = -bias['Pctr_cnlo']
+        if self.reparametrisation == 'TCM':
+            bias['P1L_b1g21'] /= (Aap * s12**4)
+            bias['P1L_g21'] /= (Aap * s12**4)
+            bias['Pctr_c0'] /= (Aap * s12**2)
+            bias['Pctr_c2'] /= (Aap * s12**2)
+            bias['Pctr_c4'] /= (Aap * s12**2)
+            bias['Pctr_b1b1cnlo'] /= (Aap * s12**2)
+            bias['Pctr_b1cnlo'] /= (Aap * s12**2)
+            bias['Pctr_cnlo'] /= (Aap * s12**2)
+            bias['Pnoise_NP0'] /= Aap
+            bias['Pnoise_NP20'] /= Aap
+            bias['Pnoise_NP22'] /= Aap
 
         return np.array([bias[x] for x in diagrams_to_marg]).squeeze()
 
-    def _eval_emulator(self, params, ell, de_model=None):
+    def _eval_emulator(self, params, ell, de_model=None,
+                       q_tr_lo=None, gamma_tr_lo=None):
         r"""Evaluate the emulators for the different terms.
 
         Sets up the internal parameters of the class, and evaluate the
@@ -1540,15 +1602,27 @@ class PTEmu:
                     ratios_all[:,i*self.emu_output_length:(i+1) \
                                *self.emu_output_length], m).T
 
-        if self.counterterm_basis == 'ClassPT':
-            self.params['c0'] = self.params['c0*']
-            self.params['c2'] = 2.0/3.0 * self.params['f'] * self.params['c2*']
-            self.params['c4'] = 8.0/35.0 * self.params['f']**2 \
-                                * self.params['c4*']
-            self.params['cnlo'] = - self.params['cnlo*']
-            self.params['NP20'] = self.params['NP20*'] + 1.0/3.0 \
-                                  * self.params['NP22*']
-            self.params['NP22'] = 2.0/3.0 * self.params['NP22*']
+        self._update_AP_params(params, de_model=de_model,
+                               q_tr_lo=q_tr_lo, gamma_tr_lo=gamma_tr_lo)
+        self._update_bias_params(params, include_RSD_params=True,
+                                 include_obs_syst_params=True)
+
+    def _rescale_params(self):
+        if self.reparametrisation == 'TCM':
+            Aap = 1.0 / (self.params['q_tr']**2 * self.params['q_lo'])
+            s12 = self.params['s12']
+            self.params['b1'] /= (np.sqrt(Aap) * s12)
+            self.params['b2'] /= (np.sqrt(Aap) * s12**2)
+            self.params['g2'] /= (np.sqrt(Aap) * s12**2)
+            self.params['g21'] /= (Aap * s12**4)
+            self.params['c0'] /= (Aap * s12**2)
+            self.params['c2'] /= (Aap * s12**2)
+            self.params['c4'] /= (Aap * s12**2)
+            if 'EFT' in self.model:
+                self.params['cnlo'] /= (Aap * s12**2)
+            self.params['NP0'] /= Aap
+            self.params['NP20'] /= Aap
+            self.params['NP22'] /= Aap
 
     def _W_kurt(self, k, mu):
         r"""Large scale limit of the velocity difference generating function.
@@ -1973,7 +2047,8 @@ class PTEmu:
         Pdw = np.squeeze(self.Pdw_spline.eval(k))
         return Pdw
 
-    def _Pell_fid_ktable(self, params, ell, de_model=None):
+    def _Pell_fid_ktable(self, params, ell, de_model=None,
+                         q_tr_lo=None, gamma_tr_lo=None):
         r"""Compute the power spectrum multipoles at the training wavemodes.
 
         Returns the specified multipole at a fixed :math:`k` grid
@@ -2011,7 +2086,8 @@ class PTEmu:
         if 6 in ell_eval_emu:
             ell_eval_emu.remove(6)
 
-        self._eval_emulator(params, ell_eval_emu, de_model=de_model)
+        self._eval_emulator(params, ell_eval_emu, de_model=de_model,
+                            q_tr_lo=q_tr_lo, gamma_tr_lo=gamma_tr_lo)
         bij = self._get_bias_coeff()
 
         Pell = np.zeros([self.nk, len(ell), self.nparams])
@@ -2343,13 +2419,13 @@ class PTEmu:
             ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
 
         params_updated = [
-            not np.array_equal(np.array(params[p]), self.params[p])
+            not np.array_equal(np.array(params[p]), self.params_check[p])
             for p in params.keys()
         ]
         params_nonzero = [x for x in self.bias_params_list +
                           self.RSD_params_list + self.obs_syst_params_list
-                          if np.any(self.params[x] != 0)]
-        diff_shape = np.any([np.array(params[p]).shape != self.params[p].shape
+                          if np.any(self.params_check[x] != 0)]
+        diff_shape = np.any([np.array(params[p]).shape != self.params_check[p].shape
                              for p in params.keys()])
 
         if (np.any(params_updated) or
@@ -2514,27 +2590,29 @@ class PTEmu:
 
         if obs_id is None:
             params_updated = [
-                not np.array_equal(np.array(params[p]), self.params[p])
+                not np.array_equal(np.array(params[p]), self.params_check[p])
                 for p in params.keys()
             ]
             params_nonzero = [x for x in self.bias_params_list +
                               self.RSD_params_list + self.obs_syst_params_list
-                              if np.any(self.params[x] != 0)]
+                              if np.any(self.params_check[x] != 0)]
             diff_shape = np.any(
-                [np.array(params[p]).shape != self.params[p].shape
+                [np.array(params[p]).shape != self.params_check[p].shape
                  for p in params.keys()])
 
             if (np.any(params_updated) or
                     np.any([p not in params.keys() for p in params_nonzero]) or
                     not self.splines_up_to_date or diff_shape):
                 Pell = self._Pell_fid_ktable(params, ell=ell_for_recon,
-                                             de_model=de_model)
+                                             de_model=de_model,
+                                             q_tr_lo=q_tr_lo,
+                                             gamma_tr_lo=gamma_tr_lo)
                 h = None if self.use_Mpc else self.params['h']
                 self.Pell_spline.build(self.k_table, Pell, h=h)
                 self.splines_up_to_date = True
 
-            self._update_AP_params(params, de_model=de_model,
-                                   q_tr_lo=q_tr_lo, gamma_tr_lo=gamma_tr_lo)
+            #self._update_AP_params(params, de_model=de_model,
+            #                       q_tr_lo=q_tr_lo, gamma_tr_lo=gamma_tr_lo)
             q3 = self.params['q_tr']**2 * self.params['q_lo']
 
             if binning is None or use_effective_modes:
@@ -2627,7 +2705,7 @@ class PTEmu:
                 # print('Warning! Bins for mixing matrix and/or mixing matrix '
                 #       'itself not provided. Returning unconvolved power '
                 #       'spectrum.')
-                Pell_dict = self.Pell(k, params_eval, ell, de_model, binning,
+                Pell_dict = self.Pell(k_list, params_eval, ell, de_model, binning,
                                       None, q_tr_lo, gamma_tr_lo, W_damping,
                                       ell_for_recon)
                 # add up interloper contributions
@@ -2903,11 +2981,11 @@ class PTEmu:
         if 6 in ell_eval_emu:
             ell_eval_emu.remove(6)
 
-        params_updated = [params[p] != self.params[p] for p in
+        params_updated = [params[p] != self.params_check[p] for p in
                           params.keys()]
         params_nonzero = [x for x in self.bias_params_list +
                           self.RSD_params_list + self.obs_syst_params_list
-                          if np.any(self.params[x] != 0)]
+                          if np.any(self.params_check[x] != 0)]
 
         if np.any(params_updated) \
                 or np.any([p not in params.keys() for p in params_nonzero]):
@@ -3239,12 +3317,12 @@ class PTEmu:
 
         if obs_id is None:
             params_updated = [
-                not np.array_equal(np.array(params[p]), self.params[p])
+                not np.array_equal(np.array(params[p]), self.params_check[p])
                 for p in params.keys()
             ]
             params_nonzero = [x for x in self.bias_params_list +
                               self.RSD_params_list + self.obs_syst_params_list
-                              if np.any(self.params[x] != 0)]
+                              if np.any(self.params_check[x] != 0)]
 
             if np.any(params_updated) \
                     or np.any([p not in params.keys() for p in params_nonzero]):
@@ -3322,6 +3400,8 @@ class PTEmu:
                 else:
                     PX_ell_model[:,:,n1:n2] = LOS_average_discrete(XNL)
             PX_ell_model = PX_ell_model[:,:,ordering,:]
+            mask = ~np.isfinite(PX_ell_model)  # To remove presence of infs and nans
+            PX_ell_model[mask] = 0.0           # To remove presence of infs and nans
             norm = np.divide.outer(2.0*np.array(ell)+1.0, q3)
             PX_ell_model *= norm[None,:,None,:]
 
@@ -3410,7 +3490,7 @@ class PTEmu:
                 # print('Warning! Bins for mixing matrix and/or mixing matrix '
                 #       'itself not provided. Returning unconvolved power '
                 #       'spectrum.')
-                PX_ell_dict = self.PX_ell(k, params_eval, ell, X_list, de_model,
+                PX_ell_dict = self.PX_ell(k_list, params_eval, ell, X_list, de_model,
                                           binning, None, q_tr_lo, gamma_tr_lo,
                                           W_damping, ell_for_recon)
                 if self.data[obs_id_use].composition is not None:
@@ -3963,6 +4043,39 @@ class PTEmu:
     #
     #     return np.array(a)
 
+    def _rescale_marg_tables(self, input_tables, diagrams):
+        index = {s: np.where(np.array(diagrams) == s)[0][0]
+                 for s in ['P1L_b1g21', 'P1L_g21',
+                           'Pctr_c0', 'Pctr_c2', 'Pctr_c4',
+                           'Pctr_b1b1cnlo', 'Pctr_b1cnlo', 'Pctr_cnlo',
+                           'Pnoise_NP0', 'Pnoise_NP20', 'Pnoise_NP22']
+                 if s in diagrams}
+
+        output_tables = {k: v.copy() for k, v in input_tables.items()}
+        f = self.params['f']
+
+        if self.counterterm_basis == 'PBJ':
+            for key, table in input_tables.items():
+                out = output_tables[key]
+                if 'Pctr_c2' in diagrams:
+                    out[:, index['Pctr_c2'], :] = (
+                        2.0/3.0 * f *
+                        (table[:, index['Pctr_c2'], :]
+                        + 0.5 * table[:, index['Pctr_c0'], :]))
+                if 'Pctr_c4' in diagrams:
+                    out[:, index['Pctr_c4'], :] = (
+                        8.0/35.0 * f**2 *
+                        (table[:, index['Pctr_c4'], :]
+                        + 2.5 * table[:, index['Pctr_c2'], :]
+                        + 7.0/8.0 * table[:, index['Pctr_c0'], :]))
+                if 'Pnoise_NP22' in diagrams:
+                    out[:, index['Pnoise_NP22'], :] = (
+                        1.0/3.0 *
+                        (2.0 * table[:, index['Pnoise_NP22'], :]
+                        + table[:, index['Pnoise_NP20'], :]))
+
+        return output_tables
+
     def _chi2_powerspectrum(self, obs_id, params,
                             ell, de_model=None, binning=None,
                             convolve_window=False, q_tr_lo=None,
@@ -4100,7 +4213,7 @@ class PTEmu:
 
         chi2 = 0.0
         if not chi2_decomposition:
-            convolve_obs_id = obs_id if convolve_window else None
+            convolve_obs_id = obs_id# if convolve_window else None
             Pell = self.Pell(bins_kmax, params, ell_joint,
                              de_model=de_model, binning=binning,
                              obs_id=convolve_obs_id, q_tr_lo=q_tr_lo,
@@ -4114,6 +4227,7 @@ class PTEmu:
                                      q_tr_lo=q_tr_lo, W_damping=W_damping,
                                      ell_for_recon=ell_for_recon,
                                      preserve_param_order=False)
+                PX_ell = self._rescale_marg_tables(PX_ell, diagrams_to_marg_all)
                 bX = self._get_bias_coeff_for_AM(diagrams_to_marg_all)
 
                 PX_ell_list = np.concatenate([PX_ell[ell] for ell in PX_ell])
