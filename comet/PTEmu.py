@@ -1443,7 +1443,7 @@ class PTEmu:
             bias['Pctr_b1b1cnlo'] = -bias['Pctr_b1b1cnlo']
             bias['Pctr_b1cnlo'] = -bias['Pctr_b1cnlo']
             bias['Pctr_cnlo'] = -bias['Pctr_cnlo']
-        if self.reparametrisation == 'TCM':
+        if self.reparametrisation == 'TCM' or self.reparametrisation == 'TCMlinear':
             bias['P1L_b1g21'] /= (Aap * s12**4)
             bias['P1L_g21'] /= (Aap * s12**4)
             bias['Pctr_c0'] /= (Aap * s12**2)
