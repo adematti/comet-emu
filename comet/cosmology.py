@@ -113,7 +113,8 @@ class Cosmology:
         self.H0 = np.atleast_1d(H0)
 
         self.Ode0 = 1.0 - self.Om0 - self.Ok0 - self.Or0
-        self.hubble_distance = 2.998E5/self.H0
+        self.light_speed = 299792.458
+        self.hubble_distance = self.light_speed/self.H0
 
         self.de_model = de_model
         self.w0 = np.atleast_1d(w0)

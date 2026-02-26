@@ -277,6 +277,8 @@ class Nexus:
         self.fname_data, self.fname_cov, self.fname_mixing_matrix = {}, {}, {}
         self.stat, self.kmax, self.zeff = {}, {}, {}
         self.nbar, self.fiducial_cosmology_obs = {}, {}
+        self.BAO_data = {}
+        self.BAO_kind = {}
 
         for oi in self.observables:
             self.fname_data[oi] = config['observables'][oi].get("fname_data")
@@ -284,6 +286,9 @@ class Nexus:
             self.fname_mixing_matrix[oi] = config['observables'][oi].get(
                 "fname_mixing_matrix", None)
             self.stat[oi] = config['observables'][oi].get("stat")
+            if self.stat[oi] == 'powerspectrum+BAO':
+                self.BAO_kind[oi] = config['observables'][oi].get("BAO_kind")
+                self.BAO_data[oi] = config['observables'][oi].get("BAO_data")
             self.kmax[oi] = config['observables'][oi].get("kmax")
             self.zeff[oi] = config['observables'][oi].get("zeff")
             self.nbar[oi] = config['observables'][oi].get("nbar", 1.0)
@@ -569,48 +574,71 @@ class Nexus:
                             reparametrisation=self.reparametrisation)
 
         for oi in self.observables:
-            if self.has_composition:
-                z_error = {spec:self.composition[oi][spec]['zerror']
-                           for spec in self.composition[oi]}
-            else:
-                z_error = self.sample[oi]['zerror']
-            if self.data_model == 'LE3':
-                data = fits.open(f'{self.input_dir}/{self.fname_data[oi]}')
-                cov = fits.open(f'{self.input_dir}/{self.fname_cov[oi]}')
-                k, k_eff, data_comet = self._data_LE3_to_Comet(data, [0,2,4])
-                cov_comet = self._cov_LE3_to_Comet(cov, [0,2,4])
-                if self.fname_mixing_matrix[oi] is not None:
-                    mixing_matrix = fits.open(
-                        f'{self.input_dir}/{self.fname_mixing_matrix[oi]}')
-                    mm_k, mm_kp, mm_comet = self._mixing_matrix_LE3_to_Comet(
-                        mixing_matrix, [0,2,4], np.amax(self.kmax[oi]),
-                        np.amax(self.kmax[oi])*self.mixing_matrix_kp_max_multiplier
-                    )
-                    bins_mixing_matrix = [mm_k, mm_kp]
-                    W_mixing_matrix = mm_comet
+            if self.stat[oi] == 'powerspectrum':
+                if self.has_composition:
+                    z_error = {spec:self.composition[oi][spec]['zerror']
+                               for spec in self.composition[oi]}
                 else:
-                    bins_mixing_matrix = None
-                    W_mixing_matrix = None
-                self.emu.define_data_set(
-                    obs_id=oi, stat=self.stat[oi], zeff=self.zeff[oi],
-                    bins=k_eff, signal=data_comet, cov=cov_comet,
-                    bins_mixing_matrix=[mm_k,mm_kp],
-                    W_mixing_matrix=mm_comet,
-                    fiducial_cosmology=self.fiducial_cosmology_obs[oi],
-                    composition=self.composition[oi], nbar=self.nbar[oi],
-                    z_error=z_error
-                )
-            elif self.data_model == 'FStxt':
+                    z_error = self.sample[oi]['zerror']
+                if self.data_model == 'LE3':
+                    data = fits.open(f'{self.input_dir}/{self.fname_data[oi]}')
+                    cov = fits.open(f'{self.input_dir}/{self.fname_cov[oi]}')
+                    k, k_eff, data_comet = self._data_LE3_to_Comet(data, [0,2,4])
+                    cov_comet = self._cov_LE3_to_Comet(cov, [0,2,4])
+                    if self.fname_mixing_matrix[oi] is not None:
+                        mixing_matrix = fits.open(
+                            f'{self.input_dir}/{self.fname_mixing_matrix[oi]}')
+                        mm_k, mm_kp, mm_comet = self._mixing_matrix_LE3_to_Comet(
+                            mixing_matrix, [0,2,4], np.amax(self.kmax[oi]),
+                            np.amax(self.kmax[oi])*self.mixing_matrix_kp_max_multiplier
+                            )
+                        bins_mixing_matrix = [mm_k, mm_kp]
+                        W_mixing_matrix = mm_comet
+                    else:
+                        bins_mixing_matrix = None
+                        W_mixing_matrix = None
+                    self.emu.define_data_set(
+                        obs_id=oi, stat=self.stat[oi], zeff=self.zeff[oi],
+                        bins=k_eff, signal=data_comet, cov=cov_comet,
+                        bins_mixing_matrix=[mm_k,mm_kp],
+                        W_mixing_matrix=mm_comet,
+                        fiducial_cosmology=self.fiducial_cosmology_obs[oi],
+                        composition=self.composition[oi], nbar=self.nbar[oi],
+                        z_error=z_error
+                    )
+                elif self.data_model == 'FStxt':
+                    data = np.loadtxt(f'{self.input_dir}/{self.fname_data[oi]}', unpack=True)
+                    k = k_eff = data[0]
+                    data_comet = data[1:].T
+                    cov_comet = np.loadtxt(f'{self.input_dir}/{self.fname_cov[oi]}')
+                    self.emu.define_data_set(
+                        obs_id=oi, stat=self.stat[oi], zeff=self.zeff[oi],
+                        bins=k_eff, signal=data_comet, cov=cov_comet,
+                        fiducial_cosmology=self.fiducial_cosmology_obs[oi],
+                        composition=self.composition[oi], nbar=self.nbar[oi])
+                self.emu.data[oi].set_kmax(self.kmax[oi])
+            elif self.stat[oi] == 'powerspectrum+BAO':
+                if self.data_model == 'FStxt':
+                    data = np.loadtxt(f'{self.input_dir}/{self.fname_data[oi]}', unpack=True)
+                    k = k_eff = data[0]
+                    data_comet = data[1:].T
+                    alphas = np.loadtxt(f'{self.input_dir}/{self.BAO_data[oi]}', unpack=True)
+                    cov_comet = np.loadtxt(f'{self.input_dir}/{self.fname_cov[oi]}')
+                    self.emu.define_data_set(
+                        obs_id=oi, stat=self.stat[oi], zeff=self.zeff[oi],
+                        bins=k_eff, signal=data_comet, alphas=alphas, BAO_kind=self.BAO_kind[oi],
+                        cov=cov_comet, fiducial_cosmology=self.fiducial_cosmology_obs[oi],
+                        composition=self.composition[oi], nbar=self.nbar[oi])
+                self.emu.data[oi].set_kmax(self.kmax[oi])
+
+            elif self.stat[oi] == 'BAO':
                 data = np.loadtxt(f'{self.input_dir}/{self.fname_data[oi]}', unpack=True)
-                k = k_eff = data[0]
-                data_comet = data[1:].T
-                cov_comet = np.loadtxt(f'{self.input_dir}/{self.fname_cov[oi]}')
+                cov = np.loadtxt(f'{self.input_dir}/{self.fname_cov[oi]}')
                 self.emu.define_data_set(
-                    obs_id=oi, stat=self.stat[oi], zeff=self.zeff[oi],
-                    bins=k_eff, signal=data_comet, cov=cov_comet,
-                    fiducial_cosmology=self.fiducial_cosmology_obs[oi],
-                    composition=self.composition[oi], nbar=self.nbar[oi])
-            self.emu.data[oi].set_kmax(self.kmax[oi])
+                    obs_id=oi, stat=self.stat[oi], BAO_kind=self.BAO_kind[oi],
+                    zeff=self.zeff[oi], signal=data, cov=cov,
+                    fiducial_cosmology=self.fiducial_cosmology_obs[oi]
+                )
 
     def _g2bG2_relation(self, relation, b1):
         if relation == 'LL' or relation == 'coevolution':
