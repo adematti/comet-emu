@@ -819,6 +819,8 @@ class Nexus:
                 params = self._assign_params_nautilus(params_dict)
                 chi2 = self.emu.chi2(self.observables, params, self.kmax,
                                      self.de_model, AM_priors=self.AM_priors)
+                if np.all([par in params_dict.keys() for par in ['w0', 'wa']]) and (params_dict['w0'] + params_dict['wa'] > 0.0):
+                    chi2 += 1e10
                 return -0.5 * chi2.squeeze()
 
         return prior, loglike
