@@ -4084,21 +4084,21 @@ class PTEmu:
             for key, table in input_tables.items():
                 out = output_tables[key]
                 if 'Pctr_c2' in diagrams:
-                    out[:, index['Pctr_c2'], :] = (
+                    out[:, index['Pctr_c2'], ...] = (
                         2.0/3.0 * f *
-                        (table[:, index['Pctr_c2'], :]
-                        + 0.5 * table[:, index['Pctr_c0'], :]))
+                        (table[:, index['Pctr_c2'], ...]
+                        + 0.5 * table[:, index['Pctr_c0'], ...]))
                 if 'Pctr_c4' in diagrams:
-                    out[:, index['Pctr_c4'], :] = (
+                    out[:, index['Pctr_c4'], ...] = (
                         8.0/35.0 * f**2 *
-                        (table[:, index['Pctr_c4'], :]
-                        + 2.5 * table[:, index['Pctr_c2'], :]
-                        + 7.0/8.0 * table[:, index['Pctr_c0'], :]))
+                        (table[:, index['Pctr_c4'], ...]
+                        + 2.5 * table[:, index['Pctr_c2'], ...]
+                        + 7.0/8.0 * table[:, index['Pctr_c0'], ...]))
                 if 'Pnoise_NP22' in diagrams:
-                    out[:, index['Pnoise_NP22'], :] = (
+                    out[:, index['Pnoise_NP22'], ...] = (
                         1.0/3.0 *
-                        (2.0 * table[:, index['Pnoise_NP22'], :]
-                        + table[:, index['Pnoise_NP20'], :]))
+                        (2.0 * table[:, index['Pnoise_NP22'], ...]
+                        + table[:, index['Pnoise_NP20'], ...]))
 
         return output_tables
 
