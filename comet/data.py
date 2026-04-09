@@ -126,15 +126,16 @@ class MeasuredData:
             else:
                 self.z_error = None
 
-        if 'bins_mixing_matrix' in kwargs:
-            self.bins_mixing_matrix = kwargs.get('bins_mixing_matrix')
+        bins_mixing_matrix = kwargs.get('bins_mixing_matrix', None)
+        if bins_mixing_matrix is not None:
+            self.bins_mixing_matrix = bins_mixing_matrix
             self.bins_mixing_matrix_compressed = self.get_kvec_compression(
                 self.bins_mixing_matrix[1][0], self.bins_mixing_matrix[1][-1]
             )
 
-        if 'W_mixing_matrix' in kwargs:
+        W_mixing_matrix = kwargs.get('W_mixing_matrix', None)
+        if W_mixing_matrix is not None:
             if self.composition is not None:
-                W_mixing_matrix = kwargs.get('W_mixing_matrix')
                 if isinstance(W_mixing_matrix, dict):
                     W_stacked = np.stack(
                         [W_mixing_matrix[species]
@@ -149,14 +150,12 @@ class MeasuredData:
                     )
                 self.W_mixing_matrix = np.ascontiguousarray(W_stacked)
             else:
-                self.W_mixing_matrix = kwargs.get('W_mixing_matrix')
-                self.W_mixing_matrix = np.ascontiguousarray(self.W_mixing_matrix)
+                self.W_mixing_matrix = np.ascontiguousarray(W_mixing_matrix)
 
-        if hasattr(self, 'bins_mixing_matrix') \
-                and hasattr(self, 'W_mixing_matrix'):
-            self.mixing_matrix_exists = True
-        else:
-            self.mixing_matrix_exists = False
+        self.mixing_matrix_exists = (
+            getattr(self, 'bins_mixing_matrix', None) is not None
+            and getattr(self, 'W_mixing_matrix', None) is not None
+        )
 
         if 'theory_cov' in kwargs:
             self.theory_cov = kwargs.get('theory_cov')
@@ -290,15 +289,16 @@ class MeasuredData:
             else:
                 self.z_error = z_error
 
-        if 'bins_mixing_matrix' in kwargs:
-            self.bins_mixing_matrix = kwargs.get('bins_mixing_matrix')
+        bins_mixing_matrix = kwargs.get('bins_mixing_matrix', None)
+        if bins_mixing_matrix is not None:
+            self.bins_mixing_matrix = bins_mixing_matrix
             self.bins_mixing_matrix_compressed = self.get_kvec_compression(
                 self.bins_mixing_matrix[1][0], self.bins_mixing_matrix[1][-1]
             )
 
-        if 'W_mixing_matrix' in kwargs:
+        W_mixing_matrix = kwargs.get('W_mixing_matrix', None)
+        if W_mixing_matrix is not None:
             if self.composition is not None:
-                W_mixing_matrix = kwargs.get('W_mixing_matrix')
                 if isinstance(W_mixing_matrix, dict):
                     W_stacked = np.stack(
                         [W_mixing_matrix[species]
@@ -312,14 +312,12 @@ class MeasuredData:
                     )
                 self.W_mixing_matrix = np.ascontiguousarray(W_stacked)
             else:
-                self.W_mixing_matrix = kwargs.get('W_mixing_matrix')
-                self.W_mixing_matrix = np.ascontiguousarray(self.W_mixing_matrix)
+                self.W_mixing_matrix = np.ascontiguousarray(W_mixing_matrix)
 
-        if hasattr(self, 'bins_mixing_matrix') \
-                and hasattr(self, 'W_mixing_matrix'):
-            self.mixing_matrix_exists = True
-        else:
-            self.mixing_matrix_exists = False
+        self.mixing_matrix_exists = (
+            getattr(self, 'bins_mixing_matrix', None) is not None
+            and getattr(self, 'W_mixing_matrix', None) is not None
+        )
 
         if 'theory_cov' in kwargs:
             self.theory_cov = kwargs.get('theory_cov')
@@ -385,7 +383,7 @@ class MeasuredData:
         return kvec
 
     def transpose_mixing_matrix(self, axes):
-        if hasattr(self, 'W_mixing_matrix'):
+        if getattr(self, 'W_mixing_matrix', None) is not None:
             self.W_mixing_matrix_transpose = np.ascontiguousarray(
                 np.transpose(self.W_mixing_matrix, axes)
             )

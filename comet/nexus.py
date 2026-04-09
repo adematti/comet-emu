@@ -561,6 +561,59 @@ class Nexus:
                     wfile['mixing_matrix'].data['W{}{}'.format(l,lp)][:i_max,:ip_max]
         return k[:i_max], kp[:ip_max], w_all
 
+    def _mixing_matrix_pickle_to_Comet(self, mixmat, k, ell):
+        kp = np.asarray(mixmat['k2'][0])
+        expected_shape = (len(k), len(kp))
+        blocks = []
+        for l in ell:
+            row_blocks = []
+            for lp in ell:
+                key = (l, lp)
+                if key not in mixmat['wc']:
+                    raise KeyError(
+                        f'Missing mixing-matrix block {key} in FStxt file.'
+                    )
+                block = np.asarray(mixmat['wc'][key])
+                if block.shape != expected_shape:
+                    raise ValueError(
+                        f'Mixing-matrix block {key} has shape {block.shape}, '
+                        f'expected {expected_shape}.'
+                    )
+                row_blocks.append(block)
+            blocks.append(row_blocks)
+        return kp, np.ascontiguousarray(np.block(blocks))
+
+    def _bao_data_LE3_to_Comet(self, baofile, BAO_kind):
+        bao_hdu = None
+        for hdu in baofile:
+            if hdu.header.get('EXTNAME') == 'BAO_ALPHAS':
+                bao_hdu = hdu
+                break
+        if bao_hdu is None:
+            raise KeyError("Missing HDU with EXTNAME='BAO_ALPHAS' in BAO file.")
+
+        data = bao_hdu.data
+        if data is None or len(data) == 0:
+            raise ValueError("Empty BAO_ALPHAS HDU in BAO file.")
+
+        def get_alpha(col):
+            if col not in data.columns.names:
+                raise KeyError(f"Missing BAO column '{col}' in BAO_ALPHAS HDU.")
+            return float(np.asarray(data[col]).ravel()[0])
+
+        alpha_map = {
+            'tr_lo': ('ALPHA_PERP', 'ALPHA_PAR'),
+            'iso_AP': ('ALPHA_ISO', 'ALPHA_AP'),
+            'iso': ('ALPHA_ISO',),
+        }
+        if BAO_kind not in alpha_map:
+            raise ValueError(
+                f"Unsupported BAO_kind '{BAO_kind}'. "
+                "Expected one of: tr_lo, iso_AP, iso."
+            )
+
+        return np.asarray([get_alpha(col) for col in alpha_map[BAO_kind]])
+
     def init_comet(self):
         self._create_params_setup()
         if self.emu is None or self.emu.model != self.model \
@@ -584,6 +637,18 @@ class Nexus:
                     cov = fits.open(f'{self.input_dir}/{self.fname_cov[oi]}')
                     k, k_eff, data_comet = self._data_LE3_to_Comet(data, [0,2,4])
                     cov_comet = self._cov_LE3_to_Comet(cov, [0,2,4])
+                    define_data_kwargs = {
+                        'obs_id': oi,
+                        'stat': self.stat[oi],
+                        'zeff': self.zeff[oi],
+                        'bins': k_eff,
+                        'signal': data_comet,
+                        'cov': cov_comet,
+                        'fiducial_cosmology': self.fiducial_cosmology_obs[oi],
+                        'composition': self.composition[oi],
+                        'nbar': self.nbar[oi],
+                        'z_error': z_error,
+                    }
                     if self.fname_mixing_matrix[oi] is not None:
                         mixing_matrix = fits.open(
                             f'{self.input_dir}/{self.fname_mixing_matrix[oi]}')
@@ -591,56 +656,34 @@ class Nexus:
                             mixing_matrix, [0,2,4], np.amax(self.kmax[oi]),
                             np.amax(self.kmax[oi])*self.mixing_matrix_kp_max_multiplier
                             )
-                        bins_mixing_matrix = [mm_k, mm_kp]
-                        W_mixing_matrix = mm_comet
-                    else:
-                        bins_mixing_matrix = None
-                        W_mixing_matrix = None
-                    self.emu.define_data_set(
-                        obs_id=oi, stat=self.stat[oi], zeff=self.zeff[oi],
-                        bins=k_eff, signal=data_comet, cov=cov_comet,
-                        bins_mixing_matrix=[mm_k,mm_kp],
-                        W_mixing_matrix=mm_comet,
-                        fiducial_cosmology=self.fiducial_cosmology_obs[oi],
-                        composition=self.composition[oi], nbar=self.nbar[oi],
-                        z_error=z_error
-                    )
+                        define_data_kwargs['bins_mixing_matrix'] = [mm_k, mm_kp]
+                        define_data_kwargs['W_mixing_matrix'] = mm_comet
+                    self.emu.define_data_set(**define_data_kwargs)
                 elif self.data_model == 'FStxt':
                     data = np.loadtxt(f'{self.input_dir}/{self.fname_data[oi]}', unpack=True)
                     k = k_eff = data[0]
                     data_comet = data[1:].T
-                    #data_comet = data[1::2].T
-                    #data_comet = data[2:].T
                     cov_comet = np.loadtxt(f'{self.input_dir}/{self.fname_cov[oi]}')
+                    define_data_kwargs = {
+                        'obs_id': oi,
+                        'stat': self.stat[oi],
+                        'zeff': self.zeff[oi],
+                        'bins': k_eff,
+                        'signal': data_comet,
+                        'cov': cov_comet,
+                        'fiducial_cosmology': self.fiducial_cosmology_obs[oi],
+                        'composition': self.composition[oi],
+                        'nbar': self.nbar[oi]
+                    }
                     if self.fname_mixing_matrix[oi] is not None:
                         with open(f'{self.input_dir}/{self.fname_mixing_matrix[oi]}', 'rb') as f:
                             mixmat = pickle.load(f)
-                        kp = np.array(mixmat['k2'][0])
-                        mixmat_tot = np.empty((3*len(k), 3*len(kp)))
-                        mixmat_tot[:len(k), :len(kp)] = np.array(mixmat['wc'][(0, 0)])
-                        mixmat_tot[:len(k), len(kp):2*len(kp)] = np.array(mixmat['wc'][(0, 2)])
-                        mixmat_tot[:len(k), 2*len(kp):] = np.array(mixmat['wc'][(0, 4)])
-                        mixmat_tot[len(k):2*len(k), :len(kp)] = np.array(mixmat['wc'][(2, 0)])
-                        mixmat_tot[len(k):2*len(k), len(kp):2*len(kp)] = np.array(mixmat['wc'][(2, 2)])
-                        mixmat_tot[len(k):2*len(k), 2*len(kp):] = np.array(mixmat['wc'][(2, 4)])
-                        mixmat_tot[2*len(k):, :len(kp)] = np.array(mixmat['wc'][(4, 0)])
-                        mixmat_tot[2*len(k):, len(kp):2*len(kp)] = np.array(mixmat['wc'][(4, 2)])
-                        mixmat_tot[2*len(k):, 2*len(kp):] = np.array(mixmat['wc'][(4, 4)])
-                        bins_mixing_matrix = [k, kp]
-                        W_mixing_matrix = mixmat_tot
-                        self.emu.define_data_set(
-                            obs_id=oi, stat=self.stat[oi], zeff=self.zeff[oi],
-                            bins=k_eff, signal=data_comet, cov=cov_comet,
-                            bins_mixing_matrix=bins_mixing_matrix,
-                            W_mixing_matrix=W_mixing_matrix,
-                            fiducial_cosmology=self.fiducial_cosmology_obs[oi],
-                            composition=self.composition[oi], nbar=self.nbar[oi])
-                    else:
-                        self.emu.define_data_set(
-                            obs_id=oi, stat=self.stat[oi], zeff=self.zeff[oi],
-                            bins=k_eff, signal=data_comet, cov=cov_comet,
-                            fiducial_cosmology=self.fiducial_cosmology_obs[oi],
-                            composition=self.composition[oi], nbar=self.nbar[oi])
+                        kp, mixmat_tot = self._mixing_matrix_pickle_to_Comet(
+                            mixmat, k, [0, 2, 4]
+                        )
+                        define_data_kwargs['bins_mixing_matrix'] = [k, kp]
+                        define_data_kwargs['W_mixing_matrix'] = mixmat_tot
+                    self.emu.define_data_set(**define_data_kwargs)
                 self.emu.data[oi].set_kmax(self.kmax[oi])
             elif self.stat[oi] == 'powerspectrum+BAO':
                 if self.data_model == 'FStxt':
@@ -649,21 +692,38 @@ class Nexus:
                     data_comet = data[1:].T
                     alphas = np.loadtxt(f'{self.input_dir}/{self.BAO_data[oi]}', unpack=True)
                     cov_comet = np.loadtxt(f'{self.input_dir}/{self.fname_cov[oi]}')
-                    self.emu.define_data_set(
-                        obs_id=oi, stat=self.stat[oi], zeff=self.zeff[oi],
-                        bins=k_eff, signal=data_comet, alphas=alphas, BAO_kind=self.BAO_kind[oi],
-                        cov=cov_comet, fiducial_cosmology=self.fiducial_cosmology_obs[oi],
-                        composition=self.composition[oi], nbar=self.nbar[oi])
+                    define_data_kwargs = {
+                        'obs_id': oi,
+                        'stat': self.stat[oi],
+                        'zeff': self.zeff[oi],
+                        'bins': k_eff,
+                        'signal': data_comet,
+                        'alphas': alphas,
+                        'BAO_kind': self.BAO_kind[oi],
+                        'cov': cov_comet,
+                        'fiducial_cosmology': self.fiducial_cosmology_obs[oi],
+                        'composition': self.composition[oi],
+                        'nbar': self.nbar[oi]
+                    }
+                    if self.fname_mixing_matrix[oi] is not None:
+                        with open(f'{self.input_dir}/{self.fname_mixing_matrix[oi]}', 'rb') as f:
+                            mixmat = pickle.load(f)
+                        kp, mixmat_tot = self._mixing_matrix_pickle_to_Comet(
+                            mixmat, k, [0, 2, 4]
+                        )
+                        define_data_kwargs['bins_mixing_matrix'] = [k, kp]
+                        define_data_kwargs['W_mixing_matrix'] = mixmat_tot
+                    self.emu.define_data_set(**define_data_kwargs)
                 self.emu.data[oi].set_kmax(self.kmax[oi])
 
-            elif self.stat[oi] == 'BAO':
-                data = np.loadtxt(f'{self.input_dir}/{self.fname_data[oi]}', unpack=True)
-                cov = np.loadtxt(f'{self.input_dir}/{self.fname_cov[oi]}')
-                self.emu.define_data_set(
-                    obs_id=oi, stat=self.stat[oi], BAO_kind=self.BAO_kind[oi],
-                    zeff=self.zeff[oi], signal=data, cov=cov,
-                    fiducial_cosmology=self.fiducial_cosmology_obs[oi]
-                )
+            #elif self.stat[oi] == 'BAO':
+            #    data = np.loadtxt(f'{self.input_dir}/{self.fname_data[oi]}', unpack=True)
+            #    cov = np.loadtxt(f'{self.input_dir}/{self.fname_cov[oi]}')
+            #    self.emu.define_data_set(
+            #        obs_id=oi, stat=self.stat[oi], BAO_kind=self.BAO_kind[oi],
+            #        zeff=self.zeff[oi], signal=data, cov=cov,
+            #        fiducial_cosmology=self.fiducial_cosmology_obs[oi]
+            #    )
 
     def _g2bG2_relation(self, relation, b1):
         if relation == 'LL' or relation == 'coevolution':
