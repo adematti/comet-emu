@@ -1,10 +1,11 @@
 import yaml
 import numpy as np
-import re, os
+import re, os, pickle
 from scipy.stats import norm
 from astropy.io import fits
 from comet import comet
 from pyfiglet import Figlet
+from copy import deepcopy
 
 def boldtext(text):
     return f"\033[1m{text}\033[0m"
@@ -90,12 +91,10 @@ class Nexus:
 
         self.nuisance_params = bias_params + ctr_noise_params
         if self.model == 'EFT':
-            if self.ctr_noise_basis == 'Comet':
+            if self.ctr_noise_basis == 'Comet' or self.ctr_noise_basis == 'PBJ':
                 self.nuisance_params += ['cnlo']
             elif self.ctr_noise_basis == 'ClassPT':
                 self.nuisance_params += ['cnlo*']
-            elif self.ctr_noise_basis == 'PBJ':
-                self.nuisance_params += ['cnlot']
         if self.model == 'VDG_infty':
             self.nuisance_params += ['avir']
         self.nuisance_params += ['sigma_z', 'gamma_z']
@@ -610,12 +609,38 @@ class Nexus:
                     data = np.loadtxt(f'{self.input_dir}/{self.fname_data[oi]}', unpack=True)
                     k = k_eff = data[0]
                     data_comet = data[1:].T
+                    #data_comet = data[1::2].T
+                    #data_comet = data[2:].T
                     cov_comet = np.loadtxt(f'{self.input_dir}/{self.fname_cov[oi]}')
-                    self.emu.define_data_set(
-                        obs_id=oi, stat=self.stat[oi], zeff=self.zeff[oi],
-                        bins=k_eff, signal=data_comet, cov=cov_comet,
-                        fiducial_cosmology=self.fiducial_cosmology_obs[oi],
-                        composition=self.composition[oi], nbar=self.nbar[oi])
+                    if self.fname_mixing_matrix[oi] is not None:
+                        with open(f'{self.input_dir}/{self.fname_mixing_matrix[oi]}', 'rb') as f:
+                            mixmat = pickle.load(f)
+                        kp = np.array(mixmat['k2'][0])
+                        mixmat_tot = np.empty((3*len(k), 3*len(kp)))
+                        mixmat_tot[:len(k), :len(kp)] = np.array(mixmat['wc'][(0, 0)])
+                        mixmat_tot[:len(k), len(kp):2*len(kp)] = np.array(mixmat['wc'][(0, 2)])
+                        mixmat_tot[:len(k), 2*len(kp):] = np.array(mixmat['wc'][(0, 4)])
+                        mixmat_tot[len(k):2*len(k), :len(kp)] = np.array(mixmat['wc'][(2, 0)])
+                        mixmat_tot[len(k):2*len(k), len(kp):2*len(kp)] = np.array(mixmat['wc'][(2, 2)])
+                        mixmat_tot[len(k):2*len(k), 2*len(kp):] = np.array(mixmat['wc'][(2, 4)])
+                        mixmat_tot[2*len(k):, :len(kp)] = np.array(mixmat['wc'][(4, 0)])
+                        mixmat_tot[2*len(k):, len(kp):2*len(kp)] = np.array(mixmat['wc'][(4, 2)])
+                        mixmat_tot[2*len(k):, 2*len(kp):] = np.array(mixmat['wc'][(4, 4)])
+                        bins_mixing_matrix = [k, kp]
+                        W_mixing_matrix = mixmat_tot
+                        self.emu.define_data_set(
+                            obs_id=oi, stat=self.stat[oi], zeff=self.zeff[oi],
+                            bins=k_eff, signal=data_comet, cov=cov_comet,
+                            bins_mixing_matrix=bins_mixing_matrix,
+                            W_mixing_matrix=W_mixing_matrix,
+                            fiducial_cosmology=self.fiducial_cosmology_obs[oi],
+                            composition=self.composition[oi], nbar=self.nbar[oi])
+                    else:
+                        self.emu.define_data_set(
+                            obs_id=oi, stat=self.stat[oi], zeff=self.zeff[oi],
+                            bins=k_eff, signal=data_comet, cov=cov_comet,
+                            fiducial_cosmology=self.fiducial_cosmology_obs[oi],
+                            composition=self.composition[oi], nbar=self.nbar[oi])
                 self.emu.data[oi].set_kmax(self.kmax[oi])
             elif self.stat[oi] == 'powerspectrum+BAO':
                 if self.data_model == 'FStxt':
@@ -818,7 +843,7 @@ class Nexus:
             def loglike(params_dict):
                 params = self._assign_params_nautilus(params_dict)
                 chi2 = self.emu.chi2(self.observables, params, self.kmax,
-                                     self.de_model, AM_priors=self.AM_priors)
+                                     self.de_model, AM_priors=self.AM_priors, use_Jeffreys=self.use_Jeffreys)
                 if np.all([par in params_dict.keys() for par in ['w0', 'wa']]) and (params_dict['w0'] + params_dict['wa'] > 0.0):
                     chi2 += 1e10
                 return -0.5 * chi2.squeeze()
@@ -850,3 +875,48 @@ class Nexus:
             points, log_w, log_l = sampler.posterior()
             np.save(f'{self.output_dir}/{self.output_filename}',
                     np.c_[log_w, log_l, points])
+
+    def get_model(self, mode='full'):
+        if self.has_composition:
+            params = {s: {} for s in self.species}
+
+            for p in self.fixed_cosmo_params:
+                for s in self.species:
+                    params[s][p] = np.repeat(
+                        self.fixed_cosmo_params[p], self.n_obs[s])
+
+            for pos in self.fixed_nuisance_params:
+                p, oi, s = pos.split('.')
+                noi = self.obs_id[s][oi]
+                if p not in params[s]:
+                    params[s][p] = np.zeros(self.n_obs[s])
+                params[s][p][noi] = self.fixed_nuisance_params[pos]
+
+            for s in self.species:
+                params[s]['z'] = np.array([
+                    self.composition[oi][s]['zeff']
+                    for oi in self.observables if s in self.composition[oi]])
+
+        else:
+            params = {}
+
+            for p in self.fixed_cosmo_params:
+                params[p] = np.repeat(self.fixed_cosmo_params[p], self.n_obs)
+
+            for po in self.fixed_nuisance_params:
+                p, oi = po.split('.')
+                noi = self.obs_id[oi]
+                if p not in params:
+                    params[p] = np.zeros(self.n_obs)
+                params[p][noi] = self.fixed_nuisance_params[po]
+
+            params['z'] = np.array([self.zeff[oi] for oi in self.observables])
+
+        data = np.loadtxt(f'{self.input_dir}/{self.fname_data[oi]}', unpack=True)
+        k_eff = data[0]
+
+        if mode=='full':
+            return k_eff, self.emu.Pell(k_eff, params, ell=[0,2,4], de_model='lambda', obs_id=self.observables)
+        elif mode=='terms':
+            X_list = ['P1L_b1g21', 'P1L_g21', 'Pctr_c0', 'Pctr_c2', 'Pctr_c4', 'Pnoise_NP0', 'Pnoise_NP20', 'Pnoise_NP22']
+            return k_eff, self.emu.PX_ell(k_eff, params, ell=[0,2,4], X_list=X_list, de_model='w0', obs_id=self.observables)
