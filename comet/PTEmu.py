@@ -4736,6 +4736,11 @@ class PTEmu:
         """
         obs_id = [obs_id] if not isinstance(obs_id, list) else obs_id
 
+        def stat_group(stat):
+            if stat in ['powerspectrum', 'powerspectrum+BAO']:
+                return 'powerspectrum'
+            return stat
+
         if not isinstance(kmax, dict):
             kmax_dict = {}
             for oi in obs_id:
@@ -4748,7 +4753,8 @@ class PTEmu:
                 (self.data[oi].kmax != kmax[oi] and self.data[oi].kmax !=
                     [kmax[oi] for i in range(self.data[oi].n_ell)])):
                         self.data[oi].set_kmax(kmax[oi])
-                        if self.data[oi].stat == 'powerspectrum':
+                        if self.data[oi].stat in ['powerspectrum',
+                                                  'powerspectrum+BAO']:
                             self.chi2_decomposition = None
                         elif self.data[oi].stat == 'bispectrum':
                             self.Bisp_chi2_decomposition = None
@@ -4756,29 +4762,32 @@ class PTEmu:
 
         obs_id_stat = {}
         for oi in obs_id:
-            if not self.data[oi].stat in obs_id_stat:
-                obs_id_stat[self.data[oi].stat] = [oi]
+            stat = stat_group(self.data[oi].stat)
+            if stat not in obs_id_stat:
+                obs_id_stat[stat] = [oi]
             else:
-                obs_id_stat[self.data[oi].stat].append(oi)
+                obs_id_stat[stat].append(oi)
         for stat in obs_id_stat:
             ordered_obs_id_stat = sorted([oi for oi in obs_id_stat[stat]],
                                          key=lambda x: self.data[x].zeff)
             obs_id_stat[stat] = ordered_obs_id_stat
 
         if binning is None:
-            binning = {stat:None for stat in obs_id_stat}
-        if not np.any([stat in binning for stat in obs_id_stat]):
+            binning = {stat: None for stat in obs_id_stat}
+        elif not isinstance(binning, dict):
+            binning = {stat: binning for stat in obs_id_stat}
+        else:
             binning_temp = {}
             for stat in obs_id_stat:
-                if obs_id_stat[stat][0] in binning:
+                if stat in binning:
+                    binning_temp[stat] = binning[stat]
+                elif stat == 'powerspectrum' and 'powerspectrum+BAO' in binning:
+                    binning_temp[stat] = binning['powerspectrum+BAO']
+                elif obs_id_stat[stat][0] in binning:
                     binning_temp[stat] = binning[obs_id_stat[stat][0]]
                 else:
-                    binning_temp[stat] = binning
-            binning = binning_temp #{stat:binning for stat in obs_id_stat}
-        else:
-            for stat in obs_id_stat:
-                if stat not in binning:
-                    binning[stat] = None
+                    binning_temp[stat] = None
+            binning = binning_temp
 
         if W_damping is None:
             W_damping = {stat:None for stat in obs_id_stat}
@@ -4793,6 +4802,20 @@ class PTEmu:
                         W_damping[stat] = lambda k, mu: 1.0
                     elif stat == 'bispectrum':
                         W_damping[stat] = lambda tri, mu1, mu2, mu3: 1.0 """
+        elif not isinstance(W_damping, dict):
+            W_damping = {stat: W_damping for stat in obs_id_stat}
+        else:
+            W_damping_temp = {}
+            for stat in obs_id_stat:
+                if stat in W_damping:
+                    W_damping_temp[stat] = W_damping[stat]
+                elif stat == 'powerspectrum' and 'powerspectrum+BAO' in W_damping:
+                    W_damping_temp[stat] = W_damping['powerspectrum+BAO']
+                elif stat == 'powerspectrum' and 'powerspectrum' in W_damping:
+                    W_damping_temp[stat] = W_damping['powerspectrum']
+                else:
+                    W_damping_temp[stat] = None
+            W_damping = W_damping_temp
 
         if all([self.data[oi].mixing_matrix_exists for oi in obs_id]):
             convolve_window = True
