@@ -1,10 +1,11 @@
 import yaml
 import numpy as np
-import re, os
+import re, os, pickle
 from scipy.stats import norm
 from astropy.io import fits
 from comet import comet
 from pyfiglet import Figlet
+from copy import deepcopy
 
 def boldtext(text):
     return f"\033[1m{text}\033[0m"
@@ -59,7 +60,8 @@ class Nexus:
             "use_Planck": False,
             "use_BAO": False,
             "use_SN": False,
-            "use_Jeffreys": False
+            "use_Jeffreys": False,
+            "reparametrisation": None
         }
 
         maxlen = max(len(k) for k in expected_keys.keys())
@@ -89,12 +91,10 @@ class Nexus:
 
         self.nuisance_params = bias_params + ctr_noise_params
         if self.model == 'EFT':
-            if self.ctr_noise_basis == 'Comet':
+            if self.ctr_noise_basis == 'Comet' or self.ctr_noise_basis == 'PBJ':
                 self.nuisance_params += ['cnlo']
             elif self.ctr_noise_basis == 'ClassPT':
                 self.nuisance_params += ['cnlo*']
-            elif self.ctr_noise_basis == 'PBJ':
-                self.nuisance_params += ['cnlot']
         if self.model == 'VDG_infty':
             self.nuisance_params += ['avir']
         self.nuisance_params += ['sigma_z', 'gamma_z']
@@ -276,6 +276,8 @@ class Nexus:
         self.fname_data, self.fname_cov, self.fname_mixing_matrix = {}, {}, {}
         self.stat, self.kmax, self.zeff = {}, {}, {}
         self.nbar, self.fiducial_cosmology_obs = {}, {}
+        self.BAO_data = {}
+        self.BAO_kind = {}
 
         for oi in self.observables:
             self.fname_data[oi] = config['observables'][oi].get("fname_data")
@@ -283,6 +285,9 @@ class Nexus:
             self.fname_mixing_matrix[oi] = config['observables'][oi].get(
                 "fname_mixing_matrix", None)
             self.stat[oi] = config['observables'][oi].get("stat")
+            if self.stat[oi] == 'powerspectrum+BAO':
+                self.BAO_kind[oi] = config['observables'][oi].get("BAO_kind")
+                self.BAO_data[oi] = config['observables'][oi].get("BAO_data")
             self.kmax[oi] = config['observables'][oi].get("kmax")
             self.zeff[oi] = config['observables'][oi].get("zeff")
             self.nbar[oi] = config['observables'][oi].get("nbar", 1.0)
@@ -556,6 +561,59 @@ class Nexus:
                     wfile['mixing_matrix'].data['W{}{}'.format(l,lp)][:i_max,:ip_max]
         return k[:i_max], kp[:ip_max], w_all
 
+    def _mixing_matrix_pickle_to_Comet(self, mixmat, k, ell):
+        kp = np.asarray(mixmat['k2'][0])
+        expected_shape = (len(k), len(kp))
+        blocks = []
+        for l in ell:
+            row_blocks = []
+            for lp in ell:
+                key = (l, lp)
+                if key not in mixmat['wc']:
+                    raise KeyError(
+                        f'Missing mixing-matrix block {key} in FStxt file.'
+                    )
+                block = np.asarray(mixmat['wc'][key])
+                if block.shape != expected_shape:
+                    raise ValueError(
+                        f'Mixing-matrix block {key} has shape {block.shape}, '
+                        f'expected {expected_shape}.'
+                    )
+                row_blocks.append(block)
+            blocks.append(row_blocks)
+        return kp, np.ascontiguousarray(np.block(blocks))
+
+    def _bao_data_LE3_to_Comet(self, baofile, BAO_kind):
+        bao_hdu = None
+        for hdu in baofile:
+            if hdu.header.get('EXTNAME') == 'BAO_ALPHAS':
+                bao_hdu = hdu
+                break
+        if bao_hdu is None:
+            raise KeyError("Missing HDU with EXTNAME='BAO_ALPHAS' in BAO file.")
+
+        data = bao_hdu.data
+        if data is None or len(data) == 0:
+            raise ValueError("Empty BAO_ALPHAS HDU in BAO file.")
+
+        def get_alpha(col):
+            if col not in data.columns.names:
+                raise KeyError(f"Missing BAO column '{col}' in BAO_ALPHAS HDU.")
+            return float(np.asarray(data[col]).ravel()[0])
+
+        alpha_map = {
+            'tr_lo': ('ALPHA_PERP', 'ALPHA_PAR'),
+            'iso_AP': ('ALPHA_ISO', 'ALPHA_AP'),
+            'iso': ('ALPHA_ISO',),
+        }
+        if BAO_kind not in alpha_map:
+            raise ValueError(
+                f"Unsupported BAO_kind '{BAO_kind}'. "
+                "Expected one of: tr_lo, iso_AP, iso."
+            )
+
+        return np.asarray([get_alpha(col) for col in alpha_map[BAO_kind]])
+
     def init_comet(self):
         self._create_params_setup()
         if self.emu is None or self.emu.model != self.model \
@@ -564,41 +622,108 @@ class Nexus:
                 or self.emu.counterterm_basis != self.ctr_noise_basis:
             self.emu = comet(model=self.model, use_Mpc=self.use_Mpc,
                             bias_basis=self.bias_basis,
-                            counterterm_basis=self.ctr_noise_basis)
+                            counterterm_basis=self.ctr_noise_basis,
+                            reparametrisation=self.reparametrisation)
 
         for oi in self.observables:
-            if self.has_composition:
-                z_error = {spec:self.composition[oi][spec]['zerror'] 
-                           for spec in self.composition[oi]}
-            else:
-                z_error = self.sample[oi]['zerror']
-            if self.data_model == 'LE3':
-                data = fits.open(f'{self.input_dir}/{self.fname_data[oi]}')
-                cov = fits.open(f'{self.input_dir}/{self.fname_cov[oi]}')
-                k, k_eff, data_comet = self._data_LE3_to_Comet(data, [0,2,4])
-                cov_comet = self._cov_LE3_to_Comet(cov, [0,2,4])
-                if self.fname_mixing_matrix[oi] is not None:
-                    mixing_matrix = fits.open(
-                        f'{self.input_dir}/{self.fname_mixing_matrix[oi]}')
-                    mm_k, mm_kp, mm_comet = self._mixing_matrix_LE3_to_Comet(
-                        mixing_matrix, [0,2,4], np.amax(self.kmax[oi]),
-                        np.amax(self.kmax[oi])*self.mixing_matrix_kp_max_multiplier
-                    )
-                    bins_mixing_matrix = [mm_k, mm_kp]
-                    W_mixing_matrix = mm_comet
+            if self.stat[oi] == 'powerspectrum':
+                if self.has_composition:
+                    z_error = {spec:self.composition[oi][spec]['zerror']
+                               for spec in self.composition[oi]}
                 else:
-                    bins_mixing_matrix = None
-                    W_mixing_matrix = None
-                self.emu.define_data_set(
-                    obs_id=oi, stat=self.stat[oi], zeff=self.zeff[oi],
-                    bins=k_eff, signal=data_comet, cov=cov_comet,
-                    bins_mixing_matrix=[mm_k,mm_kp],
-                    W_mixing_matrix=mm_comet,
-                    fiducial_cosmology=self.fiducial_cosmology_obs[oi],
-                    composition=self.composition[oi], nbar=self.nbar[oi],
-                    z_error=z_error
-                )
-            self.emu.data[oi].set_kmax(self.kmax[oi])
+                    z_error = self.sample[oi]['zerror']
+                if self.data_model == 'LE3':
+                    data = fits.open(f'{self.input_dir}/{self.fname_data[oi]}')
+                    cov = fits.open(f'{self.input_dir}/{self.fname_cov[oi]}')
+                    k, k_eff, data_comet = self._data_LE3_to_Comet(data, [0,2,4])
+                    cov_comet = self._cov_LE3_to_Comet(cov, [0,2,4])
+                    define_data_kwargs = {
+                        'obs_id': oi,
+                        'stat': self.stat[oi],
+                        'zeff': self.zeff[oi],
+                        'bins': k_eff,
+                        'signal': data_comet,
+                        'cov': cov_comet,
+                        'fiducial_cosmology': self.fiducial_cosmology_obs[oi],
+                        'composition': self.composition[oi],
+                        'nbar': self.nbar[oi],
+                        'z_error': z_error,
+                    }
+                    if self.fname_mixing_matrix[oi] is not None:
+                        mixing_matrix = fits.open(
+                            f'{self.input_dir}/{self.fname_mixing_matrix[oi]}')
+                        mm_k, mm_kp, mm_comet = self._mixing_matrix_LE3_to_Comet(
+                            mixing_matrix, [0,2,4], np.amax(self.kmax[oi]),
+                            np.amax(self.kmax[oi])*self.mixing_matrix_kp_max_multiplier
+                            )
+                        define_data_kwargs['bins_mixing_matrix'] = [mm_k, mm_kp]
+                        define_data_kwargs['W_mixing_matrix'] = mm_comet
+                    self.emu.define_data_set(**define_data_kwargs)
+                elif self.data_model == 'FStxt':
+                    data = np.loadtxt(f'{self.input_dir}/{self.fname_data[oi]}', unpack=True)
+                    k = k_eff = data[0]
+                    data_comet = data[1:].T
+                    cov_comet = np.loadtxt(f'{self.input_dir}/{self.fname_cov[oi]}')
+                    define_data_kwargs = {
+                        'obs_id': oi,
+                        'stat': self.stat[oi],
+                        'zeff': self.zeff[oi],
+                        'bins': k_eff,
+                        'signal': data_comet,
+                        'cov': cov_comet,
+                        'fiducial_cosmology': self.fiducial_cosmology_obs[oi],
+                        'composition': self.composition[oi],
+                        'nbar': self.nbar[oi]
+                    }
+                    if self.fname_mixing_matrix[oi] is not None:
+                        with open(f'{self.input_dir}/{self.fname_mixing_matrix[oi]}', 'rb') as f:
+                            mixmat = pickle.load(f)
+                        kp, mixmat_tot = self._mixing_matrix_pickle_to_Comet(
+                            mixmat, k, [0, 2, 4]
+                        )
+                        define_data_kwargs['bins_mixing_matrix'] = [k, kp]
+                        define_data_kwargs['W_mixing_matrix'] = mixmat_tot
+                    self.emu.define_data_set(**define_data_kwargs)
+                self.emu.data[oi].set_kmax(self.kmax[oi])
+            elif self.stat[oi] == 'powerspectrum+BAO':
+                if self.data_model == 'FStxt':
+                    data = np.loadtxt(f'{self.input_dir}/{self.fname_data[oi]}', unpack=True)
+                    k = k_eff = data[0]
+                    data_comet = data[1:].T
+                    alphas = np.loadtxt(f'{self.input_dir}/{self.BAO_data[oi]}', unpack=True)
+                    cov_comet = np.loadtxt(f'{self.input_dir}/{self.fname_cov[oi]}')
+                    define_data_kwargs = {
+                        'obs_id': oi,
+                        'stat': self.stat[oi],
+                        'zeff': self.zeff[oi],
+                        'bins': k_eff,
+                        'signal': data_comet,
+                        'alphas': alphas,
+                        'BAO_kind': self.BAO_kind[oi],
+                        'cov': cov_comet,
+                        'fiducial_cosmology': self.fiducial_cosmology_obs[oi],
+                        'composition': self.composition[oi],
+                        'nbar': self.nbar[oi]
+                    }
+                    if self.fname_mixing_matrix[oi] is not None:
+                        with open(f'{self.input_dir}/{self.fname_mixing_matrix[oi]}', 'rb') as f:
+                            mixmat = pickle.load(f)
+                        kp, mixmat_tot = self._mixing_matrix_pickle_to_Comet(
+                            mixmat, k, [0, 2, 4]
+                        )
+                        define_data_kwargs['bins_mixing_matrix'] = [k, kp]
+                        define_data_kwargs['W_mixing_matrix'] = mixmat_tot
+                    self.emu.define_data_set(**define_data_kwargs)
+                self.emu.data[oi].set_kmax(self.kmax[oi])
+
+            #elif self.stat[oi] == 'BAO':
+            #    data = np.loadtxt(f'{self.input_dir}/{self.fname_data[oi]}', unpack=True)
+            #    cov = np.loadtxt(f'{self.input_dir}/{self.fname_cov[oi]}')
+            #    self.emu.define_data_set(
+            #        obs_id=oi, stat=self.stat[oi], BAO_kind=self.BAO_kind[oi],
+            #        zeff=self.zeff[oi], signal=data, cov=cov,
+            #        fiducial_cosmology=self.fiducial_cosmology_obs[oi]
+            #    )
 
     def _g2bG2_relation(self, relation, b1):
         if relation == 'LL' or relation == 'coevolution':
@@ -778,7 +903,9 @@ class Nexus:
             def loglike(params_dict):
                 params = self._assign_params_nautilus(params_dict)
                 chi2 = self.emu.chi2(self.observables, params, self.kmax,
-                                     self.de_model, AM_priors=self.AM_priors)
+                                     self.de_model, AM_priors=self.AM_priors, use_Jeffreys=self.use_Jeffreys)
+                if np.all([par in params_dict.keys() for par in ['w0', 'wa']]) and (params_dict['w0'] + params_dict['wa'] > 0.0):
+                    chi2 += 1e10
                 return -0.5 * chi2.squeeze()
 
         return prior, loglike
@@ -808,3 +935,48 @@ class Nexus:
             points, log_w, log_l = sampler.posterior()
             np.save(f'{self.output_dir}/{self.output_filename}',
                     np.c_[log_w, log_l, points])
+
+    def get_model(self, mode='full'):
+        if self.has_composition:
+            params = {s: {} for s in self.species}
+
+            for p in self.fixed_cosmo_params:
+                for s in self.species:
+                    params[s][p] = np.repeat(
+                        self.fixed_cosmo_params[p], self.n_obs[s])
+
+            for pos in self.fixed_nuisance_params:
+                p, oi, s = pos.split('.')
+                noi = self.obs_id[s][oi]
+                if p not in params[s]:
+                    params[s][p] = np.zeros(self.n_obs[s])
+                params[s][p][noi] = self.fixed_nuisance_params[pos]
+
+            for s in self.species:
+                params[s]['z'] = np.array([
+                    self.composition[oi][s]['zeff']
+                    for oi in self.observables if s in self.composition[oi]])
+
+        else:
+            params = {}
+
+            for p in self.fixed_cosmo_params:
+                params[p] = np.repeat(self.fixed_cosmo_params[p], self.n_obs)
+
+            for po in self.fixed_nuisance_params:
+                p, oi = po.split('.')
+                noi = self.obs_id[oi]
+                if p not in params:
+                    params[p] = np.zeros(self.n_obs)
+                params[p][noi] = self.fixed_nuisance_params[po]
+
+            params['z'] = np.array([self.zeff[oi] for oi in self.observables])
+
+        data = np.loadtxt(f'{self.input_dir}/{self.fname_data[oi]}', unpack=True)
+        k_eff = data[0]
+
+        if mode=='full':
+            return k_eff, self.emu.Pell(k_eff, params, ell=[0,2,4], de_model='lambda', obs_id=self.observables)
+        elif mode=='terms':
+            X_list = ['P1L_b1g21', 'P1L_g21', 'Pctr_c0', 'Pctr_c2', 'Pctr_c4', 'Pnoise_NP0', 'Pnoise_NP20', 'Pnoise_NP22']
+            return k_eff, self.emu.PX_ell(k_eff, params, ell=[0,2,4], X_list=X_list, de_model='w0', obs_id=self.observables)

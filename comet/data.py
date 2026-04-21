@@ -37,7 +37,7 @@ class MeasuredData:
             resamplings (needed for Hartlap corrections).
         """
         if 'stat' in kwargs and \
-            kwargs.get('stat') in ['powerspectrum', 'bispectrum']:
+            kwargs.get('stat') in ['powerspectrum', 'bispectrum', 'powerspectrum+BAO']:
                 self.stat = kwargs.get('stat')
         else:
             self.stat = None
@@ -67,14 +67,28 @@ class MeasuredData:
                 self.n_ell = self.signal.shape[1]
                 self.ell = [2*n for n in range(self.n_ell)]
 
+        if self.stat == 'powerspectrum+BAO':
+            if 'BAO_kind' in kwargs:
+                self.BAO_kind = kwargs.get('BAO_kind')
+                if 'alphas' in kwargs:
+                    self.alphas = kwargs.get('alphas')
+                else:
+                    raise KeyError('Missing required keyword argument "alphas"')
+            else:
+                raise KeyError('Missing required keyword argument "BAO_kind"')
+
         if 'cov' in kwargs:
             self.cov = kwargs.get('cov')
             if self.cov.ndim == 1:
                 self.cov = np.diag(self.cov)
                 self.cov_is_block_diagonal = True
             else:
-                self.cov_is_block_diagonal = self.is_block_diagonal(self.cov,
-                                                                    self.n_ell)
+                if self.stat == 'powerspectrum+BAO':
+                    self.cov_is_block_diagonal = self.is_block_diagonal(
+                        self.cov[:-2,:-2], self.n_ell)
+                else:
+                    self.cov_is_block_diagonal = self.is_block_diagonal(
+                        self.cov, self.n_ell)
 
         if 'nbar' in kwargs:
             self.nbar = kwargs.get('nbar')
@@ -88,7 +102,7 @@ class MeasuredData:
             self.composition = kwargs.get('composition')
         else:
             self.composition = None
-            
+
         if 'z_error' in kwargs:
             z_error = kwargs.get('z_error')
             if self.composition is not None:
@@ -112,15 +126,16 @@ class MeasuredData:
             else:
                 self.z_error = None
 
-        if 'bins_mixing_matrix' in kwargs:
-            self.bins_mixing_matrix = kwargs.get('bins_mixing_matrix')
+        bins_mixing_matrix = kwargs.get('bins_mixing_matrix', None)
+        if bins_mixing_matrix is not None:
+            self.bins_mixing_matrix = bins_mixing_matrix
             self.bins_mixing_matrix_compressed = self.get_kvec_compression(
                 self.bins_mixing_matrix[1][0], self.bins_mixing_matrix[1][-1]
             )
 
-        if 'W_mixing_matrix' in kwargs:
+        W_mixing_matrix = kwargs.get('W_mixing_matrix', None)
+        if W_mixing_matrix is not None:
             if self.composition is not None:
-                W_mixing_matrix = kwargs.get('W_mixing_matrix')
                 if isinstance(W_mixing_matrix, dict):
                     W_stacked = np.stack(
                         [W_mixing_matrix[species]
@@ -135,14 +150,12 @@ class MeasuredData:
                     )
                 self.W_mixing_matrix = np.ascontiguousarray(W_stacked)
             else:
-                self.W_mixing_matrix = kwargs.get('W_mixing_matrix')
-                self.W_mixing_matrix = np.ascontiguousarray(self.W_mixing_matrix)
+                self.W_mixing_matrix = np.ascontiguousarray(W_mixing_matrix)
 
-        if hasattr(self, 'bins_mixing_matrix') \
-                and hasattr(self, 'W_mixing_matrix'):
-            self.mixing_matrix_exists = True
-        else:
-            self.mixing_matrix_exists = False
+        self.mixing_matrix_exists = (
+            getattr(self, 'bins_mixing_matrix', None) is not None
+            and getattr(self, 'W_mixing_matrix', None) is not None
+        )
 
         if 'theory_cov' in kwargs:
             self.theory_cov = kwargs.get('theory_cov')
@@ -228,14 +241,28 @@ class MeasuredData:
                 self.n_ell = self.signal.shape[1]
                 self.ell = [2*n for n in range(self.n_ell)]
 
+        if self.stat == 'powerspectrum+BAO':
+            if 'BAO_kind' in kwargs:
+                self.BAO_kind = kwargs.get('BAO_kind')
+                if 'alphas' in kwargs:
+                    self.alphas = kwargs.get('alphas')
+                else:
+                    raise KeyError('Missing required keyword argument "alphas"')
+            else:
+                raise KeyError('Missing required keyword argument "BAO_kind"')
+
         if 'cov' in kwargs:
             self.cov = kwargs.get('cov')
             if self.cov.ndim == 1:
                 self.cov = np.diag(self.cov)
                 self.cov_is_block_diagonal = True
             else:
-                self.cov_is_block_diagonal = self.is_block_diagonal(self.cov,
-                                                                    self.n_ell)
+                if self.stat == 'powerspectrum+BAO':
+                    self.cov_is_block_diagonal = self.is_block_diagonal(
+                        self.cov[:-2,:-2], self.n_ell)
+                else:
+                    self.cov_is_block_diagonal = self.is_block_diagonal(
+                        self.cov, self.n_ell)
 
         if 'nbar' in kwargs:
             self.nbar = kwargs.get('nbar')
@@ -245,7 +272,7 @@ class MeasuredData:
 
         if 'composition' in kwargs:
             self.composition = kwargs.get('composition')
-            
+
         if 'z_error' in kwargs:
             if self.composition is not None:
                 self.z_error = {}
@@ -262,18 +289,19 @@ class MeasuredData:
             else:
                 self.z_error = z_error
 
-        if 'bins_mixing_matrix' in kwargs:
-            self.bins_mixing_matrix = kwargs.get('bins_mixing_matrix')
+        bins_mixing_matrix = kwargs.get('bins_mixing_matrix', None)
+        if bins_mixing_matrix is not None:
+            self.bins_mixing_matrix = bins_mixing_matrix
             self.bins_mixing_matrix_compressed = self.get_kvec_compression(
                 self.bins_mixing_matrix[1][0], self.bins_mixing_matrix[1][-1]
             )
 
-        if 'W_mixing_matrix' in kwargs:
+        W_mixing_matrix = kwargs.get('W_mixing_matrix', None)
+        if W_mixing_matrix is not None:
             if self.composition is not None:
-                W_mixing_matrix = kwargs.get('W_mixing_matrix')
                 if isinstance(W_mixing_matrix, dict):
                     W_stacked = np.stack(
-                        [W_mixing_matrix[species] 
+                        [W_mixing_matrix[species]
                          for species in self.composition],
                         axis=0
                     )
@@ -284,14 +312,12 @@ class MeasuredData:
                     )
                 self.W_mixing_matrix = np.ascontiguousarray(W_stacked)
             else:
-                self.W_mixing_matrix = kwargs.get('W_mixing_matrix')
-                self.W_mixing_matrix = np.ascontiguousarray(self.W_mixing_matrix)
+                self.W_mixing_matrix = np.ascontiguousarray(W_mixing_matrix)
 
-        if hasattr(self, 'bins_mixing_matrix') \
-                and hasattr(self, 'W_mixing_matrix'):
-            self.mixing_matrix_exists = True
-        else:
-            self.mixing_matrix_exists = False
+        self.mixing_matrix_exists = (
+            getattr(self, 'bins_mixing_matrix', None) is not None
+            and getattr(self, 'W_mixing_matrix', None) is not None
+        )
 
         if 'theory_cov' in kwargs:
             self.theory_cov = kwargs.get('theory_cov')
@@ -335,11 +361,11 @@ class MeasuredData:
         self.W_mixing_matrix = None
         self.kmax_is_set = False
         self.mixing_matrix_exists = False
-        
+
     def get_kvec_compression(self, kmin, kmax, nk=100):
         def croot(x, p):
             return np.sign(x) * np.abs(x)**(1.0 / p)
-        
+
         kcenter = 0.65
         power = 1.5
         qmin = np.log10(kmin)
@@ -357,7 +383,7 @@ class MeasuredData:
         return kvec
 
     def transpose_mixing_matrix(self, axes):
-        if hasattr(self, 'W_mixing_matrix'):
+        if getattr(self, 'W_mixing_matrix', None) is not None:
             self.W_mixing_matrix_transpose = np.ascontiguousarray(
                 np.transpose(self.W_mixing_matrix, axes)
             )
@@ -399,7 +425,7 @@ class MeasuredData:
             self.kmax = [kmax for i in range(self.n_ell)]
         else:
             self.kmax = kmax
-            
+
         if not isinstance(kmin, list):
             self.kmin = [kmin for i in range(self.n_ell)]
         else:
@@ -411,8 +437,8 @@ class MeasuredData:
         ids_kmax = []
         for ell in range(self.n_ell):
             ids_kmax.append(np.where(
-                np.all(self.bins[:,None] < self.kmax[ell], axis=-1) & \
-                np.all(self.bins[:,None] > self.kmin[ell], axis=-1))[0])
+                np.all(self.bins[:,None] <= self.kmax[ell], axis=-1) & \
+                np.all(self.bins[:,None] >= self.kmin[ell], axis=-1))[0])
             self.nbins[ell] = len(ids_kmax[ell])
             # for i in range(nbin_total):
             #     if np.all(self.bins[i] < self.kmax[ell]):
@@ -426,9 +452,31 @@ class MeasuredData:
             self.bins_kmax.append(self.bins[ids_kmax[ell]])
             self.signal_kmax = np.concatenate(
                 (self.signal_kmax, self.signal[ids_kmax[ell], ell])) \
-                if self.signal_kmax.size else self.signal[ids_kmax[ell],
-                                                          ell]
+                if self.signal_kmax.size else self.signal[ids_kmax[ell], ell]
+        if self.stat == 'powerspectrum+BAO':
+            self.signal_kmax_FS = self.signal_kmax.copy()
+            self.signal_kmax = np.hstack((self.signal_kmax_FS, self.alphas))
 
+        n_tot_multipoles = self.n_ell * nbin_total
+        if self.stat == 'powerspectrum+BAO' and '_' in self.BAO_kind:
+            self.n_alpha = 2
+        elif self.stat == 'powerspectrum+BAO' and '_' not in self.BAO_kind:
+            self.n_alpha = 1
+        else:
+            self.n_alpha = 0
+
+        indices_keep = []
+        for ell in range(self.n_ell):
+            base = ell * nbin_total
+            indices_keep.extend(base + ids_kmax[ell])
+
+        indices_keep.extend(range(n_tot_multipoles,
+                            n_tot_multipoles + self.n_alpha))
+        indices_keep = np.array(indices_keep)
+
+        self.cov_kmax = self.cov[np.ix_(indices_keep, indices_keep)]
+        self.inverse_cov_kmax = np.linalg.inv(self.cov_kmax)
+        '''
         self.cov_kmax = np.zeros([sum(self.nbins), sum(self.nbins)])
         for ell1 in range(self.n_ell):
             for ell2 in range(self.n_ell):
@@ -440,6 +488,7 @@ class MeasuredData:
                                     ell2*nbin_total + ids_kmax[ell2],
                                     indexing='ij'))]
         self.inverse_cov_kmax = np.linalg.inv(self.cov_kmax)
+        '''
         if not self.theory_cov:
             self.inverse_cov_kmax *= self.AHfactor(sum(self.nbins))
 
