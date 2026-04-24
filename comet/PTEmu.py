@@ -603,9 +603,13 @@ class PTEmu:
                 self.cosmo.update_cosmology(Om0, H0, Ok0=Ok0, de_model=de_model,
                                             w0=w0, wa=wa)
                 wm = Om0 * params_fid['h']**2
-                rd_fid = (147.05
-                    * (wm / 0.1432)**(-0.23) * (self.Neff / 3.044)**(-0.1)
-                    * (params_fid['wb'] / 0.02236)**(-0.13))
+                #rd_fid = (147.05
+                #    * (wm / 0.1432)**(-0.23) * (self.Neff / 3.044)**(-0.1)
+                #    * (params_fid['wb'] / 0.02236)**(-0.13))
+                rd_fid = (56.067
+                    * np.exp(-49.7 * (wnu + 0.002) ** 2)
+                    / ((params_fid['wc'] + params_fid['wb'])**0.2436 * params_fid['wb']**0.128876 * (1 + (self.Neff - 3.046) / 30.6))
+                )
                 if 'composition' not in kwargs or kwargs['composition'] is None:
                     H_fid = self.cosmo.Hz(np.atleast_1d(params_fid['z']))
                     Dm_fid = self.cosmo.comoving_transverse_distance(
@@ -1150,9 +1154,13 @@ class PTEmu:
                 in params else np.repeat(1.0, self.nparams)
 
         wm = self.params['wc'] + self.params['wb'] + self.params['wnu']
-        rd = (147.05
-            * (wm / 0.1432)**(-0.23) * (self.Neff / 3.044)**(-0.1)
-            * (self.params['wb'] / 0.02236)**(-0.13))
+        #rd = (147.05
+        #    * (wm / 0.1432)**(-0.23) * (self.Neff / 3.044)**(-0.1)
+        #    * (self.params['wb'] / 0.02236)**(-0.13))
+        rd = (56.067
+            * np.exp(-49.7 * (self.params['wnu'] + 0.002) ** 2)
+            / ((self.params['wc'] + self.params['wb'])**0.2436 * self.params['wb']**0.128876 * (1 + (self.Neff - 3.046) / 30.6))
+        )
         if not self.use_Mpc:
             rd *= self.params['h']
         self.params['alpha_tr'] = self.params['q_tr'] * self.rd_fid / rd
@@ -2437,6 +2445,7 @@ class PTEmu:
         """
         if ell_for_recon is None:
             ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
+        ell_eval_emu = [0, 2, 4] if not self.real_space else [0]
 
         params_updated = [
             not np.array_equal(np.array(params[p]), self.params_check[p])
@@ -2451,6 +2460,11 @@ class PTEmu:
         if (np.any(params_updated) or
                 np.any([p not in params.keys() for p in params_nonzero]) or
                 not self.splines_up_to_date or diff_shape):
+            self._eval_emulator(params, ell_eval_emu, de_model=de_model)
+            #self._update_AP_params(params, de_model=de_model,
+            #                       q_tr_lo=q_tr_lo, gamma_tr_lo=gamma_tr_lo)
+            self._update_bias_params(params, include_RSD_params=True,
+                                     include_obs_syst_params=True)
             Pell = self._Pell_fid_ktable(params, ell=ell_for_recon,
                                          de_model=de_model)
             h = None if self.use_Mpc else self.params['h']
@@ -4300,9 +4314,8 @@ class PTEmu:
                         alphas = np.array(
                             [self.params['alpha_iso'][n::n_obs]])
                     Pell_list = np.concatenate((Pell_list, alphas))
-                #print (Pell_list)
+
                 diff = np.squeeze(Pell_list - self.data[oi].signal_kmax[:,None])
-                #print (diff)
 
                 if do_analytic_marginalisation[oi]:
                     for i,l in enumerate(ell[oi]):
@@ -4340,9 +4353,7 @@ class PTEmu:
                         PX_ell_list_oi = PX_ell_list_oi[:, X_marg].squeeze()
 
                 Cinv_diff = self.data[oi].inverse_cov_kmax @ diff
-                #print (self.data[oi].inverse_cov_kmax)
                 chi2 += np.einsum("a...,a...", diff, Cinv_diff)
-                #print (chi2)
 
                 if do_analytic_marginalisation[oi]:
                     if self.data[oi].composition is not None:
