@@ -1166,7 +1166,7 @@ class PTEmu:
         self.params['alpha_tr'] = self.params['q_tr'] * self.rd_fid / rd
         self.params['alpha_lo'] = self.params['q_lo'] * self.rd_fid / rd
         self.params['alpha_iso'] = (
-            self.params['alpha_tr']**2 * self.params['alpha_AP'])**(1./3.)
+            self.params['alpha_tr']**2 * self.params['alpha_lo'])**(1./3.)
         self.params['alpha_AP'] = (
             self.params['alpha_lo'] / self.params['alpha_tr'])
 
