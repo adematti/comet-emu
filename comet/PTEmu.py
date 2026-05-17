@@ -13,7 +13,7 @@ from comet.data import MeasuredData
 from comet.tables import Tables
 from comet.splines import Splines
 from comet.grid import Grid
-from comet.bispectrum import Bispectrum
+from comet.bispectrum import Bispectrum, BispectrumNum
 
 base_dir = os.path.join(os.path.dirname(__file__))
 
@@ -382,6 +382,7 @@ class PTEmu:
                     * (self.k_table[:nkdiff]/self.k_table[nkdiff])**neff
 
         self.Bisp = Bispectrum(self.real_space, self.model, self.use_Mpc)
+        self.BispNum = BispectrumNum(self.real_space, self.model, self.use_Mpc)
 
     def _load_emulator(self, fname_base):
         r"""Load the emulator from pickle file.
@@ -444,6 +445,8 @@ class PTEmu:
             self.dw_spline_up_to_date = False
             self.Bisp.define_units(self.use_Mpc)
             self.Bisp.define_nbar(self.nbar)
+            self.BispNum.define_units(self.use_Mpc)
+            self.BispNum.define_nbar(self.nbar)
             nbar_unit = '(1/Mpc)^3' if self.use_Mpc else '(h/Mpc)^3'
             self.H_fid = None
             self.Dm_fid = None
@@ -536,6 +539,7 @@ class PTEmu:
         if type in ['EggLeeSco','IvaPhiNis']:
             self.cnloB_type = type
             self.Bisp.change_cnlo_type(type)
+            self.BispNum.change_cnlo_type(type)
         else:
             print('Warning. Type not recognised, choose between '
                   '"EggLeeSco" (default), or "IvaPhiNis".')
@@ -558,6 +562,7 @@ class PTEmu:
         if np.any(nbar != self.nbar) or np.array(nbar).shape != self.nbar.shape:
             self.nbar = np.copy(nbar)
             self.Bisp.define_nbar(self.nbar)
+            self.BispNum.define_nbar(self.nbar)
             self.splines_up_to_date = False
 
     def define_data_set(self, obs_id, **kwargs):
@@ -3627,6 +3632,102 @@ class PTEmu:
 
         Bell_dict = self.Bisp.Bell(Pdw, neff, self.params, ell, W_damping)
         return Bell_dict
+
+    def _get_pdw_fn(self, params, de_model, q_tr_lo, ell_for_recon):
+        if ell_for_recon is None:
+            ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
+        ell_eval_emu = ell_for_recon.copy()
+        if 6 in ell_eval_emu:
+            ell_eval_emu.remove(6)
+        self._eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
+        self._update_bias_params(params, include_RSD_params=True,
+                                 include_obs_syst_params=True)
+        self._update_AP_params(params, de_model=de_model, q_tr_lo=q_tr_lo)
+        return lambda k: self.Pdw(k, params, de_model=de_model, mu=0.6,
+                                  ell_for_recon=ell_for_recon)
+
+    def Bell_Sugi(self, pair, params, ell=((0, 0, 0), (2, 0, 2)),
+                  de_model=None, q_tr_lo=None,
+                  quad_deg=(6, 12, 5), mu12_transform='k3',
+                  ell_for_recon=None):
+        """Numerical-projection path for the Sugiyama bispectrum multipoles.
+
+        Parameters
+        ----------
+        pair : ndarray, shape (n_pair, 2)
+            Wavenumber pairs (k1, k2).
+        params : dict
+            COMET parameter dictionary, including bias and AP parameters.
+        ell : iterable of (l1, l2, L) tuples
+        de_model : str or None
+        quad_deg : tuple of ints
+            Quadrature degrees for (mu1, mu12, phi) integrations.
+        mu12_transform : str
+            Transformation to apply to the mu12 variable 
+            to improve stability around mu12~-1.
+        """
+        pair = np.atleast_2d(pair)
+        Pdw_eval = self._get_pdw_fn(params, de_model, q_tr_lo, ell_for_recon)
+        nmu1, nmu12, nphi = quad_deg
+        return self.BispNum.Bell_Sugi(
+            pair, Pdw_eval, self.params, ell=ell,
+            nmu1=nmu1, nmu12=nmu12, nphi=nphi,
+            mu12_transform=mu12_transform)
+
+    def BX_ell_Sugi(self, pair, params, ell=((0, 0, 0), (2, 0, 2)),
+                    X_list=None,
+                    de_model=None, q_tr_lo=None,
+                    quad_deg=(6, 12, 5), mu12_transform='k3',
+                    ell_for_recon=None):
+        """Diagram-resolved companion to `Bell_Sugi` (numerical-projection
+        Sugiyama path). Returns ``{(l1,l2,L): {diagram_name: ndarray}}``."""
+        pair = np.atleast_2d(pair) 
+        Pdw_eval = self._get_pdw_fn(params, de_model, q_tr_lo, ell_for_recon)
+        nmu1, nmu12, nphi = quad_deg
+        return self.BispNum.BX_ell_Sugi(
+            pair, Pdw_eval, self.params, ell=ell,
+            nmu1=nmu1, nmu12=nmu12, nphi=nphi,
+            mu12_transform=mu12_transform, X_list=X_list)
+
+    def Bell_Scocc(self, tri, params, ell=((0, 0), (2, 0)),
+                  de_model=None, q_tr_lo=None, norm='sphharm',
+                  quad_deg=(7, 5) , ell_for_recon=None):
+        """Scoccimarro bispectrum multipoles via 5D kernel evaluation.
+
+        Internally projects the shared 5D bispectrum kernel onto the
+        Scoccimarro (l, m) multipole basis using (mu1, phi) quadrature
+        per (k1, k2, k3) triangle.
+
+        Parameters
+        ----------
+        tri : ndarray, shape (n_tri, 3)
+            Triangle wavemodes ``(k1, k2, k3)``.
+        params : dict
+            COMET parameter dictionary.
+        ell : iterable of ``(l, m)`` tuples.
+        norm : str
+            Normalisation convention for the multipoles. Options are
+            'sphharm' (default), which gives the standard spherical harmonic
+            normalisation, and 'legendre', which gives the normalisation used
+            in Legendre multipoles.
+        quad_deg : tuple of ints
+            Quadrature degrees for (mu1, phi) integrations.
+        """
+        tri = np.atleast_2d(tri)
+        Pdw_eval = self._get_pdw_fn(params, de_model, q_tr_lo, ell_for_recon)
+        nmu, nphi = quad_deg
+        return self.BispNum.Bell_Scocc(
+            tri, Pdw_eval, self.params, ell=ell, norm=norm, nmu=nmu, nphi=nphi)
+
+    def BX_ell_Scocc(self, tri, params, ell=((0, 0), (2, 0)),
+                           X_list=None, de_model=None, q_tr_lo=None, norm='sphharm',
+                           quad_deg=(7, 5), ell_for_recon=None):
+        """Diagram-resolved companion to `Bell_Scocc`."""
+        tri = np.atleast_2d(tri)
+        Pdw_eval = self._get_pdw_fn(params, de_model, q_tr_lo, ell_for_recon)
+        nmu, nphi = quad_deg
+        return self.BispNum.BX_ell_Scocc(
+            tri, Pdw_eval, self.params, ell=ell, norm=norm, nmu=nmu, nphi=nphi, X_list=X_list)
 
     def Avg_covariance(self, l1, l2, k, Pl, sigma_d, avg_los=3):
 
