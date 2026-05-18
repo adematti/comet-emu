@@ -3648,7 +3648,7 @@ class PTEmu:
 
     def Bell_Sugi(self, pair, params, ell=((0, 0, 0), (2, 0, 2)),
                   de_model=None, q_tr_lo=None,
-                  quad_deg=(6, 12, 5), mu12_transform='k3',
+                  quad_deg=(7, 16, 5), mu12_transform='k3',
                   ell_for_recon=None):
         """Numerical-projection path for the Sugiyama bispectrum multipoles.
 
@@ -3677,7 +3677,7 @@ class PTEmu:
     def BX_ell_Sugi(self, pair, params, ell=((0, 0, 0), (2, 0, 2)),
                     X_list=None,
                     de_model=None, q_tr_lo=None,
-                    quad_deg=(6, 12, 5), mu12_transform='k3',
+                    quad_deg=(7, 16, 5), mu12_transform='k3',
                     ell_for_recon=None):
         """Diagram-resolved companion to `Bell_Sugi` (numerical-projection
         Sugiyama path). Returns ``{(l1,l2,L): {diagram_name: ndarray}}``."""

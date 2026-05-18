@@ -2830,7 +2830,7 @@ class BispectrumNum:
         self.stoch_index = {d: i for i, d in enumerate(self.stoch_diagrams)}
 
     def define_nbar(self, nbar):
-        self.nbar = nbar
+        self.nbar = np.copy(nbar)
 
     def define_units(self, use_Mpc):
         self.use_Mpc = use_Mpc
@@ -3035,6 +3035,10 @@ class BispectrumNum:
         NP0 = np.ascontiguousarray(np.atleast_1d(params['NP0']))
         cnloB, cB1, cB2 = self._get_ctr_arrays(params)
         inv_qiso6 = np.ascontiguousarray(1.0 / qiso6)
+        nb = np.atleast_1d(np.asarray(self.nbar, dtype=float)).reshape(-1)
+        if nb.size == 1:
+            nb = np.broadcast_to(nb, inv_qiso6.shape)
+        inv_nbar = np.ascontiguousarray(1.0 / nb)
 
         if self.backend == 'jax':
             B_5d = np.asarray(self._bispectrum_5d_jax_fused(
@@ -3045,7 +3049,7 @@ class BispectrumNum:
                 jnp.asarray(f), jnp.asarray(avirB), jnp.asarray(sv),
                 jnp.asarray(MB0), jnp.asarray(NP0), 
                 jnp.asarray(cnloB), jnp.asarray(cB1), jnp.asarray(cB2),
-                1.0/self.nbar, jnp.asarray(inv_qiso6)))
+                jnp.asarray(inv_nbar), jnp.asarray(inv_qiso6)))
             B_5d = np.broadcast_to(B_5d, full_shape)
             return B_5d, qiso6
 
@@ -3061,7 +3065,7 @@ class BispectrumNum:
             pdw1, pdw2, pdw3,
             b1, b2, g2, f, avirB, sv, MB0, NP0,
             cnloB, cB1, cB2,
-            1.0/self.nbar, inv_qiso6, B_5d)
+            inv_nbar, inv_qiso6, B_5d)
         return B_5d, qiso6
 
     def _eval_sugi_5d_diagrams(self, pair, Pdw_eval, params,
@@ -3197,7 +3201,8 @@ class BispectrumNum:
         n_pair = B_5d.shape[0]
         nparams = qiso6.size
         B_flat = B_5d.reshape(n_pair, nmu1*nmu12*nphi, nparams)
-        NB0 = np.atleast_1d(params['NB0'])
+        NB0 = np.ascontiguousarray(np.atleast_1d(params['NB0']))
+        inv_nbar = np.ascontiguousarray(np.broadcast_to(1.0 / np.atleast_1d(self.nbar), qiso6.shape))
         Bell_dict = {}
         if mu12_transform == 'k3':
             # Per-pair projection kernel; the dmu12/dt Jacobian is folded
@@ -3217,7 +3222,7 @@ class BispectrumNum:
                 B = np.einsum('ijc,j->ic', B_flat, proj_ops[ll],
                               optimize='optimal')
                 if ll == (0, 0, 0):
-                    B = B + (NB0 / self.nbar**2)[None, :] / qiso6[None, :]
+                    B = B + (NB0 * inv_nbar**2)[None, :] / qiso6[None, :]
                 Bell_dict[ll] = np.squeeze(B)
         return Bell_dict
 
@@ -3398,6 +3403,10 @@ class BispectrumNum:
         NP0 = np.ascontiguousarray(np.atleast_1d(params['NP0']))
         cnloB, cB1, cB2 = self._get_ctr_arrays(params)
         inv_qiso6 = np.ascontiguousarray(1.0 / qiso6)
+        nb = np.atleast_1d(np.asarray(self.nbar, dtype=float)).reshape(-1)
+        if nb.size == 1:
+            nb = np.broadcast_to(nb, inv_qiso6.shape)
+        inv_nbar = np.ascontiguousarray(1.0 / nb)
 
         if self.backend == 'jax':
             B_4d = np.asarray(self._bispectrum_5d_jax_fused(
@@ -3408,7 +3417,7 @@ class BispectrumNum:
                 jnp.asarray(f), jnp.asarray(avir), jnp.asarray(sv),
                 jnp.asarray(MB0), jnp.asarray(NP0), 
                 jnp.asarray(cnloB), jnp.asarray(cB1), jnp.asarray(cB2),
-                1.0/self.nbar, jnp.asarray(inv_qiso6)))
+                jnp.asarray(inv_nbar), jnp.asarray(inv_qiso6)))
             B_4d = np.broadcast_to(B_4d, full_shape)
             return B_4d, qiso6
 
@@ -3423,7 +3432,7 @@ class BispectrumNum:
             pdw1, pdw2, pdw3,
             b1, b2, g2, f, avir, sv, MB0, NP0,
             cnloB, cB1, cB2,
-            1.0/self.nbar, inv_qiso6, B_5d)
+            inv_nbar, inv_qiso6, B_5d)
         return B_5d, qiso6
 
     def _eval_scocc_5d_diagrams(self, tri, Pdw_eval, params, nmu, nphi,
@@ -3574,7 +3583,8 @@ class BispectrumNum:
         n_tri = B_5d.shape[0]
         nparams = qiso6.size
         B_flat = B_5d.reshape(n_tri, nmu*nphi, nparams)
-        NB0 = np.atleast_1d(params['NB0'])
+        NB0 = np.ascontiguousarray(np.atleast_1d(params['NB0']))
+        inv_nbar = np.ascontiguousarray(np.broadcast_to(1.0 / np.atleast_1d(self.nbar), qiso6.shape))
         proj_ops = self._scocc_get_proj_ops(ell, nmu, nphi)
 
         Bell_dict = {}
@@ -3582,7 +3592,7 @@ class BispectrumNum:
             B = np.einsum('ijc,j->ic', B_flat, proj_ops[ll],
                           optimize='optimal')
             if ll == (0, 0):
-                B = B + (NB0 / self.nbar**2)[None, :] / qiso6[None, :]
+                B = B + (NB0 * inv_nbar**2)[None, :] / qiso6[None, :]
             normfact = 1.0
             if norm == 'legendre':
                 l, m = ll
@@ -3902,6 +3912,7 @@ class BispectrumNum:
         cnf = cnloB.reshape(-1)
         cB1f = cB1.reshape(-1)
         cB2f = cB2.reshape(-1)
+        inbf = inv_nbar.reshape(-1)
         iqf = inv_qiso6.reshape(-1)
         nparams = b1f.size
         N = flat.size
@@ -3911,7 +3922,7 @@ class BispectrumNum:
             ff = ff_[p]; av = avf[p]; sv_p = svf[p]
             mb0 = mbf[p]; np0 = npf[p]; cnl = cnf[p]
             ccB1 = cB1f[p]; ccB2 = cB2f[p]
-            iqs = iqf[p]; inb = inv_nbar
+            iqs = iqf[p]; inb = inbf[p]
             k1 = k1f[q]; k2 = k2f[q]; k3 = k3f[q]
             mu1 = m1f[q]; mu2 = m2f[q]; mu3 = m3f[q]
             pd1 = p1f[q]; pd2 = p2f[q]; pd3 = p3f[q]
@@ -3963,15 +3974,15 @@ class BispectrumNum:
             eft = 1.0 + cnl*ff*ff*(kmu1_sq + kmu2_sq + kmu3_sq)
             tree = tree * eft
 
-            lam1 = ff*ff*k1*k1*mu1_sq
+            lam1 = -ff*ff*k1*k1*mu1_sq
             den1 = 1.0 - lam1*av*av
             st1 = np.exp(lam1*sv_p*sv_p/den1)/den1**1.5 * (bb1*mb0 + ff*np0*mu1_sq) * Z1_1
             st1 = st1 * (1.0 + cnl*ff*ff*kmu1_sq)
-            lam2 = ff*ff*k2*k2*mu2_sq
+            lam2 = -ff*ff*k2*k2*mu2_sq
             den2 = 1.0 - lam2*av*av
             st2 = np.exp(lam2*sv_p*sv_p/den2)/den2**1.5 * (bb1*mb0 + ff*np0*mu2_sq) * Z1_2
             st2 = st2 * (1.0 + cnl*ff*ff*kmu2_sq)
-            lam3 = ff*ff*k3*k3*mu3_sq
+            lam3 = -ff*ff*k3*k3*mu3_sq
             den3 = 1.0 - lam3*av*av
             st3 = np.exp(lam3*sv_p*sv_p/den3)/den3**1.5 * (bb1*mb0 + ff*np0*mu3_sq) * Z1_3
             st3 = st3 * (1.0 + cnl*ff*ff*kmu3_sq)
