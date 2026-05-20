@@ -3168,18 +3168,17 @@ class BispectrumNum:
                 full_shape + (n_stoch_keep,))
         return spt_stack, stoch_stack, qiso6
 
-    def _sugi_project_stack(self, stack, ell, nmu1, nmu12, nphi,
-                            mu12_transform):
-        """Project a ``(n_pair, nmu1, nmu12, nphi, nparams, n_diag)`` stack
-        onto each requested ``(l1, l2, L)`` multipole. Returns
-        ``{ll: shape (n_pair, nparams, n_diag) array}``."""
-        proj_ops = self._sugi_get_proj_ops(
-            ell, nmu1, nmu12, nphi, mu12_transform)
+    def _sugi_project_stack(self, stack, ell, nmu1, nmu12, nphi, mu12_transform, pair=None):
         n_pair = stack.shape[0]
         nparams, n_diag = stack.shape[-2], stack.shape[-1]
         flat = stack.reshape(n_pair, nmu1*nmu12*nphi, nparams, n_diag)
+        if mu12_transform == 'k3':
+            proj_ops = self._sugi_get_proj_ops_k3(ell, pair, nmu1, nmu12, nphi, 'k3')
+            return {tuple(ll): np.einsum('ijcd,ij->icd', flat, proj_ops[tuple(ll)],
+                                        optimize='optimal') for ll in ell}
+        proj_ops = self._sugi_get_proj_ops(ell, nmu1, nmu12, nphi, mu12_transform)
         return {tuple(ll): np.einsum('ijcd,j->icd', flat, proj_ops[tuple(ll)],
-                                     optimize='optimal') for ll in ell}
+                                    optimize='optimal') for ll in ell}
 
     def Bell_Sugi(self, pair, Pdw_eval, params,
                   ell=((0, 0, 0), (2, 0, 2)),
@@ -3291,10 +3290,10 @@ class BispectrumNum:
         stoch_proj = None
         if tree_keep:
             spt_proj = self._sugi_project_stack(
-                spt_stack, ell, nmu1, nmu12, nphi, mu12_transform)
+                spt_stack, ell, nmu1, nmu12, nphi, mu12_transform, pair=pair)
         if stoch_keep:
             stoch_proj = self._sugi_project_stack(
-                stoch_stack, ell, nmu1, nmu12, nphi, mu12_transform)
+                stoch_stack, ell, nmu1, nmu12, nphi, mu12_transform, pair=pair)
 
         tree_pos = {orig: k for k, orig in enumerate(tree_keep)}
         stoch_pos = {orig: k for k, orig in enumerate(stoch_keep)}
