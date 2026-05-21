@@ -1125,12 +1125,12 @@ class PTEmu:
                 self.params['eps0'] + 1.0/3.0* self.params['eps2'])
             self.params['NP22'] = 2.0/3.0 * self.params['eps2']
         elif self.counterterm_basis == 'DESIct':
-            self.params['c0']= -0.5*(self.params['a0']*(self.params['b1']**2+self.params['b1']*f/3)+self.params['a2']*(self.params['b1']*f/3+(f**2)/5)+self.params['a4']*(self.params['b1']*f/5+(f**2)/7))
-            self.params['c2']= -0.5*(2*self.params['a0']*self.params['b1']*f/3+self.params['a2']*(2*self.params['b1']*f/3+4*(f**2)/7)+self.params['a4']*(4*self.params['b1']*f/7+10*(f**2)/21))
-            self.params['c4']= -0.5*(8*self.params['a2']*(f**2)/35+self.params['a4']*(8*self.params['b1']*f/35+24*(f**2)/77))
-            self.params['NP0']=self.params['SN0']
-            self.params['NP22']=self.params['SN22']
-            self.params['NP20']=self.params['SN20']
+            self.params['c0'] = -0.5*(self.params['a0']*(self.params['b1']**2+self.params['b1']*self.params['f']/3)+self.params['a2']*(self.params['b1']*self.params['f']/3+(self.params['f']**2)/5)+self.params['a4']*(self.params['b1']*self.params['f']/5+(self.params['f']**2)/7))
+            self.params['c2'] = -0.5*(2*self.params['a0']*self.params['b1']*self.params['f']/3+self.params['a2']*(2*self.params['b1']*self.params['f']/3+4*(self.params['f']**2)/7)+self.params['a4']*(4*self.params['b1']*self.params['f']/7+10*(self.params['f']**2)/21))
+            self.params['c4'] = -0.5*(8*self.params['a2']*(self.params['f']**2)/35+self.params['a4']*(8*self.params['b1']*self.params['f']/35+24*(self.params['f']**2)/77))
+            self.params['NP0'] = self.params['SN0']
+            self.params['NP22'] = self.params['SN22']
+            self.params['NP20'] = self.params['SN20']
         self.params_check.update(deepcopy(self.params))
         if self.bias_basis != 'DESI':
             if self.reparametrisation: self._rescale_params()
@@ -1709,6 +1709,8 @@ class PTEmu:
                 self.params['SN0'] /= Aap
                 self.params['SN20'] /= Aap
                 self.params['SN22'] /= Aap
+                self.params['NB0'] /= Aap**2
+                self.params['MB0'] /= Aap
             else:
                 self.params['b1'] /= (np.sqrt(Aap) * s12)
                 self.params['b2'] /= (np.sqrt(Aap) * s12**2)
@@ -1722,6 +1724,8 @@ class PTEmu:
                 self.params['NP0'] /= Aap
                 self.params['NP20'] /= Aap
                 self.params['NP22'] /= Aap
+                self.params['NB0'] /= Aap**2
+                self.params['MB0'] /= Aap
 
     def _W_kurt(self, k, mu):
         r"""Large scale limit of the velocity difference generating function.
