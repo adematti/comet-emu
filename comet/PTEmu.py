@@ -93,7 +93,7 @@ class PTEmu:
         elif self.bias_basis == 'AssBauGre':
             self.bias_params_list += ['b1', 'b2', 'bG2', 'bGam3']
         elif self.bias_basis == 'DESI':
-            self.bias_params_list += ['b1', 'b2_d', 'bk2', 'btd']
+            self.bias_params_list += ['b1', 'b2d', 'bk2', 'btd']
         elif self.bias_basis == 'AmiGleKok':
             self.bias_params_list += ['b1t', 'b2t', 'b3t', 'b4t']
         else:
@@ -109,7 +109,7 @@ class PTEmu:
         elif self.counterterm_basis == 'PBJ':
             self.bias_params_list += ['c0t', 'c2t', 'c4t', 'cnlo', 'NP0', 'eps0', 'eps2']
         elif self.counterterm_basis == 'DESIct':
-            self.bias_params_list += ['a0', 'a2','a4', 'SN0', 'SN20', 'SN22']
+            self.bias_params_list += ['a0', 'a2','a4', 'NP0', 'NP20', 'NP22']
         else:
             print('Warning. Counterterms and noise basis not recognised, defaulting to '
                   '"Comet".')
@@ -175,9 +175,6 @@ class PTEmu:
                                  'NP0': ['Pnoise_NP0'],
                                  'NP20': ['Pnoise_NP20'],
                                  'NP22': ['Pnoise_NP22'],
-                                 'SN0': ['Pnoise_NP0'],
-                                 'SN20': ['Pnoise_NP20'],
-                                 'SN22': ['Pnoise_NP22'],
                                  'NP20*': ['Pnoise_NP20'],
                                  'NP22*': ['Pnoise_NP22'],
                                  'eps0': ['Pnoise_NP20'],
@@ -1099,7 +1096,7 @@ class PTEmu:
             if self.reparametrisation: 
                 self._rescale_params()
             self.params['b1']=self.params['b1']
-            self.params['b2']=(self.params['b2_d']+4*self.params['bk2']/(3))
+            self.params['b2']=(self.params['b2d']+4*self.params['bk2']/(3))
             self.params['g2']=self.params['bk2']
             self.params['g21']=-(4/7)*(self.params['bk2']+self.params['btd'])
 
@@ -1128,9 +1125,6 @@ class PTEmu:
             self.params['c0'] = -0.5*(self.params['a0']*(self.params['b1']**2+self.params['b1']*self.params['f']/3)+self.params['a2']*(self.params['b1']*self.params['f']/3+(self.params['f']**2)/5)+self.params['a4']*(self.params['b1']*self.params['f']/5+(self.params['f']**2)/7))
             self.params['c2'] = -0.5*(2*self.params['a0']*self.params['b1']*self.params['f']/3+self.params['a2']*(2*self.params['b1']*self.params['f']/3+4*(self.params['f']**2)/7)+self.params['a4']*(4*self.params['b1']*self.params['f']/7+10*(self.params['f']**2)/21))
             self.params['c4'] = -0.5*(8*self.params['a2']*(self.params['f']**2)/35+self.params['a4']*(8*self.params['b1']*self.params['f']/35+24*(self.params['f']**2)/77))
-            self.params['NP0'] = self.params['SN0']
-            self.params['NP22'] = self.params['SN22']
-            self.params['NP20'] = self.params['SN20']
         self.params_check.update(deepcopy(self.params))
         if self.bias_basis != 'DESI':
             if self.reparametrisation: self._rescale_params()
@@ -1700,15 +1694,15 @@ class PTEmu:
             #np.array([0.62469875, 0.56705006, 0.51262079, 0.5050584 ,0.43297989,0.40714599])
             if self.bias_basis=='DESI':
                 self.params['b1'] /= (np.sqrt(Aap) * s12)
-                self.params['b2_d'] /= (np.sqrt(Aap) * s12**2)
+                self.params['b2d'] /= (np.sqrt(Aap) * s12**2)
                 self.params['bk2'] /= (np.sqrt(Aap) * s12**2)
                 self.params['btd'] /= (Aap * s12**4)
                 self.params['a0'] /= (Aap * s12**2)
                 self.params['a2'] /= (Aap * s12**2)
                 self.params['a4'] /= (Aap * s12**2)
-                self.params['SN0'] /= Aap
-                self.params['SN20'] /= Aap
-                self.params['SN22'] /= Aap
+                self.params['NP0'] /= Aap
+                self.params['NP20'] /= Aap
+                self.params['NP22'] /= Aap
                 self.params['NB0'] /= Aap**2
                 self.params['MB0'] /= Aap
             else:
