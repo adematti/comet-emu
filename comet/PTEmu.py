@@ -92,6 +92,8 @@ class PTEmu:
             self.bias_params_list += ['b1', 'b2', 'g2', 'g21']
         elif self.bias_basis == 'AssBauGre':
             self.bias_params_list += ['b1', 'b2', 'bG2', 'bGam3']
+        elif self.bias_basis == 'DESI':
+            self.bias_params_list += ['b1', 'b2_d', 'bk2', 'btd']
         elif self.bias_basis == 'AmiGleKok':
             self.bias_params_list += ['b1t', 'b2t', 'b3t', 'b4t']
         else:
@@ -106,6 +108,8 @@ class PTEmu:
             self.bias_params_list += ['c0*', 'c2*', 'c4*', 'cnlo*', 'NP0', 'NP20*', 'NP22*']
         elif self.counterterm_basis == 'PBJ':
             self.bias_params_list += ['c0t', 'c2t', 'c4t', 'cnlo', 'NP0', 'eps0', 'eps2']
+        elif self.counterterm_basis == 'DESIct':
+            self.bias_params_list += ['a0', 'a2','a4', 'SN0', 'SN20', 'SN22']
         else:
             print('Warning. Counterterms and noise basis not recognised, defaulting to '
                   '"Comet".')
@@ -150,13 +154,17 @@ class PTEmu:
                              'Pnoise_NP0', 'Pnoise_NP20', 'Pnoise_NP22']
 
         self.diagrams_to_marg = {'g21': ['P1L_b1g21', 'P1L_g21'],
-                                 'bGam3': ['P1L_b1g21', 'P1L_g21'], # needed?
+                                 'bGam3': ['P1L_b1g21', 'P1L_g21'],
+                                 'btd': ['P1L_b1g21', 'P1L_g21'], # needed?
                                  'c0': ['Pctr_c0'],
                                  'c2': ['Pctr_c2'],
                                  'c4': ['Pctr_c4'],
                                  'c0*': ['Pctr_c0'],
                                  'c2*': ['Pctr_c2'],
                                  'c4*': ['Pctr_c4'],
+                                 'a0': ['Pctr_c0'],
+                                 'a2': ['Pctr_c2'],
+                                 'a4': ['Pctr_c4'],
                                  'c0t': ['Pctr_c0'],
                                  'c2t': ['Pctr_c2'],
                                  'c4t': ['Pctr_c4'],
@@ -167,6 +175,9 @@ class PTEmu:
                                  'NP0': ['Pnoise_NP0'],
                                  'NP20': ['Pnoise_NP20'],
                                  'NP22': ['Pnoise_NP22'],
+                                 'SN0': ['Pnoise_NP0'],
+                                 'SN20': ['Pnoise_NP20'],
+                                 'SN22': ['Pnoise_NP22'],
                                  'NP20*': ['Pnoise_NP20'],
                                  'NP22*': ['Pnoise_NP22'],
                                  'eps0': ['Pnoise_NP20'],
@@ -194,7 +205,7 @@ class PTEmu:
 
         self.use_Mpc = use_Mpc
         self.nbar = 1.0  # in units of Mpc^3 or (Mpc/h)^3 depending on use_Mpc
-
+        self.sigma12_ref = 1.0
         self.Neff = 3.044
         # Neutrino mass fraction of CAMB (for num_massive = 1)
         self.neutrino_mass_fac = 94.06410581217612 / (3.044/3.0)**0.75
@@ -564,7 +575,19 @@ class PTEmu:
             self.Bisp.define_nbar(self.nbar)
             self.BispNum.define_nbar(self.nbar)
             self.splines_up_to_date = False
+    def define_s12_ref(self, sigma12_ref):
+        r"""Define the reference value for the 12-mode covariance.
 
+        Sets the internal class attribute **sigma12_ref** to the value provided as
+        input.
+
+        Parameters
+        ----------
+        sigma12_ref: float
+            Reference value for the 12-mode covariance.
+        """
+        if np.any(sigma12_ref != self.sigma12_ref) or np.array(sigma12_ref).shape != self.sigma12_ref.shape:
+            self.sigma12_ref = np.copy(sigma12_ref)
     def define_data_set(self, obs_id, **kwargs):
         r"""Define data sample.
 
@@ -815,6 +838,8 @@ class PTEmu:
 
             nbar = np.tile(
                 np.hstack([self.data[oi].nbar for oi in obs_id]), nparams_per_oi)
+            sigma12_ref = np.tile(
+                np.hstack([self.data[oi].sigma12_ref for oi in obs_id]), nparams_per_oi)
             H_fid = np.tile(
                 np.hstack([self.data[oi].fiducial_cosmology[0] for oi in obs_id]),
                 nparams_per_oi)
@@ -833,6 +858,7 @@ class PTEmu:
             gamma_tr_lo, fractions, ireduc = None, None, None
 
         self.define_nbar(nbar)
+        self.define_s12_ref(sigma12_ref)
         self.define_fiducial_cosmology(HDm_fid=HDm_fid)
         return params_eval, obs_id_use, inv_ids_sorting, gamma_tr_lo, fractions, \
                z_error, ireduc
@@ -1069,6 +1095,13 @@ class PTEmu:
             self.params['g21'] = -2.0/147.0 * (11*self.params['b1t']
                                                - 18*self.params['b2t']
                                                + 7*self.params['b3t'])
+        elif self.bias_basis == 'DESI':
+            if self.reparametrisation: 
+                self._rescale_params()
+            self.params['b1']=self.params['b1']
+            self.params['b2']=(self.params['b2_d']+4*self.params['bk2']/(3))
+            self.params['g2']=self.params['bk2']
+            self.params['g21']=-(4/7)*(self.params['bk2']+self.params['btd'])
 
         if self.counterterm_basis == 'ClassPT':
             self.params['c0'] = self.params['c0*']
@@ -1091,9 +1124,16 @@ class PTEmu:
             self.params['NP20'] = (
                 self.params['eps0'] + 1.0/3.0* self.params['eps2'])
             self.params['NP22'] = 2.0/3.0 * self.params['eps2']
-
+        elif self.counterterm_basis == 'DESIct':
+            self.params['c0']= -0.5*(self.params['a0']*(self.params['b1']**2+self.params['b1']*f/3)+self.params['a2']*(self.params['b1']*f/3+(f**2)/5)+self.params['a4']*(self.params['b1']*f/5+(f**2)/7))
+            self.params['c2']= -0.5*(2*self.params['a0']*self.params['b1']*f/3+self.params['a2']*(2*self.params['b1']*f/3+4*(f**2)/7)+self.params['a4']*(4*self.params['b1']*f/7+10*(f**2)/21))
+            self.params['c4']= -0.5*(8*self.params['a2']*(f**2)/35+self.params['a4']*(8*self.params['b1']*f/35+24*(f**2)/77))
+            self.params['NP0']=self.params['SN0']
+            self.params['NP22']=self.params['SN22']
+            self.params['NP20']=self.params['SN20']
         self.params_check.update(deepcopy(self.params))
-        if self.reparametrisation: self._rescale_params()
+        if self.bias_basis != 'DESI':
+            if self.reparametrisation: self._rescale_params()
 
     def _update_AP_params(self, params, de_model=None, q_tr_lo=None,
                           gamma_tr_lo=None):
@@ -1171,7 +1211,7 @@ class PTEmu:
         self.params['alpha_tr'] = self.params['q_tr'] * self.rd_fid / rd
         self.params['alpha_lo'] = self.params['q_lo'] * self.rd_fid / rd
         self.params['alpha_iso'] = (
-            self.params['alpha_tr']**2 * self.params['alpha_lo'])**(1./3.)
+            self.params['alpha_tr']**2 * self.params['alpha_AP'])**(1./3.)
         self.params['alpha_AP'] = (
             self.params['alpha_lo'] / self.params['alpha_tr'])
 
@@ -1428,7 +1468,10 @@ class PTEmu:
         h = np.ones_like(b1) if self.use_Mpc else self.params['h']
         h2 = h**2
         h4 = h**4
-        s12 = self.params['s12']
+        #array([0.62469875, 0.56705006, 0.51262079, 0.5050584 , 0.43297989,0.40714599])
+        
+        s12 = self.params['s12']/self.sigma12_ref
+        f= self.params['f']
         Aap = 1.0 / (self.params['q_tr']**2 * self.params['q_lo'])
 
         bias = {}
@@ -1436,6 +1479,9 @@ class PTEmu:
             bias['P1L_b1g21'] = b1
             bias['P1L_g21'] = np.ones_like(b1)
         elif self.bias_basis == 'AssBauGre':
+            bias['P1L_b1g21'] = -4.0/7.0 * b1
+            bias['P1L_g21'] = -4.0/7.0 * np.ones_like(b1)
+        elif self.bias_basis == 'DESI':
             bias['P1L_b1g21'] = -4.0/7.0 * b1
             bias['P1L_g21'] = -4.0/7.0 * np.ones_like(b1)
         elif self.bias_basis == 'AmiGleKok':
@@ -1649,19 +1695,33 @@ class PTEmu:
     def _rescale_params(self):
         if self.reparametrisation == 'TCM':
             Aap = 1.0 / (self.params['q_tr']**2 * self.params['q_lo'])
-            s12 = self.params['s12']
-            self.params['b1'] /= (np.sqrt(Aap) * s12)
-            self.params['b2'] /= (np.sqrt(Aap) * s12**2)
-            self.params['g2'] /= (np.sqrt(Aap) * s12**2)
-            self.params['g21'] /= (Aap * s12**4)
-            self.params['c0'] /= (Aap * s12**2)
-            self.params['c2'] /= (Aap * s12**2)
-            self.params['c4'] /= (Aap * s12**2)
-            if 'EFT' in self.model:
-                self.params['cnlo'] /= (Aap * s12**2)
-            self.params['NP0'] /= Aap
-            self.params['NP20'] /= Aap
-            self.params['NP22'] /= Aap
+            #array([0.62469875, 0.56705006, 0.51262079, 0.5050584 , 0.43297989,0.40714599])
+            s12 = self.params['s12']/self.sigma12_ref
+            #np.array([0.62469875, 0.56705006, 0.51262079, 0.5050584 ,0.43297989,0.40714599])
+            if self.bias_basis=='DESI':
+                self.params['b1'] /= (np.sqrt(Aap) * s12)
+                self.params['b2_d'] /= (np.sqrt(Aap) * s12**2)
+                self.params['bk2'] /= (np.sqrt(Aap) * s12**2)
+                self.params['btd'] /= (Aap * s12**4)
+                self.params['a0'] /= (Aap * s12**2)
+                self.params['a2'] /= (Aap * s12**2)
+                self.params['a4'] /= (Aap * s12**2)
+                self.params['SN0'] /= Aap
+                self.params['SN20'] /= Aap
+                self.params['SN22'] /= Aap
+            else:
+                self.params['b1'] /= (np.sqrt(Aap) * s12)
+                self.params['b2'] /= (np.sqrt(Aap) * s12**2)
+                self.params['g2'] /= (np.sqrt(Aap) * s12**2)
+                self.params['g21'] /= (Aap * s12**4)
+                self.params['c0'] /= (Aap * s12**2)
+                self.params['c2'] /= (Aap * s12**2)
+                self.params['c4'] /= (Aap * s12**2)
+                if 'EFT' in self.model:
+                    self.params['cnlo'] /= (Aap * s12**2)
+                self.params['NP0'] /= Aap
+                self.params['NP20'] /= Aap
+                self.params['NP22'] /= Aap
 
     def _W_kurt(self, k, mu):
         r"""Large scale limit of the velocity difference generating function.
@@ -3094,6 +3154,8 @@ class PTEmu:
                                 and len(ell_for_recon) > 1:
                             if self.counterterm_basis == 'Comet':
                                 PXNL_ell[:, nx, 1] = (self.k_table**2)[:,None]
+                            elif self.counterterm_basis == 'DESIct':
+                                PXNL_ell[:, nx, 1] = (self.k_table**2)[:, None]
                             elif self.counterterm_basis == 'ClassPT':
                                 PXNL_ell[:, nx, 0] = (1.0/3.0*self.k_table**2)[:,None]
                                 PXNL_ell[:, nx, 1] = (2.0/3.0*self.k_table**2)[:,None]
@@ -4194,6 +4256,8 @@ class PTEmu:
 
         output_tables = {k: v.copy() for k, v in input_tables.items()}
         f = self.params['f']
+        b1= self.params['b1']
+        b1sq=b1**2
 
         if self.counterterm_basis == 'PBJ':
             for key, table in input_tables.items():
@@ -4214,7 +4278,26 @@ class PTEmu:
                         1.0/3.0 *
                         (2.0 * table[:, index['Pnoise_NP22'], ...]
                         + table[:, index['Pnoise_NP20'], ...]))
+        if self.counterterm_basis == 'DESIct':
+            for key, table in input_tables.items():
+                out = output_tables[key]
 
+                if 'Pctr_c0' in diagrams:
+                    out[:, index['Pctr_c0'], ...] = (
+                        -0.5*(b1sq + b1*f/3) * table[:, index['Pctr_c0'], ...]
+                        - 0.5*(2/3*b1*f)    * table[:, index['Pctr_c2'], ...])
+
+                if 'Pctr_c2' in diagrams:
+                    out[:, index['Pctr_c2'], ...] = (
+                        -0.5*((1/3)*b1*f + (f**2)/5)          * table[:, index['Pctr_c0'], ...]  # ← chiudi qui
+                        - 0.5*((2/3)*b1*f + 4*(f**2)/7)       * table[:, index['Pctr_c2'], ...]
+                        - 0.5*(8/35*(f**2))                    * table[:, index['Pctr_c4'], ...])
+
+                if 'Pctr_c4' in diagrams:
+                    out[:, index['Pctr_c4'], ...] = (
+                        -0.5*(b1*f/5 + (f**2)/7)              * table[:, index['Pctr_c0'], ...]
+                        - 0.5*(4*b1*f/7 + 10*(f**2)/21)       * table[:, index['Pctr_c2'], ...]
+                        - 0.5*(8*b1*f/35 + 24*(f**2)/77)      * table[:, index['Pctr_c4'], ...])
         return output_tables
 
     def _chi2_powerspectrum(self, obs_id, params,
@@ -4362,19 +4445,29 @@ class PTEmu:
                              preserve_param_order=False)
 
             if any(do_analytic_marginalisation.values()):
+                if self.bias_basis=='DESI':
+                    diagrams_to_marg_all.append('Pctr_c4')
                 PX_ell = self.PX_ell(bins_kmax, params, ell_joint,
-                                     diagrams_to_marg_all, binning=binning,
-                                     obs_id=convolve_obs_id, de_model=de_model,
-                                     q_tr_lo=q_tr_lo, W_damping=W_damping,
-                                     ell_for_recon=ell_for_recon,
-                                     preserve_param_order=False)
+                                        diagrams_to_marg_all, binning=binning,
+                                        obs_id=convolve_obs_id, de_model=de_model,
+                                        q_tr_lo=q_tr_lo, W_damping=W_damping,
+                                        ell_for_recon=ell_for_recon,
+                                        preserve_param_order=False)
+                
                 PX_ell = self._rescale_marg_tables(PX_ell, diagrams_to_marg_all)
+                 
+                if self.bias_basis=='DESI':
+                    PX_ell_list = np.concatenate([PX_ell[ell] for ell in PX_ell])
+                    PX_ell_list = np.delete(PX_ell_list, diagrams_to_marg_all.index('Pctr_c4'), axis=1)                    
+                    diagrams_to_marg_all.remove('Pctr_c4')
+                else:
+                    PX_ell_list = np.concatenate([PX_ell[ell] for ell in PX_ell])
                 bX = self._get_bias_coeff_for_AM(diagrams_to_marg_all)
 
-                PX_ell_list = np.concatenate([PX_ell[ell] for ell in PX_ell])
+                
                 PX_ell_list *= bX
-                if 'g21' in params_to_marg_all or 'bGam3' in params_to_marg_all:
-                    PX_ell_list = join_diagrams(PX_ell_list, ['g21','bGam3'],
+                if 'g21' in params_to_marg_all or 'bGam3' in params_to_marg_all or 'btd' in params_to_marg_all:
+                    PX_ell_list = join_diagrams(PX_ell_list, ['g21','bGam3','btd'],
                                                 diagrams_to_marg,
                                                 diagrams_to_marg_all)
                 if 'cnlo' in params_to_marg_all:
