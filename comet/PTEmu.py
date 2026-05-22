@@ -3477,6 +3477,8 @@ class PTEmu:
                                     and len(ell_for_recon) > 1:
                                 if self.counterterm_basis == 'Comet':
                                     PXNL_ell[:, nx, 1] = (self.k_table**2)[:, None]
+                                elif self.counterterm_basis == 'DESIct':
+                                    PXNL_ell[:, nx, 1] = (self.k_table**2)[:, None]
                                 elif self.counterterm_basis == 'ClassPT':
                                     PXNL_ell[:, nx, 0] = (1.0/3.0*self.k_table**2)[
                                         :, None]
