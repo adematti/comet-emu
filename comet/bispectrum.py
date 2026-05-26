@@ -3408,7 +3408,7 @@ class BispectrumNum:
         inv_nbar = np.ascontiguousarray(1.0 / nb)
 
         if self.backend == 'jax':
-            B_4d = np.asarray(self._bispectrum_5d_jax_fused(
+            B_5d = np.asarray(self._bispectrum_5d_jax_fused(
                 jnp.asarray(k1_p), jnp.asarray(k2_p), jnp.asarray(k3_p),
                 jnp.asarray(mu1_p), jnp.asarray(mu2_p), jnp.asarray(mu3_p),
                 jnp.asarray(pdw1), jnp.asarray(pdw2), jnp.asarray(pdw3),
@@ -3417,8 +3417,8 @@ class BispectrumNum:
                 jnp.asarray(MB0), jnp.asarray(NP0), 
                 jnp.asarray(cnloB), jnp.asarray(cB1), jnp.asarray(cB2),
                 jnp.asarray(inv_nbar), jnp.asarray(inv_qiso6)))
-            B_4d = np.broadcast_to(B_4d, full_shape)
-            return B_4d, qiso6
+            B_5d = np.broadcast_to(B_5d, full_shape)
+            return B_5d, qiso6
 
         def _full(a):
             return np.ascontiguousarray(np.broadcast_to(a, full_shape))
