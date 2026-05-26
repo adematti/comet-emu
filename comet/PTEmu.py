@@ -2606,7 +2606,7 @@ class PTEmu:
             ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
 
         ell = [ell] if not isinstance(ell, list) else ell
-        ell_eval_emu = ell.copy()
+        ell_eval_emu = ell_for_recon.copy()
         if 6 in ell_eval_emu:
             ell_eval_emu.remove(6)
 
