@@ -3,7 +3,8 @@
 import numpy as np
 import numba as nb
 import pickle
-from scipy.interpolate import CubicSpline
+#from scipy.interpolate import CubicSpline
+from scipy.interpolate import make_interp_spline, CubicSpline
 from scipy.special import factorial, lpmv
 from comet.grid import Grid, CtypedGrid
 
@@ -2885,26 +2886,28 @@ class BispectrumNum:
         build a per-z `CubicSpline`. 
         """
         nparams = full_shape[-1]
-        if nparams == 1:
-            N_full = int(np.prod(full_shape))
-            k1_flat = np.ascontiguousarray(
-                np.broadcast_to(k1_p, full_shape)).ravel()
-            k2_flat = np.ascontiguousarray(
-                np.broadcast_to(k2_p, full_shape)).ravel()
-            k3_flat = np.ascontiguousarray(
-                np.broadcast_to(k3_p, full_shape)).ravel()
-            Pdw_all = Pdw_eval(np.concatenate([k1_flat, k2_flat, k3_flat]))
-            pdw1 = Pdw_all[:N_full].reshape(full_shape)
-            pdw2 = Pdw_all[N_full:2*N_full].reshape(full_shape)
-            pdw3 = Pdw_all[2*N_full:].reshape(full_shape)
-            return pdw1, pdw2, pdw3
+        # if nparams == 1:
+        #     N_full = int(np.prod(full_shape))
+        #     k1_flat = np.ascontiguousarray(
+        #         np.broadcast_to(k1_p, full_shape)).ravel()
+        #     k2_flat = np.ascontiguousarray(
+        #         np.broadcast_to(k2_p, full_shape)).ravel()
+        #     k3_flat = np.ascontiguousarray(
+        #         np.broadcast_to(k3_p, full_shape)).ravel()
+        #     Pdw_all = Pdw_eval(np.concatenate([k1_flat, k2_flat, k3_flat]))
+        #     pdw1 = Pdw_all[:N_full].reshape(full_shape)
+        #     pdw2 = Pdw_all[N_full:2*N_full].reshape(full_shape)
+        #     pdw3 = Pdw_all[2*N_full:].reshape(full_shape)
+        #     return pdw1, pdw2, pdw3
 
         kmin = min(float(np.min(k1_p)), float(np.min(k2_p)),
                    float(np.min(k3_p)))
         kmax = max(float(np.max(k1_p)), float(np.max(k2_p)),
                    float(np.max(k3_p)))
-        kgrid = self._kgrid_compression(kmin * 0.99, kmax * 1.01)
+        kgrid = self._kgrid_compression(kmin, kmax, nk=500)
         Pdw_grid = Pdw_eval(kgrid)  # shape (nk, nparams)
+        if nparams == 1:
+            Pdw_grid = Pdw_grid[:, np.newaxis]
         pdw1 = np.empty(full_shape)
         pdw2 = np.empty(full_shape)
         pdw3 = np.empty(full_shape)
@@ -2913,10 +2916,16 @@ class BispectrumNum:
         k2_b = np.broadcast_to(k2_p, full_shape)
         k3_b = np.broadcast_to(k3_p, full_shape)
         for iz in range(nparams):
-            cs = CubicSpline(kgrid, Pdw_grid[:, iz])
-            pdw1[..., iz] = cs(k1_b[..., iz])
-            pdw2[..., iz] = cs(k2_b[..., iz])
-            pdw3[..., iz] = cs(k3_b[..., iz])
+            #ss = make_interp_spline(kgrid, Pdw_grid[:, iz])
+            ss = CubicSpline(kgrid, Pdw_grid[:, iz])
+            # pdw1[..., iz] = cs(k1_b[..., iz])
+            # pdw2[..., iz] = cs(k2_b[..., iz])
+            # pdw3[..., iz] = cs(k3_b[..., iz])
+            # eval once and then split
+            pdw1, pdw2, pdw3 = ss(np.stack([k1_b, k2_b, k3_b]))
+            # print(pdw_all.shape)
+        
+
         return pdw1, pdw2, pdw3
 
 
