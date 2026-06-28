@@ -32,6 +32,14 @@ def _xp_zeros_like(x):
     return jnp.zeros_like(x)
 
 
+def _xp_clip(x, lo, hi):
+    """Clip x to [lo, hi]; works for both numpy arrays and JAX tracers."""
+    if isinstance(x, (np.ndarray, float, int, np.floating, np.integer)):
+        return np.clip(x, lo, hi)
+    import jax.numpy as jnp
+    return jnp.clip(x, lo, hi)
+
+
 def _xp_ones_like(x):
     if isinstance(x, np.ndarray):
         return np.ones_like(x)
@@ -1057,14 +1065,11 @@ class PTEmu:
             the standard cosmological parameters, or be left undefined to use
             only :math:`\sigma_{12}`. Defaults to **None**.
         """
-        def check_ranges(params_list):
+        def clip_to_ranges(params_list):
             for p in params_list:
-                try:
-                    if np.any((self.params[p] < self.params_ranges[p][0]) |
-                              (self.params[p] > self.params_ranges[p][1])):
-                        print('Warning! Leaving emulator range for parameter {}!'.format(p))
-                except Exception:
-                    pass  # JAX tracers cannot be compared as booleans at trace time
+                if p in self.params_ranges:
+                    lo, hi = self.params_ranges[p]
+                    self.params[p] = _xp_clip(self.params[p], lo, hi)
 
         if de_model is None and self.use_Mpc:
             try:
@@ -1077,7 +1082,7 @@ class PTEmu:
             #self.params['As'] = np.zeros_like(self.params['wc'])
             self.params['z'] = _xp_zeros_like(self.params['wc'])
             self.params['h'] = _xp_zeros_like(self.params['wc'])
-            check_ranges(self.params_list)
+            clip_to_ranges(self.params_list)
         elif de_model is None and not self.use_Mpc:
             try:
                 emu_params_updated = np.any([
@@ -1090,7 +1095,7 @@ class PTEmu:
                 self.params[p] = _xp_safe_param(params[p], params[p])
             #self.params['As'] = np.zeros_like(self.params['wc'])
             self.params['z'] = _xp_zeros_like(self.params['wc'])
-            check_ranges(self.params_list)
+            clip_to_ranges(self.params_list)
         else:
             expected_params = self.params_linear_list \
                 + self.de_model_params_list[de_model]
@@ -1146,7 +1151,7 @@ class PTEmu:
                 if should_reset_wa:
                     self.params['wa'] = _xp_zeros_like(self.params['wc'])
                     emu_params_updated = True
-            check_ranges(self.params_shape_list)
+            clip_to_ranges(self.params_shape_list)
 
         # Add omnuh2 to params dictionary
         self.params['wnu'] = (self.params['Mnu']/self.neutrino_mass_fac
@@ -1874,14 +1879,10 @@ class PTEmu:
                     self.params['s12'] = sigma12 * amplitude_scaling
                     self.params['f']   = np.diag(f)
 
-                for p in list(set(['s12','f']) & set(self.params_list)):
-                    try:
-                        if np.any((self.params[p] < self.params_ranges[p][0]) |
-                                  (self.params[p] > self.params_ranges[p][1])):
-                            print('Warning! Leaving emulator range ' +
-                                  'for parameter {}!'.format(p))
-                    except Exception:
-                        pass
+                for p in list(set(['s12', 'f']) & set(self.params_list)):
+                    if p in self.params_ranges:
+                        lo, hi = self.params_ranges[p]
+                        self.params[p] = _xp_clip(self.params[p], lo, hi)
 
                 if 'nonu' not in self.model:
 
