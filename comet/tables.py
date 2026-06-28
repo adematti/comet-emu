@@ -162,7 +162,7 @@ class Tables:
             max_offset = 0.0
         else:
             max_offset = max(offset_list)*1.1
-        return flip, max_offset
+        return np.array(flip), max_offset
 
     def transform(self, table, data_type):
         r"""Rescale the dynamical range of a table for the emulation.

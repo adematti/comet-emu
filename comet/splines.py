@@ -3,6 +3,12 @@
 import numpy as np
 from scipy.interpolate import make_interp_spline
 
+
+def _is_jax_value(x):
+    """Return True if x is a JAX array or tracer (not a plain numpy array)."""
+    return not isinstance(x, np.ndarray)
+
+
 class Splines:
     r"""Class for handling splined objects within Comet.
     """
@@ -13,10 +19,23 @@ class Splines:
         self.id_max = -1
         self.ncol = tuple([ncol]) if not isinstance(ncol, tuple) else ncol
         self.crossover_check = crossover_check
+        self.x_raw = None
+        self.y_raw = None
 
     def build(self, x, y, h=None, axis=0):
+        self.x_raw = np.asarray(x, dtype=np.float64)  # force native endian (FITS uses big-endian)
+        self.y_raw = y
         self.size_last = y.shape[-1]
         self.ids = np.arange(self.size_last, dtype=np.int32)
+
+        if _is_jax_value(y):
+            self.x_min = np.atleast_1d(self.x_raw[self.id_min])
+            self.x_max = np.atleast_1d(self.x_raw[self.id_max])
+            if h is not None:
+                import jax.numpy as jnp
+                self.h = jnp.atleast_1d(h) if _is_jax_value(h) else np.atleast_1d(h)
+                self.h3 = self.h**3
+            return
 
         if self.use_Mpc:
             self.spline = [make_interp_spline(x, y[...,n], axis=axis) \
@@ -173,6 +192,8 @@ class Splines:
         return y
 
     def eval_varx(self, x): # last dimension of x matches self.size_last
+        if _is_jax_value(x):
+            return self._eval_varx_jax(x)
         n = len(x.shape) - 1
         mask_less = x < self.x_min # -> nx x N
         mask_greater = x > self.x_max
@@ -188,6 +209,44 @@ class Splines:
             y[mask_greater[...,i],...,i] = \
                 self.extrapolation_max(x[mask_greater[...,i],i],i)
         return y
+
+    def _eval_varx_jax(self, x):
+        """JAX-compatible eval_varx using jnp.interp on stored raw grid."""
+        import jax.numpy as jnp
+        n_col_flat = int(np.prod(self.ncol)) if len(self.ncol) > 0 else 1
+        out_cols = []
+        for col_idx in range(self.size_last):
+            xi = x[..., col_idx]
+            if self.use_Mpc:
+                xg = jnp.asarray(self.x_raw)
+            else:
+                xg = jnp.asarray(self.x_raw) / self.h[col_idx]
+                xi = xi / self.h[col_idx]
+
+            if len(self.ncol) > 0:
+                yi_col = self.y_raw[..., col_idx]  # (nk_table, *ncol)
+                if not self.use_Mpc:
+                    yi_col = yi_col * self.h3[col_idx]
+            else:
+                yi_col = self.y_raw[..., col_idx]  # (nk_table,)
+                if not self.use_Mpc:
+                    yi_col = yi_col * self.h3[col_idx]
+
+            ncol_parts = []
+            for j in range(n_col_flat):
+                if len(self.ncol) > 0:
+                    j_idx = np.unravel_index(j, self.ncol)
+                    y_1d = jnp.asarray(yi_col[(slice(None),) + j_idx])
+                else:
+                    y_1d = jnp.asarray(yi_col)
+                ncol_parts.append(jnp.interp(xi, xg, y_1d))
+
+            if len(self.ncol) > 0:
+                out_col = jnp.stack(ncol_parts, axis=-1).reshape(xi.shape + self.ncol)
+            else:
+                out_col = ncol_parts[0]
+            out_cols.append(out_col)
+        return jnp.stack(out_cols, axis=-1)  # (..., *ncol, N)
 
     # this is just a quick fix for compatibility with the bispectrum module
     # derivative should also be applied to the extrapolations

@@ -8,7 +8,7 @@ from scipy.integrate import quad_vec, quad, dblquad
 from scipy.special import eval_legendre
 from astropy.io import fits
 from functools import reduce
-from comet.cosmology import Cosmology
+from comet.cosmology import Cosmology, JAXCosmology
 from comet.data import MeasuredData
 from comet.tables import Tables
 from comet.splines import Splines
@@ -16,6 +16,86 @@ from comet.grid import Grid
 from comet.bispectrum import Bispectrum, BispectrumNum
 
 base_dir = os.path.join(os.path.dirname(__file__))
+
+
+def _is_jax(x):
+    """True if x is a JAX array or tracer (not a plain numpy array)."""
+    return not isinstance(x, (np.ndarray, float, int, np.floating, np.integer))
+
+
+def _xp_zeros_like(x):
+    if isinstance(x, np.ndarray):
+        return np.zeros_like(x)
+    import jax.numpy as jnp
+    return jnp.zeros_like(x)
+
+
+def _xp_ones_like(x):
+    if isinstance(x, np.ndarray):
+        return np.ones_like(x)
+    import jax.numpy as jnp
+    return jnp.ones_like(x)
+
+
+def _xp_stack(arrays):
+    """Stack 1-D arrays into a 2-D matrix.  Works for numpy and JAX."""
+    if isinstance(arrays[0], np.ndarray):
+        return np.array(arrays)
+    import jax.numpy as jnp
+    return jnp.stack([jnp.atleast_1d(jnp.asarray(a)) for a in arrays])
+
+
+def _xp_safe_param(x, ref):
+    """Return x as a 1-D array; ref is used to select the array module."""
+    if isinstance(x, (np.ndarray, float, int, np.floating, np.integer)):
+        return np.atleast_1d(np.asarray(x))
+    import jax.numpy as jnp
+    return jnp.atleast_1d(x)
+
+
+# --------------------------------------------------------------------------- #
+#  JAX-native GP helpers                                                      #
+# --------------------------------------------------------------------------- #
+
+def _jax_gp_predict(X_test, gp_dict):
+    """JAX GP prediction: K_star @ alpha + y_mean."""
+    import jax.numpy as jnp
+    X_train = gp_dict['X_train']
+    alpha   = gp_dict['alpha']
+    y_mean  = gp_dict['y_mean']
+    rbf_amp2 = gp_dict['rbf_amp2']
+    rbf_ls   = gp_dict['rbf_ls']
+    mat_amp2 = gp_dict['mat_amp2']
+    mat_ls   = gp_dict['mat_ls']
+    diff = X_test[:, None, :] - X_train[None, :, :]        # (N, n_train, d)
+    d_rbf = diff / rbf_ls
+    K_rbf = rbf_amp2 * jnp.exp(-0.5 * jnp.sum(d_rbf**2, axis=-1))
+    d_mat = diff / mat_ls
+    dist_sq3 = 3.0 * jnp.sum(d_mat**2, axis=-1)
+    # Safe sqrt: avoid NaN gradient at dist_sq3=0 (e.g. when X_test == X_train)
+    safe_dist = jnp.where(dist_sq3 > 0, dist_sq3, jnp.ones_like(dist_sq3))
+    r_sq3 = jnp.where(dist_sq3 > 0, jnp.sqrt(safe_dist), 0.0)
+    K_mat = mat_amp2 * (1.0 + r_sq3) * jnp.exp(-r_sq3)
+    return (K_rbf + K_mat) @ alpha + y_mean                 # (N, n_out)
+
+
+
+
+def _jax_legendre_outer(ells, x):
+    """Return stacked Legendre polynomials P_ell(x) for ells in [0,2,4,6]."""
+    import jax.numpy as jnp
+    x2 = x**2
+    out = []
+    for ell in ells:
+        if ell == 0:
+            out.append(jnp.ones_like(x))
+        elif ell == 2:
+            out.append((3.0*x2 - 1.0) / 2.0)
+        elif ell == 4:
+            out.append((35.0*x2**2 - 30.0*x2 + 3.0) / 8.0)
+        elif ell == 6:
+            out.append((231.0*x2**3 - 315.0*x2**2 + 105.0*x2 - 5.0) / 16.0)
+    return jnp.stack(out, axis=0)   # (n_ell, *x.shape)
 
 
 class PTEmu:
@@ -340,8 +420,9 @@ class PTEmu:
         self.real_space = False if 'f' in self.params_list else True
 
         # Read k table, total number of bins, and number of bins that include
-        # loop corrections
-        self.k_table = hdul['K_TABLE'].data['bins']
+        # loop corrections.  Convert to native float64 (FITS columns may be big-endian
+        # or float32, which JAX cannot handle directly as a jnp.asarray input).
+        self.k_table = np.asarray(hdul['K_TABLE'].data['bins'], dtype=np.float64)
         self.nk = self.k_table.shape[0]
         self.nkloop = sum(self.k_table > hdul['K_TABLE'].header['k1loop'])
 
@@ -375,7 +456,7 @@ class PTEmu:
         # If redshift-space model is selected, then also load P6 table
         if not self.real_space:
             self.s12_for_P6 = hdul['MODEL_Pell6'].header['SIG12']
-            self.P6 = hdul['MODEL_Pell6'].data['P_all']
+            self.P6 = np.asarray(hdul['MODEL_Pell6'].data['P_all'], dtype=np.float64)
             # better compute P6 table for full k-range...
             # the shift by 12 is because the P6 models become noisy at low k,
             # making the extrapolation unreliable otherwise
@@ -410,6 +491,27 @@ class PTEmu:
                 open('{}_linear.pickle'.format(fname_base), "rb"))
         self.emu['ratios'] = pickle.load(
             open('{}_ratios.pickle'.format(fname_base), "rb"))
+        self._init_jax_gp_arrays()
+
+    def _init_jax_gp_arrays(self):
+        """Extract JAX-compatible arrays from sklearn GP objects after loading."""
+        try:
+            import jax.numpy as jnp
+        except ImportError:
+            return
+        self._jax_gp = {}
+        for name, gp in self.emu.items():
+            k = gp.kernel_
+            # Kernel structure: (C1^2 * RBF + C2^2 * Matern(1.5)) + WhiteKernel
+            self._jax_gp[name] = {
+                'X_train':  jnp.array(gp.X_train_, dtype=jnp.float64),
+                'alpha':    jnp.array(gp.alpha_, dtype=jnp.float64),
+                'y_mean':   jnp.array(gp._y_train_mean, dtype=jnp.float64),
+                'rbf_amp2': jnp.float64(k.k1.k1.k1.constant_value),
+                'rbf_ls':   jnp.array(k.k1.k1.k2.length_scale, dtype=jnp.float64),
+                'mat_amp2': jnp.float64(k.k1.k2.k1.constant_value),
+                'mat_ls':   jnp.array(k.k1.k2.k2.length_scale, dtype=jnp.float64),
+            }
 
     def define_units(self, use_Mpc):
         r"""Define units for the power spectrum and number density.
@@ -955,29 +1057,37 @@ class PTEmu:
         """
         def check_ranges(params_list):
             for p in params_list:
-                if np.any((self.params[p] < self.params_ranges[p][0]) |
-                          (self.params[p] > self.params_ranges[p][1])):
-                    print('Warning! Leaving emulator range ' + \
-                          'for parameter {}!'.format(p))
+                try:
+                    if np.any((self.params[p] < self.params_ranges[p][0]) |
+                              (self.params[p] > self.params_ranges[p][1])):
+                        print('Warning! Leaving emulator range for parameter {}!'.format(p))
+                except Exception:
+                    pass  # JAX tracers cannot be compared as booleans at trace time
 
         if de_model is None and self.use_Mpc:
-            emu_params_updated = np.any([params[p] != self.params[p] for p
-                                         in self.params_list])
+            try:
+                emu_params_updated = np.any([params[p] != self.params[p] for p
+                                             in self.params_list])
+            except Exception:
+                emu_params_updated = True
             for p in self.params_list:
-                self.params[p] = np.atleast_1d(params[p])
+                self.params[p] = _xp_safe_param(params[p], params[p])
             #self.params['As'] = np.zeros_like(self.params['wc'])
-            self.params['z'] = np.zeros_like(self.params['wc'])
-            self.params['h'] = np.zeros_like(self.params['wc'])
+            self.params['z'] = _xp_zeros_like(self.params['wc'])
+            self.params['h'] = _xp_zeros_like(self.params['wc'])
             check_ranges(self.params_list)
         elif de_model is None and not self.use_Mpc:
-            emu_params_updated = np.any([
-              not np.array_equal(params[p], self.params[p])
-              for p in self.params_list + ['h']
-            ])
+            try:
+                emu_params_updated = np.any([
+                  not np.array_equal(params[p], self.params[p])
+                  for p in self.params_list + ['h']
+                ])
+            except Exception:
+                emu_params_updated = True
             for p in self.params_list + ['h']:
-                self.params[p] = np.atleast_1d(params[p])
+                self.params[p] = _xp_safe_param(params[p], params[p])
             #self.params['As'] = np.zeros_like(self.params['wc'])
-            self.params['z'] = np.zeros_like(self.params['wc'])
+            self.params['z'] = _xp_zeros_like(self.params['wc'])
             check_ranges(self.params_list)
         else:
             expected_params = self.params_linear_list \
@@ -986,30 +1096,60 @@ class PTEmu:
                 expected_params.remove('s12')
             if 'Ok' not in params:
                 expected_params.remove('Ok')
-            emu_params_updated = np.any([
-              not np.array_equal(params[p], self.params[p])
-              for p in expected_params
-            ])
+            try:
+                emu_params_updated = np.any([
+                  not np.array_equal(params[p], self.params[p])
+                  for p in expected_params
+                ])
+            except Exception:
+                emu_params_updated = True
             for p in expected_params:
-                self.params[p] = np.atleast_1d(params[p])
+                if p == 'z':
+                    try:
+                        self.params[p] = float(np.asarray(params[p]))
+                    except Exception:
+                        pass  # z must be concrete (numpy/float); skip if it's a JAX tracer
+                else:
+                    self.params[p] = _xp_safe_param(params[p], params[p])
             for p in ['w0', 'wa']:
                 if self.params[p].size != self.params['wc'].size:
-                    self.params[p] = np.full_like(self.params['wc'], self.params[p].item())
-            if de_model == 'lambda' and \
-                    (np.any(self.params['w0'] != -1.0) or \
-                     np.any(self.params['wa'] != 0.0)):
-                self.params['w0'] = -np.ones_like(self.params['wc'])
-                self.params['wa'] = np.zeros_like(self.params['wc'])
-                emu_params_updated = True
-            elif de_model == 'w0' and np.any(self.params['wa'] != 0.0):
-                self.params['wa'] = np.zeros_like(self.params['wc'])
-                emu_params_updated = True
+                    try:
+                        self.params[p] = np.full_like(self.params['wc'], self.params[p].item())
+                    except Exception:
+                        import jax.numpy as jnp
+                        self.params[p] = jnp.broadcast_to(self.params[p], self.params['wc'].shape)
+            if de_model == 'lambda':
+                # Guard: stale JAX tracers in w0/wa (not in expected_params for lambda)
+                # would silently enter the computation graph via !=; check wc instead
+                if _is_jax(self.params['wc']):
+                    should_reset_w0wa = True
+                else:
+                    try:
+                        should_reset_w0wa = (np.any(self.params['w0'] != -1.0) or
+                                             np.any(self.params['wa'] != 0.0))
+                    except Exception:
+                        should_reset_w0wa = True
+                if should_reset_w0wa:
+                    self.params['w0'] = _xp_zeros_like(self.params['wc']) - 1.0
+                    self.params['wa'] = _xp_zeros_like(self.params['wc'])
+                    emu_params_updated = True
+            elif de_model == 'w0':
+                if _is_jax(self.params['wc']):
+                    should_reset_wa = True
+                else:
+                    try:
+                        should_reset_wa = np.any(self.params['wa'] != 0.0)
+                    except Exception:
+                        should_reset_wa = True
+                if should_reset_wa:
+                    self.params['wa'] = _xp_zeros_like(self.params['wc'])
+                    emu_params_updated = True
             check_ranges(self.params_shape_list)
 
         # Add omnuh2 to params dictionary
         self.params['wnu'] = (self.params['Mnu']/self.neutrino_mass_fac
                               if 'Mnu' in self.params.keys()
-                              else np.zeros_like(self.params['wc']))
+                              else _xp_zeros_like(self.params['wc']))
 
         if len(self.params['wc']) != self.nparams:
             self.nparams = len(self.params['wc'])
@@ -1026,15 +1166,26 @@ class PTEmu:
             self.chi2_decomposition = None
             self.Bisp_chi2_decomposition = None
 
-        RSD_params_updated = \
-            np.any([params[p] != self.params[p] for p
-                    in list(set(params) & set(self.RSD_params_list)) +
-                    list(set(params) & set(self.obs_syst_params_list))])
+        _rsd_obs_keys = (list(set(params) & set(self.RSD_params_list)) +
+                         list(set(params) & set(self.obs_syst_params_list)))
+        if _rsd_obs_keys and _is_jax(params.get(_rsd_obs_keys[0])):
+            # Skip comparison: reading self.params with a stale JAX tracer in it
+            # would include the stale tracer in the traced computation graph
+            RSD_params_updated = True
+        else:
+            try:
+                RSD_params_updated = np.any([params[p] != self.params[p]
+                                             for p in _rsd_obs_keys])
+            except Exception:
+                RSD_params_updated = True
         if RSD_params_updated:
             self.chi2_decomposition = None
             self.Bisp_chi2_decomposition = None
 
-        self.params_check.update(deepcopy(self.params))
+        try:
+            self.params_check.update(deepcopy(self.params))
+        except Exception:
+            pass  # JAX tracers cannot be deepcopied
 
         return emu_params_updated
 
@@ -1069,15 +1220,15 @@ class PTEmu:
 
         for p in params_list:
             if p in params.keys():
-                self.params[p] = deepcopy(np.atleast_1d(params[p]))
+                self.params[p] = _xp_safe_param(params[p], self.params['wc'])
             else:
-                self.params[p] = np.zeros_like(self.params['wc'])
+                self.params[p] = _xp_zeros_like(self.params['wc'])
 
         if 'VDG_infty' in self.model:
-            self.params['cnlo'] = np.zeros_like(self.params['wc'])
-            self.params['cnloB'] = np.zeros_like(self.params['wc'])
-            self.params['cB1'] = np.zeros_like(self.params['wc'])
-            self.params['cB2'] = np.zeros_like(self.params['wc'])
+            self.params['cnlo'] = _xp_zeros_like(self.params['wc'])
+            self.params['cnloB'] = _xp_zeros_like(self.params['wc'])
+            self.params['cB1'] = _xp_zeros_like(self.params['wc'])
+            self.params['cB2'] = _xp_zeros_like(self.params['wc'])
 
         if self.bias_basis == 'AssBauGre':
             self.params['g2'] = self.params['bG2']
@@ -1125,7 +1276,10 @@ class PTEmu:
             self.params['c0'] = -0.5*(self.params['a0']*(self.params['b1']**2+self.params['b1']*self.params['f']/3)+self.params['a2']*(self.params['b1']*self.params['f']/3+(self.params['f']**2)/5)+self.params['a4']*(self.params['b1']*self.params['f']/5+(self.params['f']**2)/7))
             self.params['c2'] = -0.5*(2*self.params['a0']*self.params['b1']*self.params['f']/3+self.params['a2']*(2*self.params['b1']*self.params['f']/3+4*(self.params['f']**2)/7)+self.params['a4']*(4*self.params['b1']*self.params['f']/7+10*(self.params['f']**2)/21))
             self.params['c4'] = -0.5*(8*self.params['a2']*(self.params['f']**2)/35+self.params['a4']*(8*self.params['b1']*self.params['f']/35+24*(self.params['f']**2)/77))
-        self.params_check.update(deepcopy(self.params))
+        try:
+            self.params_check.update(deepcopy(self.params))
+        except Exception:
+            pass  # JAX tracers cannot be deepcopied
         if self.bias_basis != 'DESI':
             if self.reparametrisation: self._rescale_params()
 
@@ -1156,32 +1310,47 @@ class PTEmu:
         # If a de_model is specified and no AP parameters are specified,
         # the latter are computed using the input params dictionary
         if de_model is not None and q_tr_lo is None:
-            # Compute fractional matter density, H0, and update cosmology
             Om0 = ((self.params['wc'] + self.params['wb'] + self.params['wnu'])
                    / self.params['h']**2)
-            H0 = 100.0 * self.params['h']
-            self.cosmo.update_cosmology(
-                Om0=Om0, H0=H0, Ok0=self.params['Ok'],
-                de_model=de_model, w0=self.params['w0'], wa=self.params['wa'])
-            # AP parameters are defined as the ratio of current to fiducial
-            # background distances
-            self.params['q_lo'] = self.H_fid / self.cosmo.Hz(self.params['z'])
-            self.params['q_tr'] = self.cosmo.comoving_transverse_distance(
-                self.params['z']) / self.Dm_fid
-            # If Mpc/h are selected, the current distances need to be
-            # rescaled by the current value of h
+            H0  = 100.0 * self.params['h']
+            if _is_jax(self.params['wc']):
+                z_val  = float(np.squeeze(self.params['z']))
+                jcosmo = JAXCosmology(Om0=Om0, H0=H0, Ok0=self.params['Ok'],
+                                      de_model=de_model,
+                                      w0=self.params['w0'], wa=self.params['wa'])
+                self.params['q_lo'] = self.H_fid / jcosmo.Hz(z_val)
+                self.params['q_tr'] = jcosmo.comoving_transverse_distance(z_val) / self.Dm_fid
+            else:
+                self.cosmo.update_cosmology(
+                    Om0=Om0, H0=H0, Ok0=self.params['Ok'],
+                    de_model=de_model, w0=self.params['w0'], wa=self.params['wa'])
+                self.params['q_lo'] = self.H_fid / self.cosmo.Hz(np.atleast_1d(self.params['z']))
+                self.params['q_tr'] = self.cosmo.comoving_transverse_distance(
+                    self.params['z']) / self.Dm_fid
             if not self.use_Mpc:
                 self.params['q_lo'] *= self.params['h']
                 self.params['q_tr'] *= self.params['h']
         # If de_model is specified and AP parameters are specified,
         # the latter are used
         elif de_model is not None:
-            q_lo = np.atleast_1d(q_tr_lo[1])
-            q_tr = np.atleast_1d(q_tr_lo[0])
-            if q_lo.size != self.params['wc'].size:
-                q_lo = np.repeat(q_lo, self.params['wc'].size)
-            if q_tr.size != self.params['wc'].size:
-                q_tr = np.repeat(q_tr, self.params['wc'].size)
+            _q_lo_val = q_tr_lo[1]
+            _q_tr_val = q_tr_lo[0]
+            _nparams = self.params['wc'].size
+            if _is_jax(_q_lo_val) or _is_jax(_q_tr_val):
+                import jax.numpy as jnp
+                q_lo = jnp.atleast_1d(_q_lo_val)
+                q_tr = jnp.atleast_1d(_q_tr_val)
+                if q_lo.size != _nparams:
+                    q_lo = jnp.repeat(q_lo, _nparams)
+                if q_tr.size != _nparams:
+                    q_tr = jnp.repeat(q_tr, _nparams)
+            else:
+                q_lo = np.atleast_1d(_q_lo_val)
+                q_tr = np.atleast_1d(_q_tr_val)
+                if q_lo.size != _nparams:
+                    q_lo = np.repeat(q_lo, _nparams)
+                if q_tr.size != _nparams:
+                    q_tr = np.repeat(q_tr, _nparams)
             self.params['q_lo'] = q_lo
             self.params['q_tr'] = q_tr
         # If no de_model is specified, the AP parameters must be specified in
@@ -1192,28 +1361,33 @@ class PTEmu:
             self.params['q_tr'] = np.atleast_1d(params['q_tr']) if 'q_tr' \
                 in params else np.repeat(1.0, self.nparams)
 
-        wm = self.params['wc'] + self.params['wb'] + self.params['wnu']
-        #rd = (147.05
-        #    * (wm / 0.1432)**(-0.23) * (self.Neff / 3.044)**(-0.1)
-        #    * (self.params['wb'] / 0.02236)**(-0.13))
-        rd = (56.067
-            * np.exp(-49.7 * (self.params['wnu'] + 0.002) ** 2)
-            / ((self.params['wc'] + self.params['wb'])**0.2436 * self.params['wb']**0.128876 * (1 + (self.Neff - 3.046) / 30.6))
-        )
-        if not self.use_Mpc:
-            rd *= self.params['h']
-        self.params['alpha_tr'] = self.params['q_tr'] * self.rd_fid / rd
-        self.params['alpha_lo'] = self.params['q_lo'] * self.rd_fid / rd
-        self.params['alpha_iso'] = (
-            self.params['alpha_tr']**2 * self.params['alpha_AP'])**(1./3.)
-        self.params['alpha_AP'] = (
-            self.params['alpha_lo'] / self.params['alpha_tr'])
+        if hasattr(self, 'rd_fid'):
+            wm = self.params['wc'] + self.params['wb'] + self.params['wnu']
+            if _is_jax(self.params['wc']):
+                import jax.numpy as jnp
+                _exp = jnp.exp
+            else:
+                _exp = np.exp
+            rd = (56.067
+                * _exp(-49.7 * (self.params['wnu'] + 0.002) ** 2)
+                / ((self.params['wc'] + self.params['wb'])**0.2436 * self.params['wb']**0.128876 * (1 + (self.Neff - 3.046) / 30.6))
+            )
+            if not self.use_Mpc:
+                rd *= self.params['h']
+            self.params['alpha_tr'] = self.params['q_tr'] * self.rd_fid / rd
+            self.params['alpha_lo'] = self.params['q_lo'] * self.rd_fid / rd
+            # Compute alpha_AP first so alpha_iso never reads a stale tracer
+            self.params['alpha_AP'] = self.params['alpha_lo'] / self.params['alpha_tr']
+            self.params['alpha_iso'] = (self.params['alpha_tr'] * self.params['alpha_lo'])**(1./3.)
 
         if gamma_tr_lo is not None:
             self.params['q_lo'] *= gamma_tr_lo[1]
             self.params['q_tr'] *= gamma_tr_lo[0]
 
-        self.params_check.update(deepcopy(self.params))
+        try:
+            self.params_check.update(deepcopy(self.params))
+        except Exception:
+            pass  # JAX tracers cannot be deepcopied
 
     def _get_bias_coeff(self):
         r"""Get bias coefficients for the emulated terms.
@@ -1266,9 +1440,9 @@ class PTEmu:
             else self.params['cnlo'] / self.params['h']**4
         b1sq = b1**2
 
-        return np.array([b1sq, b1, np.ones_like(b1), c0, c2, c4,
-                         b1sq*cnlo, b1*cnlo, cnlo, b1sq, b1*b2, b1*g2,
-                         b1*g21, b2**2, b2*g2, g2**2, b2, g2, g21])
+        return _xp_stack([b1sq, b1, _xp_ones_like(b1), c0, c2, c4,
+                          b1sq*cnlo, b1*cnlo, cnlo, b1sq, b1*b2, b1*g2,
+                          b1*g21, b2**2, b2*g2, g2**2, b2, g2, g21])
 
     def _get_bias_coeff_for_P6(self):
         r"""Get bias coefficients for the emulated terms of the octopole.
@@ -1319,19 +1493,22 @@ class PTEmu:
         f3 = f**3
         f4 = f**4
 
-        bb_tree = np.array([b1sq, b1*f, f2])
-        bb_loop = np.array([b1sq, b1sq*f, b1sq*f2, b1f, b1f*f, b1f*f2,
-                            f2, f3, f4, b1*b2, b1f*b2, b1*g2, b1f*g2, b1*g21,
-                            b2**2, b2*g2, g2**2, b2*f, b2*f2, g2*f, g2*f2,
-                            g21*f])
-        bb_k4ctr = np.array([b1sq*f4, b1f*f4, f2*f4]) * cnlo
+        bb_tree  = _xp_stack([b1sq, b1*f, f2])
+        bb_loop  = _xp_stack([b1sq, b1sq*f, b1sq*f2, b1f, b1f*f, b1f*f2,
+                               f2, f3, f4, b1*b2, b1f*b2, b1*g2, b1f*g2, b1*g21,
+                               b2**2, b2*g2, g2**2, b2*f, b2*f2, g2*f, g2*f2,
+                               g21*f])
+        bb_k4ctr = _xp_stack([b1sq*f4, b1f*f4, f2*f4]) * cnlo
 
         s12ratio = (self.params['s12'] / self.s12_for_P6)**2
-        bb_tree *= s12ratio
-        bb_loop *= s12ratio**2
-        bb_k4ctr *= s12ratio
+        bb_tree  = bb_tree  * s12ratio
+        bb_loop  = bb_loop  * s12ratio**2
+        bb_k4ctr = bb_k4ctr * s12ratio
 
-        return np.vstack([bb_tree, bb_loop, bb_k4ctr])
+        if isinstance(bb_tree, np.ndarray):
+            return np.vstack([bb_tree, bb_loop, bb_k4ctr])
+        import jax.numpy as jnp
+        return jnp.concatenate([bb_tree, bb_loop, bb_k4ctr], axis=0)
 
     def _get_bias_coeff_for_chi2_decomposition(self):
         r"""Get bias coefficients for the :math:`\chi^2` tables.
@@ -1394,10 +1571,10 @@ class PTEmu:
             else self.params['NP22'] / self.params['h']**5
         b1sq = b1**2
 
-        return np.array([b1sq, b1, np.ones_like(b1), c0, c2, c4,
-                         b1sq*cnlo, b1*cnlo, cnlo, b1sq, b1*b2, b1*g2, b1*g21,
-                         b2**2, b2*g2, g2**2, b2, g2, g21, N0/self.nbar,
-                         N20/self.nbar, N22/self.nbar])
+        return _xp_stack([b1sq, b1, _xp_ones_like(b1), c0, c2, c4,
+                          b1sq*cnlo, b1*cnlo, cnlo, b1sq, b1*b2, b1*g2, b1*g21,
+                          b2**2, b2*g2, g2**2, b2, g2, g21, N0/self.nbar,
+                          N20/self.nbar, N22/self.nbar])
 
     def _get_bias_coeff_for_Bisp_chi2_decomposition(self):
         r"""Get bias coefficients for the bispectrum :math:`\chi^2` tables.
@@ -1545,65 +1722,104 @@ class PTEmu:
             the standard cosmological parameters, or be left undefined to use
             only :math:`\sigma_{12}`. Defaults to **None**.
         """
+        # Before _update_params: clear any stale JAX tracers from self.params.
+        # After a jax.jit call, self.params holds DynamicJaxprTracers from the
+        # completed trace.  If the *next* call is also JAX-traced (e.g. jax.grad),
+        # those stale tracers silently enter the new computation graph the moment
+        # any `!=` / arithmetic touches them, which JAX then rejects during
+        # compilation with UnexpectedTracerError — even when the read is wrapped in
+        # try/except (the comparison creates the graph node before np.any() raises).
+        # Replacing stale tracers with numpy zeros is safe: _update_params or the
+        # code below overwrites every entry it needs before reading it.
+        if any(_is_jax(params.get(k)) for k in list(params.keys())[:1]):
+            import jax.core as _jaxcore
+            for _p, _v in list(self.params.items()):
+                if isinstance(_v, _jaxcore.Tracer):
+                    try:
+                        self.params[_p] = np.zeros(_v.shape, dtype=np.float64)
+                    except Exception:
+                        self.params[_p] = np.zeros(1, dtype=np.float64)
+
         emu_params_updated = self._update_params(params, de_model=de_model)
 
+        _use_jax = _is_jax(self.params['wc'])
+
         # Selecting all the parameters needed for the shape emulator
-        params_shape = np.array(
-            [self.params[p] for p in self.params_shape_list]).T
-        # The second entry of the parameter list is wc
-        params_shape[:,1] += self.params['wnu']
+        if _use_jax:
+            import jax.numpy as jnp
+            params_shape = _xp_stack(
+                [self.params[p] for p in self.params_shape_list]).T  # (N, n_shape)
+            params_shape = params_shape.at[:, 1].add(
+                jnp.atleast_1d(jnp.asarray(self.params['wnu'])))
+        else:
+            params_shape = np.array(
+                [self.params[p] for p in self.params_shape_list]).T
+            # The second entry of the parameter list is wc
+            params_shape[:, 1] += self.params['wnu']
+
+        if _use_jax:
+            import jax.numpy as jnp
+
+        def _gp_predict(name, X):
+            if _use_jax:
+                return _jax_gp_predict(X, self._jax_gp[name])
+            return self.emu[name].predict(X)
+
+        def _build_params(keys):
+            if _use_jax:
+                return _xp_stack([self.params[p] for p in keys]).T
+            return np.array([self.params[p] for p in keys]).T
 
         if de_model is None:
 
-            params_linear = np.array(
-                [self.params[p] for p in self.params_linear_list]).T
-            params_all = np.array(
-                [self.params[p] for p in self.params_list]).T
+            params_linear = _build_params(self.params_linear_list)
+            params_all    = _build_params(self.params_list)
 
             if self.Pk_lin is None or emu_params_updated:
 
                 if 'nonu' not in self.model:
-                    linear_all = self.emu['linear'].predict(params_linear)
+                    linear_all = _gp_predict('linear', params_linear)
                     self.Pk_lin = self.training['LINEAR'].transform_inv(
                         linear_all[:,:self.nk], 'PL').T
                     self.Pk_nw = self.training['LINEAR'].transform_inv(
                         linear_all[:,self.nk:-1], 'PNW').T
                     if 'VDG_infty' in self.model:
-                        self.params['sv'] = np.atleast_1d(
-                            self.training['LINEAR'].transform_inv(
-                                linear_all[:,-1], 'sv').squeeze())
+                        sv_raw = self.training['LINEAR'].transform_inv(
+                            linear_all[:,-1], 'sv').squeeze()
+                        self.params['sv'] = (jnp.atleast_1d(sv_raw) if _use_jax
+                                             else np.atleast_1d(sv_raw))
                         if not self.use_Mpc:
                             self.params['sv'] *= self.params['h']
 
                 else:
-                    shape_all = self.emu['shape'].predict(params_shape)
+                    shape_all = _gp_predict('shape', params_shape)
                     sigma12 = self.training['SHAPE'].transform_inv(
                         shape_all[:,-2], 's12').squeeze()
                     self.Pk_lin = self.training['SHAPE'].transform_inv(
                         shape_all[:,:self.nk], 'PL').T
                     self.Pk_nw = self.training['SHAPE'].transform_inv(
                         shape_all[:,self.nk:-2], 'PNW').T
-                    self.Pk_lin *= (self.params['s12'] /
-                                    sigma12)**2
-                    self.Pk_nw *= (self.params['s12'] / sigma12)**2
+                    self.Pk_lin = self.Pk_lin * (self.params['s12'] / sigma12)**2
+                    self.Pk_nw  = self.Pk_nw  * (self.params['s12'] / sigma12)**2
                     if 'VDG_infty' in self.model:
-                        self.params['sv'] = np.atleast_1d(
-                            self.training['SHAPE'].transform_inv(
-                                shape_all[:,-1], 'sv').squeeze())
-                        self.params['sv'] *= (self.params['s12'] /
-                                              sigma12)
+                        sv_raw = self.training['SHAPE'].transform_inv(
+                            shape_all[:,-1], 'sv').squeeze()
+                        self.params['sv'] = (jnp.atleast_1d(sv_raw) if _use_jax
+                                             else np.atleast_1d(sv_raw))
+                        self.params['sv'] = (self.params['sv']
+                                             * (self.params['s12'] / sigma12))
                         if not self.use_Mpc:
                             self.params['sv'] *= self.params['h']
 
-            ratios_all = self.emu['ratios'].predict(params_all)
-            for i,m in enumerate(ell):
+            ratios_all = _gp_predict('ratios', params_all)
+            for i, m in enumerate(ell):
                 self.Pk_ratios[m] = self.training['FULL'].transform_inv(
                     ratios_all[:,i*self.emu_output_length:(i+1)*self.emu_output_length], m).T
         else:
 
             if self.Pk_lin is None or emu_params_updated:
 
-                shape_all = self.emu['shape'].predict(params_shape)
+                shape_all = _gp_predict('shape', params_shape)
 
                 if 'nonu' not in self.model:
                     sigma12 = (self.training['SHAPE'].transform_inv(
@@ -1617,46 +1833,68 @@ class PTEmu:
                 # parameters + growth rate
                 Om0_fid = (self.params['wc'] + self.params['wb'] +
                            self.params['wnu']) / self.emu_LCDM_params['h']**2
-                H0_fid = 100.0 * self.emu_LCDM_params['h']
-                self.cosmo.update_cosmology(Om0=Om0_fid, H0=H0_fid)
-                Dfid = self.cosmo.growth_factor(self.emu_LCDM_params['z'])
+                if _use_jax:
+                    z_fid = float(np.squeeze(self.emu_LCDM_params['z']))
+                    jcosmo_fid = JAXCosmology(Om0=Om0_fid, H0=100.0, de_model='lambda')
+                    Dfid, _ = jcosmo_fid.growth_factor(z_fid, get_growth_rate=True)
 
-                Om0 = (self.params['wc'] + self.params['wb'] +
-                       self.params['wnu']) / self.params['h']**2
-                H0 = 100.0 * self.params['h']
-                self.cosmo.update_cosmology(
-                    Om0=Om0, H0=H0, Ok0=self.params['Ok'],
-                    de_model=de_model, w0=self.params['w0'],
-                    wa=self.params['wa'])
-                D, f = self.cosmo.growth_factor(self.params['z'],
-                                                get_growth_rate=True)
+                    Om0  = (self.params['wc'] + self.params['wb'] +
+                            self.params['wnu']) / self.params['h']**2
+                    z_tgt = float(np.squeeze(self.params['z']))
+                    jcosmo = JAXCosmology(Om0=Om0, H0=100.0, Ok0=self.params['Ok'],
+                                          de_model=de_model,
+                                          w0=self.params['w0'], wa=self.params['wa'])
+                    D, f  = jcosmo.growth_factor(z_tgt, get_growth_rate=True)
 
-                amplitude_scaling = np.sqrt(
-                    self.params['As'] / self.emu_LCDM_params['As']) \
-                    * np.diag(D) / np.squeeze(Dfid)
-                self.params['s12'] = sigma12 * amplitude_scaling
-                self.params['f'] = np.diag(f)
+                    amplitude_scaling = (jnp.sqrt(self.params['As'] /
+                                         self.emu_LCDM_params['As'])
+                                         * D / Dfid)
+                    self.params['s12'] = sigma12 * amplitude_scaling
+                    self.params['f']   = f
+                else:
+                    H0_fid = 100.0 * self.emu_LCDM_params['h']
+                    self.cosmo.update_cosmology(Om0=Om0_fid, H0=H0_fid)
+                    Dfid = self.cosmo.growth_factor(self.emu_LCDM_params['z'])
+
+                    Om0 = (self.params['wc'] + self.params['wb'] +
+                           self.params['wnu']) / self.params['h']**2
+                    H0  = 100.0 * self.params['h']
+                    self.cosmo.update_cosmology(
+                        Om0=Om0, H0=H0, Ok0=self.params['Ok'],
+                        de_model=de_model, w0=self.params['w0'],
+                        wa=self.params['wa'])
+                    D, f = self.cosmo.growth_factor(self.params['z'],
+                                                    get_growth_rate=True)
+
+                    amplitude_scaling = np.sqrt(
+                        self.params['As'] / self.emu_LCDM_params['As']) \
+                        * np.diag(D) / np.squeeze(Dfid)
+                    self.params['s12'] = sigma12 * amplitude_scaling
+                    self.params['f']   = np.diag(f)
 
                 for p in list(set(['s12','f']) & set(self.params_list)):
-                    if np.any((self.params[p] < self.params_ranges[p][0]) |
-                              (self.params[p] > self.params_ranges[p][1])):
-                            print('Warning! Leaving emulator range ' + \
+                    try:
+                        if np.any((self.params[p] < self.params_ranges[p][0]) |
+                                  (self.params[p] > self.params_ranges[p][1])):
+                            print('Warning! Leaving emulator range ' +
                                   'for parameter {}!'.format(p))
+                    except Exception:
+                        pass
 
                 if 'nonu' not in self.model:
 
-                    params_linear = np.array(
-                        [self.params[p] for p in self.params_linear_list]).T
-                    linear_all = self.emu['linear'].predict(params_linear)
+                    params_linear = _build_params(self.params_linear_list)
+                    linear_all = _gp_predict('linear', params_linear)
                     self.Pk_lin = self.training['LINEAR'].transform_inv(
                         linear_all[:,:self.nk], 'PL').T
                     self.Pk_nw = self.training['LINEAR'].transform_inv(
                         linear_all[:,self.nk:-1], 'PNW').T
 
                     if 'VDG_infty' in self.model:
-                        self.params['sv'] = np.atleast_1d(
-                            self.training['LINEAR'].transform_inv(
-                                linear_all[:,-1], 'sv').squeeze())
+                        sv_raw = self.training['LINEAR'].transform_inv(
+                            linear_all[:,-1], 'sv').squeeze()
+                        self.params['sv'] = (jnp.atleast_1d(sv_raw) if _use_jax
+                                             else np.atleast_1d(sv_raw))
                         if not self.use_Mpc:
                             self.params['sv'] *= self.params['h']
 
@@ -1666,22 +1904,21 @@ class PTEmu:
                         shape_all[:,:self.nk], 'PL').T
                     self.Pk_nw = self.training['SHAPE'].transform_inv(
                         shape_all[:,self.nk:-2], 'PNW').T
-                    self.Pk_lin *= amplitude_scaling**2
-                    self.Pk_nw *= amplitude_scaling**2
+                    self.Pk_lin = self.Pk_lin * amplitude_scaling**2
+                    self.Pk_nw  = self.Pk_nw  * amplitude_scaling**2
 
                     if 'VDG_infty' in self.model:
-                        self.params['sv'] = np.atleast_1d(
-                            self.training['SHAPE'].transform_inv(
-                                shape_all[:,-1], 'sv').squeeze())
-                        self.params['sv'] *= amplitude_scaling
+                        sv_raw = self.training['SHAPE'].transform_inv(
+                            shape_all[:,-1], 'sv').squeeze()
+                        self.params['sv'] = (jnp.atleast_1d(sv_raw) if _use_jax
+                                             else np.atleast_1d(sv_raw))
+                        self.params['sv'] = self.params['sv'] * amplitude_scaling
                         if not self.use_Mpc:
                             self.params['sv'] *= self.params['h']
 
-            params_all = np.array([self.params[p] for p in self.params_list],
-                                  dtype=object).T
-
-            ratios_all = self.emu['ratios'].predict(params_all)
-            for i,m in enumerate(ell):
+            params_all = _build_params(self.params_list)
+            ratios_all = _gp_predict('ratios', params_all)
+            for i, m in enumerate(ell):
                 self.Pk_ratios[m] = self.training['FULL'].transform_inv(
                     ratios_all[:,i*self.emu_output_length:(i+1) \
                                *self.emu_output_length], m).T
@@ -1762,6 +1999,9 @@ class PTEmu:
         """
         t1 = (self.params['f']*k*mu)**2
         t2 = 1.0 + t1*self.params['avir']**2
+        if _is_jax(self.params['f']):
+            import jax.numpy as jnp
+            return 1.0/jnp.sqrt(t2)*jnp.exp(-t1*self.params['sv']**2/t2)
         return 1.0/np.sqrt(t2)*np.exp(-t1*self.params['sv']**2/t2)
 
     def get_kmu_products(self, tri, mu1, mu2, mu3):
@@ -1848,7 +2088,7 @@ class PTEmu:
         #     sigma_r = self.cosmo.light_speed/self.H_fid * self.params['sigma_z']
         #     t = np.exp(-(k * mu * sigma_r)**2)
 
-        t = np.ones_like(k)
+        t = _xp_ones_like(k)
         # loop over nparams_per_oi, oi (if given) and spec
         if isinstance(z_error, list):
             for z_error_type in self.z_error_types:
@@ -2180,26 +2420,48 @@ class PTEmu:
         ell = [ell] if not isinstance(ell, list) else ell
 
         bij = self._get_bias_coeff()
+        _jax = _is_jax(self.Pk_lin)
 
-        Pell = np.zeros([self.nk, len(ell), self.nparams])
-        for i, m in enumerate(ell):
-            if m != 6:
-                Pk_bij = np.zeros([self.nk, self.n_diagrams, self.nparams])
-                Pk_bij[:, :9] = np.moveaxis(np.multiply(
-                    self.Pk_ratios[m][:9*self.nk].reshape(
-                        (9, self.nk, self.nparams)),
-                    self.Pk_lin), 0, 1)
-                Pk_bij[(self.nk-self.nkloop):, 9:19] = np.moveaxis(np.multiply(
-                    self.Pk_ratios[m][9*self.nk:].reshape(
-                        (10, self.nkloop, self.nparams)),
-                    self.Pk_lin[(self.nk-self.nkloop):]), 0, 1)
-
-                Pell[:, i] = np.einsum("abc,bc->ac", Pk_bij, bij)
-            else:
-                bij_for_P6 = self._get_bias_coeff_for_P6()
-                Pell[:, i] = np.einsum("ab,bc->ac", self.P6, bij_for_P6)
-
-        return Pell
+        if _jax:
+            import jax.numpy as jnp
+            Pell_cols = []
+            for i, m in enumerate(ell):
+                if m != 6:
+                    ratios_9 = jnp.moveaxis(
+                        self.Pk_ratios[m][:9*self.nk].reshape(
+                            (9, self.nk, self.nparams)) * self.Pk_lin, 0, 1)
+                    ratios_10 = jnp.moveaxis(
+                        self.Pk_ratios[m][9*self.nk:].reshape(
+                            (10, self.nkloop, self.nparams))
+                        * self.Pk_lin[(self.nk-self.nkloop):], 0, 1)
+                    zeros_upper = jnp.zeros((self.nk - self.nkloop, 10, self.nparams))
+                    Pk_bij = jnp.concatenate(
+                        [ratios_9,
+                         jnp.concatenate([zeros_upper, ratios_10], axis=0)],
+                        axis=1)
+                    Pell_cols.append(jnp.einsum("abc,bc->ac", Pk_bij, bij))
+                else:
+                    bij_for_P6 = self._get_bias_coeff_for_P6()
+                    Pell_cols.append(jnp.einsum("ab,bc->ac", jnp.asarray(self.P6), bij_for_P6))
+            return jnp.stack(Pell_cols, axis=1)  # (nk, n_ell, N)
+        else:
+            Pell = np.zeros([self.nk, len(ell), self.nparams])
+            for i, m in enumerate(ell):
+                if m != 6:
+                    Pk_bij = np.zeros([self.nk, self.n_diagrams, self.nparams])
+                    Pk_bij[:, :9] = np.moveaxis(np.multiply(
+                        self.Pk_ratios[m][:9*self.nk].reshape(
+                            (9, self.nk, self.nparams)),
+                        self.Pk_lin), 0, 1)
+                    Pk_bij[(self.nk-self.nkloop):, 9:19] = np.moveaxis(np.multiply(
+                        self.Pk_ratios[m][9*self.nk:].reshape(
+                            (10, self.nkloop, self.nparams)),
+                        self.Pk_lin[(self.nk-self.nkloop):]), 0, 1)
+                    Pell[:, i] = np.einsum("abc,bc->ac", Pk_bij, bij)
+                else:
+                    bij_for_P6 = self._get_bias_coeff_for_P6()
+                    Pell[:, i] = np.einsum("ab,bc->ac", self.P6, bij_for_P6)
+            return Pell
 
     # TODO
     # def _Pell_quad(self, k, params, ell, de_model=None, binning=None,
@@ -2648,28 +2910,49 @@ class PTEmu:
             raise ValueError('Unsupported RSD model.')
 
         def P2d(q, mu):
-            t = np.einsum("...bcd,cbd->...bd", self.Pell_spline.eval_varx(q),
-                          eval_legendre.outer(np.array(ell_for_recon),mu))
-            return t # nk x nmu x N
+            spline_val = self.Pell_spline.eval_varx(q)  # (..., ncol, N)
+            if _is_jax(q):
+                import jax.numpy as jnp
+                leg = _jax_legendre_outer(ell_for_recon, mu)  # (n_ell, *mu.shape)
+                t = jnp.einsum("...bcd,cbd->...bd", spline_val, leg)
+            else:
+                t = np.einsum("...bcd,cbd->...bd", spline_val,
+                              eval_legendre.outer(np.array(ell_for_recon), mu))
+            return t  # nk x nmu x N
 
         def P2d_stoch(q, mu):
-            t = self.params['NP0'] + q**2 * (self.params['NP20'] \
-                + self.params['NP22']*eval_legendre(2,mu))
-            return t/self.nbar # nk x nmu x N
+            mu2_val = mu**2
+            t = self.params['NP0'] + q**2 * (self.params['NP20']
+                + self.params['NP22'] * (3.0*mu2_val - 1.0) / 2.0)
+            return t/self.nbar  # nk x nmu x N
 
         def LOS_average_continuous():
-            mu = self.gl_x
-            mu2 = self.gl_x2
-            APfac = np.sqrt(
-                np.divide.outer(mu2, self.params['q_lo']**2) \
-                + np.divide.outer(1.0 - mu2, self.params['q_tr']**2))
-            kp = np.multiply.outer(keff, APfac)
-            mup = np.divide.outer(mu, self.params['q_lo'])/APfac
-            P2d_tot = P2d(kp, mup) * W_damping(kp, mup, z_error) \
-                      + P2d_stoch(kp, mup)
-            legendre = eval_legendre.outer(ell, mu)
-            return 0.5 * np.einsum("abc,db,b->adc", P2d_tot, legendre,
-                                   self.gl_weights) # nk x nell x N x nmu
+            mu  = self.gl_x   # (nmu,) numpy
+            mu2 = self.gl_x2  # (nmu,) numpy
+            q_lo = self.params['q_lo']   # (N,)
+            q_tr = self.params['q_tr']   # (N,)
+            if _is_jax(q_lo):
+                import jax.numpy as jnp
+                APfac = jnp.sqrt(
+                    mu2[:, None] / q_lo[None, :]**2
+                    + (1.0 - mu2[:, None]) / q_tr[None, :]**2)   # (nmu, N)
+                kp   = keff[:, None, None] * APfac[None, :, :]   # (nk, nmu, N)
+                mup  = (mu[:, None] / q_lo[None, :]) / APfac     # (nmu, N)
+                P2d_tot = P2d(kp, mup) * W_damping(kp, mup, z_error) + P2d_stoch(kp, mup)
+                legendre = eval_legendre.outer(ell, mu)           # (n_ell, nmu) numpy
+                return 0.5 * jnp.einsum("abc,db,b->adc", P2d_tot,
+                                        jnp.asarray(legendre),
+                                        jnp.asarray(self.gl_weights))
+            else:
+                APfac = np.sqrt(
+                    np.divide.outer(mu2, q_lo**2)
+                    + np.divide.outer(1.0 - mu2, q_tr**2))
+                kp   = np.multiply.outer(keff, APfac)
+                mup  = np.divide.outer(mu, q_lo) / APfac
+                P2d_tot = P2d(kp, mup) * W_damping(kp, mup, z_error) + P2d_stoch(kp, mup)
+                legendre = eval_legendre.outer(ell, mu)
+                return 0.5 * np.einsum("abc,db,b->adc", P2d_tot, legendre,
+                                       self.gl_weights)  # nk x nell x N
 
         def LOS_average_discrete():
             APfac = np.sqrt(
@@ -2689,20 +2972,27 @@ class PTEmu:
             return avg
 
         if obs_id is None:
-            params_updated = [
-                not np.array_equal(np.array(params[p]), self.params_check[p])
-                for p in params.keys()
-            ]
-            params_nonzero = [x for x in self.bias_params_list +
-                              self.RSD_params_list + self.obs_syst_params_list
-                              if np.any(self.params_check[x] != 0)]
-            diff_shape = np.any(
-                [np.array(params[p]).shape != self.params_check[p].shape
-                 for p in params.keys()])
+            try:
+                params_updated = [
+                    not np.array_equal(np.array(params[p]), self.params_check[p])
+                    for p in params.keys()
+                ]
+                params_nonzero = [x for x in self.bias_params_list +
+                                  self.RSD_params_list + self.obs_syst_params_list
+                                  if np.any(self.params_check[x] != 0)]
+                diff_shape = np.any(
+                    [np.array(params[p]).shape != self.params_check[p].shape
+                     for p in params.keys()])
+                # Also recompute if Pk_lin is a JAX array from a previous JAX call:
+                # the numpy path needs numpy Pk_lin so the spline is rebuilt correctly.
+                _pk_lin_is_jax = self.Pk_lin is not None and _is_jax(self.Pk_lin)
+                should_recompute = (np.any(params_updated) or
+                                    np.any([p not in params.keys() for p in params_nonzero]) or
+                                    not self.splines_up_to_date or diff_shape or _pk_lin_is_jax)
+            except Exception:
+                should_recompute = True  # JAX tracers cannot be compared with numpy
 
-            if (np.any(params_updated) or
-                    np.any([p not in params.keys() for p in params_nonzero]) or
-                    not self.splines_up_to_date or diff_shape):
+            if should_recompute:
                 self._eval_emulator(params, ell_eval_emu, de_model=de_model)
                 self._update_AP_params(params, de_model=de_model,
                                        q_tr_lo=q_tr_lo, gamma_tr_lo=gamma_tr_lo)
@@ -2714,15 +3004,19 @@ class PTEmu:
                 self.Pell_spline.build(self.k_table, Pell, h=h)
                 self.splines_up_to_date = True
 
-            #self._update_AP_params(params, de_model=de_model,
-            #                       q_tr_lo=q_tr_lo, gamma_tr_lo=gamma_tr_lo)
             q3 = self.params['q_tr']**2 * self.params['q_lo']
 
             if binning is None or use_effective_modes:
                 Pell_model = LOS_average_continuous()
             else:
                 Pell_model = LOS_average_discrete()
-            Pell_model *= np.divide.outer(2.0*np.array(ell)+1.0, q3)
+
+            if _is_jax(q3):
+                import jax.numpy as jnp
+                ell_factor = (2.0*np.asarray(ell) + 1.0)[:, None] / q3[None, :]
+                Pell_model = Pell_model * ell_factor
+            else:
+                Pell_model *= np.divide.outer(2.0*np.array(ell)+1.0, q3)
 
             Pell_dict = {}
             for i, m in enumerate(ell):
@@ -3093,6 +3387,8 @@ class PTEmu:
         if np.any(params_updated) \
                 or np.any([p not in params.keys() for p in params_nonzero]):
             self._eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
+            self._update_bias_params(params, include_RSD_params=True,
+                                     include_obs_syst_params=True)
 
         X_list = [X_list] if not isinstance(X_list, list) else X_list
         X0L_list = [t for t in X_list if not 'P1L' in t]
@@ -3197,51 +3493,63 @@ class PTEmu:
         P6X: numpy.ndarray
             Array containing the X contribution to the octopole :math:`P_6(k)`.
         """
-        s12ratio = (self.params['s12']/self.s12_for_P6)**2
+        _use_jax = _is_jax(self.params['s12'])
+        if _use_jax:
+            import jax.numpy as jnp
+            s12 = self.params['s12']
+            f = self.params['f']
+            ones_f = jnp.ones_like(f)
+            def _P6s(col):  # (nk, 1) JAX
+                return jnp.asarray(self.P6[:, col:col + 1])
+            def _P6m(cols):  # (nk, len(cols)) JAX
+                return jnp.asarray(self.P6[:, cols])
+            def _stack(*args):  # (len(args), N) JAX
+                return jnp.stack(list(args), axis=0)
+        else:
+            s12 = np.asarray(self.params['s12'])
+            f = np.asarray(self.params['f'])
+            ones_f = np.ones_like(f)
+            def _P6s(col):
+                return self.P6[:, col, None]
+            def _P6m(cols):
+                return self.P6[:, cols]
+            def _stack(*args):
+                return np.array(list(args))
+        s12ratio = (s12 / self.s12_for_P6)**2
         s12ratio_sq = s12ratio**2
-        f = self.params['f']
         if X == 'P0L_b1b1':
-            P6X = self.P6[:, 0, None]*s12ratio
+            P6X = _P6s(0) * s12ratio
         elif X == 'PNL_b1':
-            fvec = np.array([f*s12ratio, f*s12ratio_sq, f**2*s12ratio_sq,
-                             f**3*s12ratio_sq])
-            P6X = self.P6[:, [1, 6, 7, 8]] @ fvec
+            P6X = _P6m([1, 6, 7, 8]) @ _stack(f*s12ratio, f*s12ratio_sq, f**2*s12ratio_sq, f**3*s12ratio_sq)
         elif X == 'PNL_id':
             f2 = f**2
-            fvec = np.array([f2*s12ratio, f2*s12ratio_sq, f*f2*s12ratio_sq,
-                             f2**2*s12ratio_sq])
-            P6X = self.P6[:, [2, 9, 10, 11]] @ fvec
+            P6X = _P6m([2, 9, 10, 11]) @ _stack(f2*s12ratio, f2*s12ratio_sq, f*f2*s12ratio_sq, f2**2*s12ratio_sq)
         elif X == 'P1L_b1b1':
-            fvec = np.array([np.ones_like(f), f, f**2])
-            P6X = (self.P6[:, [3, 4, 5]] @ fvec)*s12ratio_sq
+            P6X = (_P6m([3, 4, 5]) @ _stack(ones_f, f, f**2)) * s12ratio_sq
         elif X == 'P1L_b1b2':
-            fvec = np.array([np.ones_like(f), f])
-            P6X = (self.P6[:, [12, 13]] @ fvec)*s12ratio_sq
+            P6X = (_P6m([12, 13]) @ _stack(ones_f, f)) * s12ratio_sq
         elif X == 'P1L_b1g2':
-            fvec = np.array([np.ones_like(f), f])
-            P6X = (self.P6[:, [14, 15]] @ fvec)*s12ratio_sq
+            P6X = (_P6m([14, 15]) @ _stack(ones_f, f)) * s12ratio_sq
         elif X == 'P1L_b1g21':
-            P6X = self.P6[:, 16, None]*s12ratio_sq
+            P6X = _P6s(16) * s12ratio_sq
         elif X == 'P1L_b2b2':
-            P6X = self.P6[:, 17, None]*s12ratio_sq
+            P6X = _P6s(17) * s12ratio_sq
         elif X == 'P1L_b2g2':
-            P6X = self.P6[:, 18, None]*s12ratio_sq
+            P6X = _P6s(18) * s12ratio_sq
         elif X == 'P1L_g2g2':
-            P6X = self.P6[:, 19, None]*s12ratio_sq
+            P6X = _P6s(19) * s12ratio_sq
         elif X == 'P1L_b2':
-            fvec = np.array([f, f**2])
-            P6X = (self.P6[:, [20, 21]] @ fvec)*s12ratio_sq
+            P6X = (_P6m([20, 21]) @ _stack(f, f**2)) * s12ratio_sq
         elif X == 'P1L_g2':
-            fvec = np.array([f, f**2])
-            P6X = (self.P6[:, [22, 23]] @ fvec)*s12ratio_sq
+            P6X = (_P6m([22, 23]) @ _stack(f, f**2)) * s12ratio_sq
         elif X == 'P1L_g21':
-            P6X = self.P6[:, 24, None]*f*s12ratio_sq
+            P6X = _P6s(24) * f * s12ratio_sq
         elif X == 'Pctr_b1b1cnlo':
-            P6X = self.P6[:, 25, None]*f**4*s12ratio
+            P6X = _P6s(25) * f**4 * s12ratio
         elif X == 'Pctr_b1cnlo':
-            P6X = self.P6[:, 26, None]*f**5*s12ratio
+            P6X = _P6s(26) * f**5 * s12ratio
         elif X == 'Pctr_cnlo':
-            P6X = self.P6[:, 27, None]*f**6*s12ratio
+            P6X = _P6s(27) * f**6 * s12ratio
         return P6X
 
     def PX_ell(self, k, params, ell, X_list, de_model=None, binning=None,
@@ -3383,22 +3691,41 @@ class PTEmu:
             raise ValueError('Unsupported RSD model.')
 
         def P2d(XNL, q, mu):
-            t = np.einsum("...bacd,cbd->...abd",
-                          self.PX_ell_spline[XNL].eval_varx(q),
-                          eval_legendre.outer(np.array(ell_for_recon),mu))
-            return t # nk x nXNL x nmu x N
+            varx_result = self.PX_ell_spline[XNL].eval_varx(q)
+            if _is_jax(varx_result):
+                import jax.numpy as jnp
+                legendre_mat = _jax_legendre_outer(np.array(ell_for_recon), mu)
+                return jnp.einsum("...bacd,cbd->...abd", varx_result, legendre_mat)
+            return np.einsum("...bacd,cbd->...abd", varx_result,
+                             eval_legendre.outer(np.array(ell_for_recon), mu))
 
         def LOS_average_continuous(XNL):
             mu = self.gl_x
             mu2 = self.gl_x2
+            q_lo = self.params['q_lo']
+            q_tr = self.params['q_tr']
+            if _is_jax(q_lo):
+                import jax.numpy as jnp
+                APfac = jnp.sqrt(mu2[:, None] / q_lo[None, :]**2
+                                 + (1.0 - mu2[:, None]) / q_tr[None, :]**2)
+                kp = keff[:, None, None] * APfac[None, :, :]
+                mup = (mu[:, None] / q_lo[None, :]) / APfac
+                P2d_tot = P2d(XNL, kp, mup)
+                if col_for_damping[XNL]:
+                    w_d = W_damping(kp, mup, z_error)
+                    P2d_tot = P2d_tot.at[:, col_for_damping[XNL], :, :].set(
+                        P2d_tot[:, col_for_damping[XNL], :, :] * w_d[:, None, :, :])
+                legendre = jnp.asarray(eval_legendre.outer(np.array(ell), np.array(mu)))
+                return 0.5 * jnp.einsum("aebc,db,b->adec", P2d_tot, legendre,
+                                        jnp.asarray(self.gl_weights))
             APfac = np.sqrt(
-                np.divide.outer(mu2, self.params['q_lo']**2) \
-                + np.divide.outer(1.0 - mu2, self.params['q_tr']**2))
+                np.divide.outer(mu2, q_lo**2) \
+                + np.divide.outer(1.0 - mu2, q_tr**2))
             kp = np.multiply.outer(keff, APfac)
-            mup = np.divide.outer(mu, self.params['q_lo'])/APfac
+            mup = np.divide.outer(mu, q_lo) / APfac
             P2d_tot = P2d(XNL, kp, mup)
-            P2d_tot[:,col_for_damping[XNL]] *= \
-                W_damping(kp, mup, z_error)[:,None,...]
+            P2d_tot[:, col_for_damping[XNL]] *= \
+                W_damping(kp, mup, z_error)[:, None, ...]
             legendre = eval_legendre.outer(ell, mu)
             return 0.5 * np.einsum("aebc,db,b->adec", P2d_tot, legendre,
                                    self.gl_weights) # nk x nell x nXNL x N
@@ -3421,102 +3748,189 @@ class PTEmu:
             return avg # nk x nell x nXNL x N
 
         if obs_id is None:
-            params_updated = [
-                not np.array_equal(np.array(params[p]), self.params_check[p])
-                for p in params.keys()
-            ]
-            params_nonzero = [x for x in self.bias_params_list +
-                              self.RSD_params_list + self.obs_syst_params_list
-                              if np.any(self.params_check[x] != 0)]
+            # For JAX inputs always recompute to avoid stale abstract tracers;
+            # for numpy inputs use params_check comparison to skip if unchanged.
+            _is_jax_input = _is_jax(params.get('wc', 0.0))
+            if _is_jax_input:
+                should_recompute_emu = True
+            else:
+                try:
+                    params_updated = [
+                        not np.array_equal(np.array(params[p]), self.params_check[p])
+                        for p in params.keys()
+                    ]
+                    params_nonzero = [x for x in self.bias_params_list +
+                                      self.RSD_params_list + self.obs_syst_params_list
+                                      if np.any(self.params_check[x] != 0)]
+                    # Also recompute if Pk_lin is a JAX array from a previous JAX call:
+                    # the numpy path needs numpy Pk_lin to correctly set _use_jax_build=False.
+                    _pk_lin_is_jax = self.Pk_lin is not None and _is_jax(self.Pk_lin)
+                    should_recompute_emu = (np.any(params_updated) or
+                                            np.any([p not in params.keys() for p in params_nonzero]) or
+                                            _pk_lin_is_jax)
+                except Exception:
+                    should_recompute_emu = True
 
-            if np.any(params_updated) \
-                    or np.any([p not in params.keys() for p in params_nonzero]):
+            if should_recompute_emu:
                 self._eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
+                self._update_bias_params(params, include_RSD_params=True,
+                                         include_obs_syst_params=True)
+
+            _use_jax_build = self.Pk_lin is not None and _is_jax(self.Pk_lin)
 
             for XNL_list in X_grouped_list:
                 XNL = '|'.join(XNL_list)
-                if not self.X_splines_up_to_date[XNL]:
-                    PXNL_ell = np.zeros([self.nk, len(XNL_list),
-                                         len(ell_for_recon), self.nparams])
-                    for nx, X_emu in enumerate(XNL_list):
-                        if X_emu in self.diagrams_emulated:
-                            for n, diagram in enumerate(self.diagrams_emulated):
-                                if diagram == X_emu:
-                                    if n < 9:
-                                        ids = [n*self.nk, (n+1)*self.nk]
-                                    else:
-                                        ids = [9*self.nk + (n-9)*self.nkloop,
-                                               9*self.nk + (n-8)*self.nkloop]
-                            if X_emu in ['Pctr_c0', 'Pctr_c2', 'Pctr_c4']:
-                                for i, m in enumerate(ell_eval_emu):
-                                    PXNL_ell[self.nk-(ids[1]-ids[0]):, nx, i] = \
-                                        self.Pk_ratios[m][ids[0]:ids[1]]
-                                    # if int(X_emu[-1]) != m:
-                                    #     PXNL_ell[:5,nx,i] = 0.0
-                            else:
-                                for i, m in enumerate(ell_for_recon):
-                                    if m != 6:
-                                        PXNL_ell[self.nk-(ids[1]-ids[0]):,nx,i] = \
-                                            self.Pk_ratios[m][ids[0]:ids[1]]
-                                    else:
-                                        PXNL_ell[:, nx, i] = \
-                                            self._PX_ell6_novir_noAP(X_emu)
-                            PXNL_ell[:, nx, :len(ell_eval_emu)] = \
-                                np.einsum(
+                # In JAX mode always rebuild to ensure fresh y_raw (no stale abstract tracers);
+                # in numpy mode respect the cache.
+                if _use_jax_build or not self.X_splines_up_to_date[XNL]:
+                    if _use_jax_build:
+                        import jax.numpy as jnp
+                        PXNL_ell = jnp.zeros([self.nk, len(XNL_list),
+                                              len(ell_for_recon), self.nparams])
+                        for nx, X_emu in enumerate(XNL_list):
+                            if X_emu in self.diagrams_emulated:
+                                for n, diagram in enumerate(self.diagrams_emulated):
+                                    if diagram == X_emu:
+                                        if n < 9:
+                                            ids = [n * self.nk, (n + 1) * self.nk]
+                                        else:
+                                            ids = [9 * self.nk + (n - 9) * self.nkloop,
+                                                   9 * self.nk + (n - 8) * self.nkloop]
+                                nk_slice = self.nk - (ids[1] - ids[0])
+                                if X_emu in ['Pctr_c0', 'Pctr_c2', 'Pctr_c4']:
+                                    for i, m in enumerate(ell_eval_emu):
+                                        PXNL_ell = PXNL_ell.at[nk_slice:, nx, i, :].set(
+                                            self.Pk_ratios[m][ids[0]:ids[1]])
+                                else:
+                                    for i, m in enumerate(ell_for_recon):
+                                        if m != 6:
+                                            PXNL_ell = PXNL_ell.at[nk_slice:, nx, i, :].set(
+                                                self.Pk_ratios[m][ids[0]:ids[1]])
+                                        else:
+                                            PXNL_ell = PXNL_ell.at[:, nx, i, :].set(
+                                                jnp.asarray(self._PX_ell6_novir_noAP(X_emu)))
+                                new_emu = jnp.einsum(
                                     "abc,ac->abc",
-                                    PXNL_ell[:, nx, :len(ell_eval_emu)],
-                                    self.Pk_lin
-                                )
-                        else:
-                            if X_emu == 'Pnoise_NP0':
-                                PXNL_ell[:, nx, 0] = \
-                                    np.ones_like(self.k_table)[:, None]
-                            elif X_emu == 'Pnoise_NP20':
-                                PXNL_ell[:, nx, 0] = (self.k_table**2)[:, None]
-                            elif X_emu == 'Pnoise_NP22' \
-                                    and len(ell_for_recon) > 1:
-                                if self.counterterm_basis == 'Comet':
-                                    PXNL_ell[:, nx, 1] = (self.k_table**2)[:, None]
-                                elif self.counterterm_basis == 'DESIct':
-                                    PXNL_ell[:, nx, 1] = (self.k_table**2)[:, None]
-                                elif self.counterterm_basis == 'ClassPT':
-                                    PXNL_ell[:, nx, 0] = (1.0/3.0*self.k_table**2)[
-                                        :, None]
-                                    PXNL_ell[:, nx, 1] = (2.0/3.0*self.k_table**2)[
-                                        :, None]
-
+                                    PXNL_ell[:, nx, :len(ell_eval_emu), :],
+                                    self.Pk_lin)
+                                PXNL_ell = PXNL_ell.at[:, nx, :len(ell_eval_emu), :].set(new_emu)
+                            else:
+                                k2 = jnp.asarray(self.k_table**2)[:, None]
+                                if X_emu == 'Pnoise_NP0':
+                                    PXNL_ell = PXNL_ell.at[:, nx, 0, :].set(
+                                        jnp.broadcast_to(jnp.ones((self.nk, 1)), (self.nk, self.nparams)))
+                                elif X_emu == 'Pnoise_NP20':
+                                    PXNL_ell = PXNL_ell.at[:, nx, 0, :].set(
+                                        jnp.broadcast_to(k2, (self.nk, self.nparams)))
+                                elif X_emu == 'Pnoise_NP22' and len(ell_for_recon) > 1:
+                                    if self.counterterm_basis == 'Comet':
+                                        PXNL_ell = PXNL_ell.at[:, nx, 1, :].set(
+                                            jnp.broadcast_to(k2, (self.nk, self.nparams)))
+                                    elif self.counterterm_basis == 'DESIct':
+                                        PXNL_ell = PXNL_ell.at[:, nx, 1, :].set(
+                                            jnp.broadcast_to(k2, (self.nk, self.nparams)))
+                                    elif self.counterterm_basis == 'ClassPT':
+                                        PXNL_ell = PXNL_ell.at[:, nx, 0, :].set(
+                                            jnp.broadcast_to(jnp.asarray(1.0 / 3.0 * self.k_table**2)[:, None],
+                                                             (self.nk, self.nparams)))
+                                        PXNL_ell = PXNL_ell.at[:, nx, 1, :].set(
+                                            jnp.broadcast_to(jnp.asarray(2.0 / 3.0 * self.k_table**2)[:, None],
+                                                             (self.nk, self.nparams)))
+                    else:
+                        PXNL_ell = np.zeros([self.nk, len(XNL_list),
+                                             len(ell_for_recon), self.nparams])
+                        for nx, X_emu in enumerate(XNL_list):
+                            if X_emu in self.diagrams_emulated:
+                                for n, diagram in enumerate(self.diagrams_emulated):
+                                    if diagram == X_emu:
+                                        if n < 9:
+                                            ids = [n * self.nk, (n + 1) * self.nk]
+                                        else:
+                                            ids = [9 * self.nk + (n - 9) * self.nkloop,
+                                                   9 * self.nk + (n - 8) * self.nkloop]
+                                nk_slice = self.nk - (ids[1] - ids[0])
+                                if X_emu in ['Pctr_c0', 'Pctr_c2', 'Pctr_c4']:
+                                    for i, m in enumerate(ell_eval_emu):
+                                        PXNL_ell[nk_slice:, nx, i] = \
+                                            self.Pk_ratios[m][ids[0]:ids[1]]
+                                else:
+                                    for i, m in enumerate(ell_for_recon):
+                                        if m != 6:
+                                            PXNL_ell[nk_slice:, nx, i] = \
+                                                self.Pk_ratios[m][ids[0]:ids[1]]
+                                        else:
+                                            PXNL_ell[:, nx, i] = \
+                                                self._PX_ell6_novir_noAP(X_emu)
+                                PXNL_ell[:, nx, :len(ell_eval_emu)] = \
+                                    np.einsum(
+                                        "abc,ac->abc",
+                                        PXNL_ell[:, nx, :len(ell_eval_emu)],
+                                        self.Pk_lin)
+                            else:
+                                if X_emu == 'Pnoise_NP0':
+                                    PXNL_ell[:, nx, 0] = \
+                                        np.ones_like(self.k_table)[:, None]
+                                elif X_emu == 'Pnoise_NP20':
+                                    PXNL_ell[:, nx, 0] = (self.k_table**2)[:, None]
+                                elif X_emu == 'Pnoise_NP22' \
+                                        and len(ell_for_recon) > 1:
+                                    if self.counterterm_basis == 'Comet':
+                                        PXNL_ell[:, nx, 1] = (self.k_table**2)[:, None]
+                                    elif self.counterterm_basis == 'DESIct':
+                                        PXNL_ell[:, nx, 1] = (self.k_table**2)[:, None]
+                                    elif self.counterterm_basis == 'ClassPT':
+                                        PXNL_ell[:, nx, 0] = (1.0 / 3.0 * self.k_table**2)[:, None]
+                                        PXNL_ell[:, nx, 1] = (2.0 / 3.0 * self.k_table**2)[:, None]
 
                     nk_safety = 15
                     h = None if self.use_Mpc else self.params['h']
                     self.PX_ell_spline[XNL].build(self.k_table[nk_safety:],
                                                   PXNL_ell[nk_safety:], h=h)
-                    self.X_splines_up_to_date[XNL] = True
+                    if not _use_jax_build:
+                        self.X_splines_up_to_date[XNL] = True
 
             self._update_AP_params(params, de_model=de_model,
                                    q_tr_lo=q_tr_lo, gamma_tr_lo=gamma_tr_lo)
             q3 = self.params['q_tr']**2 * self.params['q_lo']
 
-            PX_ell_model = np.empty((len(keff), len(ell), len(X_list),
-                                     self.nparams))
-            for i, XNL_list in enumerate(X_grouped_list):
-                XNL = '|'.join(XNL_list)
-                n1 = nXNL[i]
-                n2 = nXNL[i+1]
-                if binning is None or use_effective_modes:
-                    PX_ell_model[:,:,n1:n2] = LOS_average_continuous(XNL)
-                else:
-                    PX_ell_model[:,:,n1:n2] = LOS_average_discrete(XNL)
-            PX_ell_model = PX_ell_model[:,:,ordering,:]
-            mask = ~np.isfinite(PX_ell_model)  # To remove presence of infs and nans
-            PX_ell_model[mask] = 0.0           # To remove presence of infs and nans
-            norm = np.divide.outer(2.0*np.array(ell)+1.0, q3)
-            PX_ell_model *= norm[None,:,None,:]
-
-            PX_ell_dict = {}
-            for i, m in enumerate(ell):
-                ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
-                PX_ell_dict['ell{}'.format(m)] = np.squeeze(
-                    PX_ell_model[ids, i])
+            if _use_jax_build:
+                import jax.numpy as jnp
+                parts = []
+                for i, XNL_list in enumerate(X_grouped_list):
+                    XNL = '|'.join(XNL_list)
+                    if binning is None or use_effective_modes:
+                        parts.append(LOS_average_continuous(XNL))
+                    else:
+                        parts.append(LOS_average_discrete(XNL))
+                PX_ell_model = jnp.concatenate(parts, axis=2)
+                PX_ell_model = PX_ell_model[:, :, np.array(ordering), :]
+                PX_ell_model = jnp.where(jnp.isfinite(PX_ell_model), PX_ell_model, 0.0)
+                norm = (2.0 * jnp.array(ell, dtype=float) + 1.0)[:, None] / q3[None, :]
+                PX_ell_model = PX_ell_model * norm[None, :, None, :]
+                PX_ell_dict = {}
+                for ell_idx, m in enumerate(ell):
+                    ids = np.intersect1d(k, k_list[ell_idx], return_indices=True)[1]
+                    PX_ell_dict['ell{}'.format(m)] = jnp.squeeze(PX_ell_model[ids, ell_idx])
+            else:
+                PX_ell_model = np.empty((len(keff), len(ell), len(X_list),
+                                         self.nparams))
+                for i, XNL_list in enumerate(X_grouped_list):
+                    XNL = '|'.join(XNL_list)
+                    n1 = nXNL[i]
+                    n2 = nXNL[i+1]
+                    if binning is None or use_effective_modes:
+                        PX_ell_model[:,:,n1:n2] = LOS_average_continuous(XNL)
+                    else:
+                        PX_ell_model[:,:,n1:n2] = LOS_average_discrete(XNL)
+                PX_ell_model = PX_ell_model[:,:,ordering,:]
+                mask = ~np.isfinite(PX_ell_model)  # To remove presence of infs and nans
+                PX_ell_model[mask] = 0.0           # To remove presence of infs and nans
+                norm = np.divide.outer(2.0*np.array(ell)+1.0, q3)
+                PX_ell_model *= norm[None,:,None,:]
+                PX_ell_dict = {}
+                for i, m in enumerate(ell):
+                    ids = np.intersect1d(k, k_list[i], return_indices=True)[1]
+                    PX_ell_dict['ell{}'.format(m)] = np.squeeze(PX_ell_model[ids, i])
         else:
             nobs = len(obs_id)
             if nobs > 1:
@@ -3708,6 +4122,301 @@ class PTEmu:
         return lambda k: self.Pdw(k, params, de_model=de_model, mu=0.6,
                                   ell_for_recon=ell_for_recon)
 
+    def _jax_pdw_at_ktable(self, ell_for_recon, mu):
+        """Return Pdw(k_table) as a JAX array, differentiable through emulator outputs.
+
+        Must be called after _eval_emulator has populated self.Pk_ratios and
+        self.Pk_lin (both JAX arrays for nparams=1).
+        """
+        import jax.numpy as jnp
+        from scipy.special import eval_legendre as _ev_leg
+        ell_eval = [e for e in ell_for_recon if e != 6]
+        Pdw = jnp.zeros(self.nk)
+        for e in ell_eval:
+            # Pk_ratios[e] shape (9*nk+10*nkloop, 1); [:nk, 0] -> (nk,)
+            ratio = self.Pk_ratios[e][:self.nk, 0]
+            lin   = self.Pk_lin[:, 0]             # (nk,)
+            Pdw   = Pdw + ratio * lin * float(_ev_leg(e, mu))
+        if 6 in ell_for_recon:
+            p6 = jnp.asarray(np.asarray(self.P6[:self.nk, 0], dtype=np.float64))
+            Pdw = Pdw + p6 * float(_ev_leg(6, mu))
+        return Pdw  # (nk,)
+
+    def _jax_bell_sugi(self, pair_arr, params, ell, de_model, q_tr_lo, quad_deg,
+                       mu12_transform, ell_for_recon):
+        """JAX-traceable Bell_Sugi for use with jax.grad / jax.jit."""
+        import jax.numpy as jnp
+
+        n_pair = pair_arr.shape[0]
+        nmu1, nmu12, nphi = quad_deg
+        ell = tuple(tuple(ll) for ll in ell)
+
+        # 1. Evaluate emulator + update params (sets Pk_ratios, Pk_lin, q_lo, q_tr …)
+        ell_eval = [e for e in ell_for_recon if e != 6]
+        self._eval_emulator(params, ell=ell_eval, de_model=de_model)
+        self._update_bias_params(params, include_RSD_params=True,
+                                 include_obs_syst_params=True)
+        self._update_AP_params(params, de_model=de_model, q_tr_lo=q_tr_lo)
+
+        # 2. JAX Pdw at training k-table then interpolate onto a static kgrid
+        mu_pdw  = 0.6
+        Pdw_kt  = self._jax_pdw_at_ktable(ell_for_recon, mu_pdw)   # (nk,) JAX
+        kmin    = float(pair_arr.min()) * 0.5
+        kmax    = float(pair_arr.max()) * 2.0
+        kgrid   = BispectrumNum._kgrid_compression(kmin, kmax, nk=500)   # static numpy
+        k_table_j = jnp.asarray(np.asarray(self.k_table, dtype=np.float64))
+        Pdw_kg  = jnp.interp(jnp.asarray(kgrid), k_table_j, Pdw_kt)
+
+        # 3. Static quadrature geometry (all numpy — concrete at trace time)
+        mu1_g, _, t_g, _, cphi_g, phi_g, _ = \
+            self.BispNum._sugi_get_quadrature(nmu1, nmu12, nphi, mu12_transform)
+
+        k1_np = pair_arr[:, 0][:, None, None, None, None]   # (n_pair, 1, 1, 1, 1)
+        k2_np = pair_arr[:, 1][:, None, None, None, None]
+        mu1_np = mu1_g[..., None]                           # (1, nmu1, 1, 1, 1)
+        cphi_np = cphi_g[..., None]                         # (1, 1, 1, nphi, 1)
+
+        if mu12_transform == 'k3':
+            t     = t_g[..., None]                          # (1, 1, nmu12, 1, 1)
+            k_lo  = np.abs(k1_np - k2_np)
+            k_hi  = k1_np + k2_np
+            k3_np, _ = BispectrumNum._k3_from_t(t, k_lo, k_hi)
+            k3_np = np.maximum(k3_np, 1e-30)
+            mu12_np = (k3_np**2 - k1_np**2 - k2_np**2) / (2.0 * k1_np * k2_np)
+            mu12_np = np.clip(mu12_np, -1.0, 1.0)
+        else:
+            mu12_np = t_g[..., None]
+            k3_np   = np.sqrt(np.maximum(
+                k1_np**2 + k2_np**2 + 2.0 * k1_np * k2_np * mu12_np, 0.0))
+            k3_np   = np.maximum(k3_np, 1e-30)
+
+        sin_mu12 = np.sqrt(np.maximum(1.0 - mu12_np**2, 0.0))
+        sin_mu1  = np.sqrt(np.maximum(1.0 - mu1_np**2,  0.0))
+        mu2_np   = mu12_np * mu1_np + sin_mu12 * sin_mu1 * cphi_np
+        mu3_np   = -(k1_np * mu1_np + k2_np * mu2_np) / k3_np
+
+        # 4. AP correction in JAX
+        q_lo   = jnp.atleast_1d(jnp.asarray(self.params['q_lo']))
+        q_tr   = jnp.atleast_1d(jnp.asarray(self.params['q_tr']))
+        qiso6  = q_lo**2 * q_tr**4
+        npar   = int(q_lo.shape[0])
+
+        def _ap(k_np, mu_np):
+            k   = jnp.asarray(k_np)
+            mu  = jnp.asarray(mu_np)
+            F   = q_lo / q_tr
+            fac = jnp.sqrt(1.0 + mu**2 * (1.0 / F**2 - 1.0))
+            return k / q_tr * fac, mu / F / fac
+
+        k1_p, mu1_p = _ap(k1_np, mu1_np)
+        k2_p, mu2_p = _ap(k2_np, mu2_np)
+        k3_p, mu3_p = _ap(k3_np, mu3_np)
+
+        full_shape = (n_pair, nmu1, nmu12, nphi, npar)
+        k1_b  = jnp.broadcast_to(k1_p,  full_shape)
+        k2_b  = jnp.broadcast_to(k2_p,  full_shape)
+        k3_b  = jnp.broadcast_to(k3_p,  full_shape)
+        mu1_b = jnp.broadcast_to(mu1_p, full_shape)
+        mu2_b = jnp.broadcast_to(mu2_p, full_shape)
+        mu3_b = jnp.broadcast_to(mu3_p, full_shape)
+
+        # 5. Pdw at AP-distorted k-values via JAX interpolation
+        kg_j = jnp.asarray(kgrid)
+        def _pdw(k_b):
+            return jnp.interp(k_b.ravel(), kg_j, Pdw_kg).reshape(k_b.shape)
+
+        pdw1 = _pdw(k1_b)
+        pdw2 = _pdw(k2_b)
+        pdw3 = _pdw(k3_b)
+
+        # 6. Bias / damping params as JAX
+        def _p(k):
+            v = self.params.get(k)
+            return jnp.zeros(npar) if v is None else jnp.atleast_1d(jnp.asarray(v))
+
+        b1 = _p('b1'); b2 = _p('b2'); g2 = _p('g2'); f = _p('f')
+        avirB = _p('avirB'); sv  = _p('sv')
+        MB0 = _p('MB0');  NP0 = _p('NP0');  NB0 = _p('NB0')
+        cnloB = jnp.zeros(npar)
+        cB1   = jnp.zeros(npar)
+        cB2   = jnp.zeros(npar)
+        inv_nbar  = jnp.ones(npar) / float(self.BispNum.nbar)
+        inv_qiso6 = 1.0 / qiso6
+
+        # 7. JAX-jitted 5D bispectrum kernel
+        B_5d = self.BispNum._bispectrum_5d_jax_fused(
+            k1_b, k2_b, k3_b, mu1_b, mu2_b, mu3_b,
+            pdw1, pdw2, pdw3,
+            b1, b2, g2, f, avirB, sv, MB0, NP0,
+            cnloB, cB1, cB2, inv_nbar, inv_qiso6)
+
+        # 8. Project onto Sugiyama multipoles
+        B_flat   = B_5d.reshape(n_pair, nmu1 * nmu12 * nphi, npar)
+        proj_ops = self.BispNum._sugi_get_proj_ops_k3(
+            ell, pair_arr, nmu1, nmu12, nphi, mu12_transform)
+
+        nbar_sq = float(self.BispNum.nbar) ** 2
+        Bell_dict = {}
+        for ll in ell:
+            B = jnp.einsum('ijc,ij->ic', B_flat, jnp.asarray(proj_ops[ll]))
+            if ll == (0, 0, 0):
+                B = B + NB0[None, :] / (nbar_sq * qiso6[None, :])
+            Bell_dict[ll] = jnp.squeeze(B)
+        return Bell_dict
+
+    def _jax_bx_ell_sugi(self, pair_arr, params, ell, de_model, q_tr_lo, quad_deg,
+                          mu12_transform, ell_for_recon, X_list):
+        """JAX-traceable BX_ell_Sugi for use with jax.grad / jax.jit."""
+        import jax.numpy as jnp
+
+        n_pair = pair_arr.shape[0]
+        nmu1, nmu12, nphi = quad_deg
+        ell = tuple(tuple(ll) for ll in ell)
+
+        # Diagram selection (must be static Python tuples for JIT specialisation)
+        n_tree  = len(self.BispNum.tree_diagrams)
+        n_stoch = len(self.BispNum.stoch_diagrams) - 1  # exclude NB0
+        if X_list is None:
+            tree_keep  = tuple(range(n_tree))
+            stoch_keep = tuple(range(n_stoch))
+        else:
+            names = [X_list] if isinstance(X_list, str) else list(X_list)
+            tree_set   = set(self.BispNum.tree_diagrams)
+            stoch_set  = set(self.BispNum.stoch_diagrams[:-1])
+            tree_keep  = tuple(sorted(
+                {self.BispNum.tree_index[x]  for x in names if x in tree_set}))
+            stoch_keep = tuple(sorted(
+                {self.BispNum.stoch_index[x] for x in names if x in stoch_set}))
+
+        # Shared geometry / Pdw — same as _jax_bell_sugi
+        ell_eval = [e for e in ell_for_recon if e != 6]
+        self._eval_emulator(params, ell=ell_eval, de_model=de_model)
+        self._update_bias_params(params, include_RSD_params=True,
+                                 include_obs_syst_params=True)
+        self._update_AP_params(params, de_model=de_model, q_tr_lo=q_tr_lo)
+
+        Pdw_kt = self._jax_pdw_at_ktable(ell_for_recon, 0.6)
+        kmin   = float(pair_arr.min()) * 0.5
+        kmax   = float(pair_arr.max()) * 2.0
+        kgrid  = BispectrumNum._kgrid_compression(kmin, kmax, nk=500)
+        k_table_j = jnp.asarray(np.asarray(self.k_table, dtype=np.float64))
+        Pdw_kg = jnp.interp(jnp.asarray(kgrid), k_table_j, Pdw_kt)
+
+        mu1_g, _, t_g, _, cphi_g, phi_g, _ = \
+            self.BispNum._sugi_get_quadrature(nmu1, nmu12, nphi, mu12_transform)
+        k1_np = pair_arr[:, 0][:, None, None, None, None]
+        k2_np = pair_arr[:, 1][:, None, None, None, None]
+        mu1_np = mu1_g[..., None];  cphi_np = cphi_g[..., None]
+
+        if mu12_transform == 'k3':
+            t = t_g[..., None]
+            k_lo  = np.abs(k1_np - k2_np);  k_hi = k1_np + k2_np
+            k3_np, _ = BispectrumNum._k3_from_t(t, k_lo, k_hi)
+            k3_np   = np.maximum(k3_np, 1e-30)
+            mu12_np = np.clip(
+                (k3_np**2 - k1_np**2 - k2_np**2) / (2.0 * k1_np * k2_np), -1.0, 1.0)
+        else:
+            mu12_np = t_g[..., None]
+            k3_np   = np.maximum(np.sqrt(np.maximum(
+                k1_np**2 + k2_np**2 + 2.0*k1_np*k2_np*mu12_np, 0.0)), 1e-30)
+
+        sin_mu12 = np.sqrt(np.maximum(1.0 - mu12_np**2, 0.0))
+        sin_mu1  = np.sqrt(np.maximum(1.0 - mu1_np**2,  0.0))
+        mu2_np   = mu12_np*mu1_np + sin_mu12*sin_mu1*cphi_np
+        mu3_np   = -(k1_np*mu1_np + k2_np*mu2_np) / k3_np
+
+        q_lo  = jnp.atleast_1d(jnp.asarray(self.params['q_lo']))
+        q_tr  = jnp.atleast_1d(jnp.asarray(self.params['q_tr']))
+        qiso6 = q_lo**2 * q_tr**4
+        npar  = int(q_lo.shape[0])
+
+        def _ap(k_np, mu_np):
+            k = jnp.asarray(k_np); mu = jnp.asarray(mu_np)
+            F = q_lo / q_tr
+            fac = jnp.sqrt(1.0 + mu**2 * (1.0/F**2 - 1.0))
+            return k / q_tr * fac, mu / F / fac
+
+        k1_p, mu1_p = _ap(k1_np, mu1_np)
+        k2_p, mu2_p = _ap(k2_np, mu2_np)
+        k3_p, mu3_p = _ap(k3_np, mu3_np)
+
+        full_shape = (n_pair, nmu1, nmu12, nphi, npar)
+        k1_b  = jnp.broadcast_to(k1_p,  full_shape)
+        k2_b  = jnp.broadcast_to(k2_p,  full_shape)
+        k3_b  = jnp.broadcast_to(k3_p,  full_shape)
+        mu1_b = jnp.broadcast_to(mu1_p, full_shape)
+        mu2_b = jnp.broadcast_to(mu2_p, full_shape)
+        mu3_b = jnp.broadcast_to(mu3_p, full_shape)
+
+        kg_j = jnp.asarray(kgrid)
+        def _pdw(k_b):
+            return jnp.interp(k_b.ravel(), kg_j, Pdw_kg).reshape(k_b.shape)
+        pdw1 = _pdw(k1_b); pdw2 = _pdw(k2_b); pdw3 = _pdw(k3_b)
+
+        def _p(k):
+            v = self.params.get(k)
+            return jnp.zeros(npar) if v is None else jnp.atleast_1d(jnp.asarray(v))
+
+        f     = _p('f')
+        avirB = _p('avirB'); sv = _p('sv')
+        cnloB = jnp.zeros(npar)
+        inv_qiso6 = 1.0 / qiso6
+        NB0 = _p('NB0')
+
+        # JAX-jitted per-diagram kernel
+        spt_jax, stoch_jax = self.BispNum._bispectrum_5d_jax_diagrams(
+            k1_b, k2_b, k3_b, mu1_b, mu2_b, mu3_b,
+            pdw1, pdw2, pdw3,
+            f, avirB, sv, cnloB, inv_qiso6,
+            tree_keep, stoch_keep)
+
+        # spt_jax: (n_pair, nmu1, nmu12, nphi, npar, n_tree_keep)
+        # stoch_jax: (n_pair, nmu1, nmu12, nphi, npar, n_stoch_keep)
+
+        # Project each multipole
+        proj_ops = self.BispNum._sugi_get_proj_ops_k3(
+            ell, pair_arr, nmu1, nmu12, nphi, mu12_transform)
+        nb0_val  = jnp.squeeze(1.0 / qiso6)       # scalar for npar=1
+
+        nb0_name   = self.BispNum.stoch_diagrams[-1]
+        tree_names = self.BispNum.tree_diagrams
+        stoch_names = self.BispNum.stoch_diagrams[:-1]
+
+        BX_dict = {}
+        for ll in ell:
+            P_op = jnp.asarray(proj_ops[ll])      # (n_pair, nmu1*nmu12*nphi)
+            BX   = {}
+            # SPT tree diagrams
+            if tree_keep:
+                flat_spt = spt_jax.reshape(n_pair, nmu1*nmu12*nphi, npar, len(tree_keep))
+                proj_spt = jnp.einsum('ijcd,ij->icd', flat_spt, P_op)   # (n_pair, npar, ntree)
+                tree_pos = {orig: k for k, orig in enumerate(tree_keep)}
+                for name in tree_names:
+                    idx = self.BispNum.tree_index[name]
+                    if idx in tree_pos:
+                        BX[name] = jnp.squeeze(proj_spt[:, :, tree_pos[idx]])
+            # Stochastic diagrams (excluding NB0)
+            if stoch_keep:
+                flat_st  = stoch_jax.reshape(n_pair, nmu1*nmu12*nphi, npar, len(stoch_keep))
+                proj_st  = jnp.einsum('ijcd,ij->icd', flat_st, P_op)
+                stoch_pos = {orig: k for k, orig in enumerate(stoch_keep)}
+                for name in stoch_names:
+                    idx = self.BispNum.stoch_index[name]
+                    if idx in stoch_pos:
+                        BX[name] = jnp.squeeze(proj_st[:, :, stoch_pos[idx]])
+            # NB0 noise term
+            if ll == (0, 0, 0):
+                BX[nb0_name] = jnp.ones(n_pair) * nb0_val
+            else:
+                BX[nb0_name] = jnp.zeros(n_pair)
+            if X_list is not None:
+                # Match numpy BX_ell_Sugi's output format when X_list provided:
+                # {ll: Array(npair, nx)} ordered to match names.
+                BX_dict[ll] = jnp.stack([BX[name] for name in names], axis=1)
+            else:
+                BX_dict[ll] = BX
+        return BX_dict
+
     def Bell_Sugi(self, pair, params, ell=((0, 0, 0), (2, 0, 2)),
                   de_model=None, q_tr_lo=None,
                   quad_deg=(7, 16, 5), mu12_transform='k3',
@@ -3725,10 +4434,15 @@ class PTEmu:
         quad_deg : tuple of ints
             Quadrature degrees for (mu1, mu12, phi) integrations.
         mu12_transform : str
-            Transformation to apply to the mu12 variable 
+            Transformation to apply to the mu12 variable
             to improve stability around mu12~-1.
         """
         pair = np.atleast_2d(pair)
+        if _is_jax(params.get('b1')):
+            if ell_for_recon is None:
+                ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
+            return self._jax_bell_sugi(pair, params, ell, de_model, q_tr_lo,
+                                       quad_deg, mu12_transform, ell_for_recon)
         Pdw_eval = self._get_pdw_fn(params, de_model, q_tr_lo, ell_for_recon)
         nmu1, nmu12, nphi = quad_deg
         return self.BispNum.Bell_Sugi(
@@ -3743,7 +4457,12 @@ class PTEmu:
                     ell_for_recon=None):
         """Diagram-resolved companion to `Bell_Sugi` (numerical-projection
         Sugiyama path). Returns ``{(l1,l2,L): {diagram_name: ndarray}}``."""
-        pair = np.atleast_2d(pair) 
+        pair = np.atleast_2d(pair)
+        if _is_jax(params.get('b1')):
+            if ell_for_recon is None:
+                ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
+            return self._jax_bx_ell_sugi(pair, params, ell, de_model, q_tr_lo,
+                                          quad_deg, mu12_transform, ell_for_recon, X_list)
         Pdw_eval = self._get_pdw_fn(params, de_model, q_tr_lo, ell_for_recon)
         nmu1, nmu12, nphi = quad_deg
         return self.BispNum.BX_ell_Sugi(

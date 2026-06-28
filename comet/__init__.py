@@ -2,7 +2,9 @@
 
 import os
 from comet.PTEmu import PTEmu as comet
-base_dir = os.path.join(os.path.dirname(__file__))
+
+base_dir = os.path.dirname(__file__)
+data_dir = os.environ.get('COMET_DATA_DIR') or os.path.join(base_dir, 'data_dir')
 
 
 def download_data(download_dir):
@@ -28,8 +30,8 @@ def download_data(download_dir):
 
         # the download path
         # filename = url.split('/')[-1]
-        file_path = os.path.join(download_dir+"/data_dir", filenames[i])
-        final_path = os.path.join(download_dir+"/data_dir", out_filenames[i])
+        file_path = os.path.join(download_dir, filenames[i])
+        final_path = os.path.join(download_dir, out_filenames[i])
 
         # do not re-download
 
@@ -49,14 +51,20 @@ def download_data(download_dir):
 
             # unzip the file
             shutil.unpack_archive(
-                filename=file_path, extract_dir=download_dir+"/data_dir")
+                filename=file_path, extract_dir=download_dir)
             os.remove(file_path)
             print("Done.\n")
         else:
             continue
 
 
-download_data(base_dir)
+download_data(data_dir)
+
+
+def model_path(model):
+    """Return *model* unchanged."""
+    return model
+
 
 if __name__ == '__main__':
     comet = comet()
