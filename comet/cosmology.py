@@ -279,6 +279,7 @@ class Cosmology:
         Hz: float or numpy.ndarray
             Hubble expansion factor at the specified redshifts.
         """
+        z = np.atleast_1d(z)
         mask = np.eye(len(z),dtype=bool)
         Hz = self.H0*self.Ez(z)[mask]
         return Hz
@@ -548,6 +549,7 @@ class Cosmology:
         f: float
             Linear growth rate at the specified redshift.
         """
+        z = np.atleast_1d(z)
         def Ez_for_D(z):
             ainv = 1.0+z
             Ez2 = np.multiply.outer(ainv**3,self.Om0) + self.Ode0*self.DE_z(z)
