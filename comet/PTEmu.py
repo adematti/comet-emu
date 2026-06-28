@@ -15,7 +15,9 @@ from comet.splines import Splines
 from comet.grid import Grid
 from comet.bispectrum import Bispectrum, BispectrumNum
 
-base_dir = os.path.join(os.path.dirname(__file__))
+
+base_dir = os.path.dirname(__file__)
+data_dir = os.environ.get('COMET_DATA_DIR') or os.path.join(base_dir, 'data_dir')
 
 
 def _is_jax(x):
@@ -321,9 +323,9 @@ class PTEmu:
         self.Bisp_chi2_decomposition = None
 
         self._load_emulator_data(
-            fname=base_dir+'/data_dir/tables/{}.fits'.format(model))
+            fname=os.path.join(data_dir, 'tables/{}.fits'.format(model)))
         self._load_emulator(
-            fname_base=base_dir+'/data_dir/models/{}'.format(model))
+            fname_base=os.path.join(data_dir, 'models/{}'.format(model)))
 
         self.ncol = 1 if self.real_space else 4
         self.Pell_spline = Splines(use_Mpc=self.use_Mpc, ncol=self.ncol,
@@ -1244,7 +1246,7 @@ class PTEmu:
                                                - 18*self.params['b2t']
                                                + 7*self.params['b3t'])
         elif self.bias_basis == 'DESI':
-            if self.reparametrisation: 
+            if self.reparametrisation:
                 self._rescale_params()
             self.params['b1']=self.params['b1']
             self.params['b2']=(self.params['b2d']+4*self.params['bk2']/(3))
@@ -1640,7 +1642,7 @@ class PTEmu:
         h2 = h**2
         h4 = h**4
         #array([0.62469875, 0.56705006, 0.51262079, 0.5050584 , 0.43297989,0.40714599])
-        
+
         s12 = self.params['s12']/self.sigma12_ref
         f= self.params['f']
         Aap = 1.0 / (self.params['q_tr']**2 * self.params['q_lo'])
@@ -5172,18 +5174,18 @@ class PTEmu:
                                         q_tr_lo=q_tr_lo, W_damping=W_damping,
                                         ell_for_recon=ell_for_recon,
                                         preserve_param_order=False)
-                
+
                 PX_ell = self._rescale_marg_tables(PX_ell, diagrams_to_marg_all)
-                 
+
                 if self.bias_basis=='DESI':
                     PX_ell_list = np.concatenate([PX_ell[ell] for ell in PX_ell])
-                    PX_ell_list = np.delete(PX_ell_list, diagrams_to_marg_all.index('Pctr_c4'), axis=1)                    
+                    PX_ell_list = np.delete(PX_ell_list, diagrams_to_marg_all.index('Pctr_c4'), axis=1)
                     diagrams_to_marg_all.remove('Pctr_c4')
                 else:
                     PX_ell_list = np.concatenate([PX_ell[ell] for ell in PX_ell])
                 bX = self._get_bias_coeff_for_AM(diagrams_to_marg_all)
 
-                
+
                 PX_ell_list *= bX
                 if 'g21' in params_to_marg_all or 'bGam3' in params_to_marg_all or 'btd' in params_to_marg_all:
                     PX_ell_list = join_diagrams(PX_ell_list, ['g21','bGam3','btd'],

@@ -2,9 +2,7 @@
 
 import os
 from comet.PTEmu import PTEmu as comet
-
-base_dir = os.path.dirname(__file__)
-data_dir = os.environ.get('COMET_DATA_DIR') or os.path.join(base_dir, 'data_dir')
+from comet.PTEmu import data_dir
 
 
 def download_data(download_dir):
