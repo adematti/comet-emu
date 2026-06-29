@@ -256,12 +256,16 @@ class Splines:
                 y_hi3 = y_1d[-3]
 
                 # Low-k power-law: y = y_lo * (xi/x_lo)^neff_lo
-                ratio_lo = jnp.where(y_lo != 0, jnp.abs(y_lo2 / y_lo), 1.0)
+                # Safe denominator: replace 0 with 1 before dividing so JAX reverse-mode
+                # never differentiates through 1/0 (which gives -inf, and 0*-inf = NaN).
+                y_lo_safe = jnp.where(y_lo != 0, y_lo, jnp.ones_like(y_lo))
+                ratio_lo = jnp.where(y_lo != 0, jnp.abs(y_lo2 / y_lo_safe), 1.0)
                 neff_lo = jnp.log10(jnp.maximum(ratio_lo, 1e-30)) / log_dx_lo
                 y_extrap_lo = y_lo * jnp.power(xi / x_lo, neff_lo)
 
                 # High-k power-law: y = y_hi * (xi/x_hi)^neff_hi
-                ratio_hi = jnp.where(y_hi3 != 0, jnp.abs(y_hi / y_hi3), 1.0)
+                y_hi3_safe = jnp.where(y_hi3 != 0, y_hi3, jnp.ones_like(y_hi3))
+                ratio_hi = jnp.where(y_hi3 != 0, jnp.abs(y_hi / y_hi3_safe), 1.0)
                 neff_hi = jnp.log10(jnp.maximum(ratio_hi, 1e-30)) / log_dx_hi
                 y_extrap_hi = y_hi * jnp.power(xi / x_hi, neff_hi)
 
