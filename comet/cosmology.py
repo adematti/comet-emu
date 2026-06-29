@@ -27,39 +27,7 @@ class Cosmology:
     """
 
     def __init__(self, Om0, H0, Ok0=0.0, Or0=0.0, de_model='lambda',
-                 w0=-1.0, wa=0.0, As=None):
-        r"""Class constructor.
-
-        Parameters
-        ----------
-        Om0: float
-            Fractional total matter density at present time,
-            :math:`\Omega_\mathrm{m,0}`.
-        H0: float
-            Hubble constant at present time, :math:`H_0`.
-        Ok0: float, optional
-            Fractional curvature density at present time,
-            :math:`\Omega_\mathrm{k,0}`. Defaults to 0.0.
-        Or0: float, optional
-            Fractional radiation density at present time,
-            :math:`\Omega_\mathrm{r,0}`, Defaults to 0.0.
-        de_model: str, optional
-            Selected dark energy model. It can be chosen from the list
-            [`"lambda"`, `"w0"`, `"w0wa"`], whose entries correspond to a LCDM,
-            :math:`w` CDM, and quintessence model, respectively.
-            Defaults to `"lambda"`.
-        w0: float, optional
-            Dark energy equation of state at present time, :math:`w_0`.
-            Only used if **de_model** is not `"lambda"`. Defaults to -1.0.
-        wa: float, optional
-            Negative derivative of the dark energy equation of state with
-            respect to the scale factor, :math:`w_a`. Only used if
-            **de_model** is `"w0wa"`. Defaults to 0.0.
-        As: float, optional
-            Scalar amplitude of primordial power spectrum. Stored for use
-            in :meth:`compute_growth_amplitude`. Defaults to None.
-        """
-        self.As = As
+                 w0=-1.0, wa=0.0):
         self.Om0 = np.atleast_1d(Om0)
         self.Ok0 = np.atleast_1d(Ok0)
         self.Or0 = np.atleast_1d(Or0)
@@ -605,19 +573,6 @@ class Cosmology:
 
         return vol.squeeze()
 
-    def compute_ap_params(self, z, Hz_fid, Dm_fid):
-        """Alcock-Paczynski dilation parameters (qpar, qper) relative to a fiducial cosmology."""
-        return Hz_fid / self.Hz(z), self.comoving_transverse_distance(z) / Dm_fid
-
-    def compute_growth_amplitude(self, z, cosmo_fid):
-        r"""Growth amplitude ratio :math:`\sqrt{A_s/A_{s,\rm fid}} \cdot D(z)/D_{\rm fid}(z)`.
-
-        ``z`` must be a concrete Python float.  ``cosmo_fid`` must be another
-        :class:`Cosmology` instance with ``As`` set.
-        """
-        D = self.growth_factor(float(z))
-        D_fid = cosmo_fid.growth_factor(float(z))
-        return np.sqrt(self.As / cosmo_fid.As) * D / D_fid
 
 
 class JAXCosmology:
@@ -666,14 +621,13 @@ class JAXCosmology:
     # ------------------------------------------------------------------ #
 
     def __init__(self, Om0, H0, Ok0=0.0, Or0=0.0, de_model='lambda',
-                 w0=-1.0, wa=0.0, As=1.0):
+                 w0=-1.0, wa=0.0):
         if not _HAS_JAX:
             raise ImportError("JAXCosmology requires JAX.")
         self.Om0  = jnp.atleast_1d(jnp.asarray(Om0, dtype=jnp.float64))
         self.Ok0  = jnp.atleast_1d(jnp.asarray(Ok0, dtype=jnp.float64))
         self.Or0  = jnp.atleast_1d(jnp.asarray(Or0, dtype=jnp.float64))
         self.H0   = jnp.atleast_1d(jnp.asarray(H0,  dtype=jnp.float64))
-        self.As   = jnp.atleast_1d(jnp.asarray(As,  dtype=jnp.float64))
         self.Ode0 = 1.0 - self.Om0 - self.Ok0 - self.Or0
         self.light_speed     = 299792.458
         self.hubble_distance = self.light_speed / self.H0
@@ -843,25 +797,3 @@ class JAXCosmology:
     def Ode(self, z):
         r"""Fractional dark energy density :math:`\Omega_\mathrm{DE}(z)`."""
         return self.Ode0 * self._de_z(z) / self._ez_sq(z)
-
-    def compute_ap_params(self, z, Hz_fid, Dm_fid):
-        r"""Alcock-Paczynski parameters at redshift *z*.
-
-        Returns ``(q_par, q_per)`` where
-        ``q_par = H_fid(z) / H(z)`` (line-of-sight) and
-        ``q_per = D_M(z) / D_M_fid(z)`` (transverse).
-        ``z`` must be a concrete Python float; ``Hz_fid`` and ``Dm_fid``
-        are scalars (possibly JAX arrays) from the fiducial cosmology.
-        """
-        return Hz_fid / self.Hz(z), self.comoving_transverse_distance(z) / Dm_fid
-
-    def compute_growth_amplitude(self, z, cosmo_fid):
-        r"""Growth amplitude ratio :math:`\sqrt{A_s/A_{s,\rm fid}} \cdot D(z)/D_{\rm fid}(z)`.
-
-        ``z`` must be a concrete Python float.  ``cosmo_fid`` must be another
-        :class:`JAXCosmology` instance (concrete parameters are fine).
-        Both cosmologies must have ``As`` set in their constructors.
-        """
-        D     = self.growth_factor(float(z))
-        D_fid = cosmo_fid.growth_factor(float(z))
-        return jnp.sqrt(self.As / cosmo_fid.As) * D / D_fid

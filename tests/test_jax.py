@@ -119,7 +119,9 @@ def test_jit_correctness(emu):
 
     eager  = fn(wc0)
     jitted = jax.jit(fn)(wc0)
-    np.testing.assert_allclose(np.array(eager), np.array(jitted), rtol=1e-5,
+    # rtol=1e-4: XLA can reorder FP ops vs eager, causing ~3e-5 relative noise in
+    # heavily-cancelled quantities (e.g. P4 at k where terms cancel by ~1e-5).
+    np.testing.assert_allclose(np.array(eager), np.array(jitted), rtol=1e-4,
                                err_msg='jit result differs from eager result')
 
 

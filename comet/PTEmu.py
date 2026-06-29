@@ -4167,8 +4167,13 @@ class PTEmu:
         kmin    = float(pair_arr.min()) * 0.5
         kmax    = float(pair_arr.max()) * 2.0
         kgrid   = BispectrumNum._kgrid_compression(kmin, kmax, nk=500)   # static numpy
-        k_table_j = jnp.asarray(np.asarray(self.k_table, dtype=np.float64))
-        Pdw_kg  = jnp.interp(jnp.asarray(kgrid), k_table_j, Pdw_kt)
+        if self.use_Mpc:
+            k_table_j = jnp.asarray(np.asarray(self.k_table, dtype=np.float64))
+            Pdw_kg = jnp.interp(jnp.asarray(kgrid), k_table_j, Pdw_kt)
+        else:
+            h_jax = jnp.squeeze(jnp.asarray(self.params['h']))
+            k_table_j = jnp.asarray(np.asarray(self.k_table, dtype=np.float64)) / h_jax
+            Pdw_kg = jnp.interp(jnp.asarray(kgrid), k_table_j, Pdw_kt * h_jax**3)
 
         # 3. Static quadrature geometry (all numpy — concrete at trace time)
         mu1_g, _, t_g, _, cphi_g, phi_g, _ = \
@@ -4302,8 +4307,13 @@ class PTEmu:
         kmin   = float(pair_arr.min()) * 0.5
         kmax   = float(pair_arr.max()) * 2.0
         kgrid  = BispectrumNum._kgrid_compression(kmin, kmax, nk=500)
-        k_table_j = jnp.asarray(np.asarray(self.k_table, dtype=np.float64))
-        Pdw_kg = jnp.interp(jnp.asarray(kgrid), k_table_j, Pdw_kt)
+        if self.use_Mpc:
+            k_table_j = jnp.asarray(np.asarray(self.k_table, dtype=np.float64))
+            Pdw_kg = jnp.interp(jnp.asarray(kgrid), k_table_j, Pdw_kt)
+        else:
+            h_jax = jnp.squeeze(jnp.asarray(self.params['h']))
+            k_table_j = jnp.asarray(np.asarray(self.k_table, dtype=np.float64)) / h_jax
+            Pdw_kg = jnp.interp(jnp.asarray(kgrid), k_table_j, Pdw_kt * h_jax**3)
 
         mu1_g, _, t_g, _, cphi_g, phi_g, _ = \
             self.BispNum._sugi_get_quadrature(nmu1, nmu12, nphi, mu12_transform)

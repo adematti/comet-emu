@@ -211,7 +211,11 @@ class Splines:
         return y
 
     def _eval_varx_jax(self, x):
-        """JAX-compatible eval_varx using jnp.interp on stored raw grid."""
+        """JAX-compatible eval_varx with power-law extrapolation outside the grid.
+
+        Mirrors the numpy eval_varx behaviour: power-law (or linear, when
+        crossover_check triggers) outside [x_min, x_max], linear interp inside.
+        """
         import jax.numpy as jnp
         n_col_flat = int(np.prod(self.ncol)) if len(self.ncol) > 0 else 1
         out_cols = []
@@ -221,16 +225,22 @@ class Splines:
                 xg = jnp.asarray(self.x_raw)
             else:
                 xg = jnp.asarray(self.x_raw) / self.h[col_idx]
-                xi = xi / self.h[col_idx]
 
             if len(self.ncol) > 0:
-                yi_col = self.y_raw[..., col_idx]  # (nk_table, *ncol)
+                yi_col = self.y_raw[..., col_idx]
                 if not self.use_Mpc:
                     yi_col = yi_col * self.h3[col_idx]
             else:
-                yi_col = self.y_raw[..., col_idx]  # (nk_table,)
+                yi_col = self.y_raw[..., col_idx]
                 if not self.use_Mpc:
                     yi_col = yi_col * self.h3[col_idx]
+
+            x_lo  = xg[self.id_min]
+            x_hi  = xg[-1]
+            x_lo2 = xg[self.id_min + 2]
+            x_hi3 = xg[-3]
+            log_dx_lo = jnp.log10(x_lo2 / x_lo)
+            log_dx_hi = jnp.log10(x_hi / x_hi3)
 
             ncol_parts = []
             for j in range(n_col_flat):
@@ -239,14 +249,42 @@ class Splines:
                     y_1d = jnp.asarray(yi_col[(slice(None),) + j_idx])
                 else:
                     y_1d = jnp.asarray(yi_col)
-                ncol_parts.append(jnp.interp(xi, xg, y_1d))
+
+                y_lo  = y_1d[self.id_min]
+                y_lo2 = y_1d[self.id_min + 2]
+                y_hi  = y_1d[-1]
+                y_hi3 = y_1d[-3]
+
+                # Low-k power-law: y = y_lo * (xi/x_lo)^neff_lo
+                ratio_lo = jnp.where(y_lo != 0, jnp.abs(y_lo2 / y_lo), 1.0)
+                neff_lo = jnp.log10(jnp.maximum(ratio_lo, 1e-30)) / log_dx_lo
+                y_extrap_lo = y_lo * jnp.power(xi / x_lo, neff_lo)
+
+                # High-k power-law: y = y_hi * (xi/x_hi)^neff_hi
+                ratio_hi = jnp.where(y_hi3 != 0, jnp.abs(y_hi / y_hi3), 1.0)
+                neff_hi = jnp.log10(jnp.maximum(ratio_hi, 1e-30)) / log_dx_hi
+                y_extrap_hi = y_hi * jnp.power(xi / x_hi, neff_hi)
+
+                if self.crossover_check:
+                    # Linear fallback when ratio is extreme (same threshold as numpy path)
+                    slope = (y_hi - y_hi3) / (x_hi - x_hi3)
+                    intrcpt = y_hi3 - slope * x_hi3
+                    y_extrap_hi = jnp.where(
+                        (ratio_hi > 2.0) | (ratio_hi < 0.5),
+                        slope * xi + intrcpt,
+                        y_extrap_hi)
+
+                y_interp = jnp.interp(xi, xg, y_1d)
+                y_out = jnp.where(xi < x_lo, y_extrap_lo,
+                        jnp.where(xi > x_hi, y_extrap_hi, y_interp))
+                ncol_parts.append(y_out)
 
             if len(self.ncol) > 0:
                 out_col = jnp.stack(ncol_parts, axis=-1).reshape(xi.shape + self.ncol)
             else:
                 out_col = ncol_parts[0]
             out_cols.append(out_col)
-        return jnp.stack(out_cols, axis=-1)  # (..., *ncol, N)
+        return jnp.stack(out_cols, axis=-1)
 
     # this is just a quick fix for compatibility with the bispectrum module
     # derivative should also be applied to the extrapolations
