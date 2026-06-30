@@ -19,6 +19,13 @@ from comet.bispectrum import Bispectrum, BispectrumNum
 base_dir = os.path.dirname(__file__)
 data_dir = os.environ.get('COMET_DATA_DIR') or os.path.join(base_dir, 'data_dir')
 
+# Module-level caches keyed by file path so that multiple PTEmu instances for the
+# same model share the immutable training data (Tables + GP objects) without re-reading
+# disk.  Mutable per-instance state (params, Pk_lin, Pk_ratios, Bisp, BispNum, …) is
+# always created fresh for each PTEmu instance.
+_EMULATOR_DATA_CACHE = {}   # fname  (FITS path) → snapshot dict of read-only attrs
+_EMULATOR_PICKLE_CACHE = {} # fname_base (pickle stem) → emu dict of sklearn GP objects
+
 
 def _is_jax(x):
     """True if x is a JAX array or tracer (not a plain numpy array)."""
@@ -380,11 +387,25 @@ class PTEmu:
         or redshift-space, checking if the growth rate :math:`f` is part of the
         parameter sample or not.
 
+        The read-only attributes derived from *fname* (training Tables, k_table,
+        parameter lists/ranges, …) are cached in ``_EMULATOR_DATA_CACHE`` so that
+        subsequent PTEmu instances for the same model avoid redundant FITS I/O.
+        Mutable per-instance attributes (``params``, ``Bisp``, ``BispNum``) are
+        always created fresh.
+
         Parameters
         ----------
         fname: str
             Name of the output fits file to read from.
         """
+        if fname in _EMULATOR_DATA_CACHE:
+            for attr, val in _EMULATOR_DATA_CACHE[fname].items():
+                setattr(self, attr, val)
+            self._init_params_dict()
+            self.Bisp = Bispectrum(self.real_space, self.model, self.use_Mpc)
+            self.BispNum = BispectrumNum(self.real_space, self.model, self.use_Mpc)
+            return
+
         hdul = fits.open(fname)
 
         # Fiducial parameters used to build training set of shape parameters
@@ -480,6 +501,18 @@ class PTEmu:
                 self.P6[:nkdiff,i] = self.P6[nkdiff,i] \
                     * (self.k_table[:nkdiff]/self.k_table[nkdiff])**neff
 
+        # Save read-only attributes to the module-level cache so future instances
+        # with the same fname skip FITS I/O entirely.
+        _cached_attrs = [
+            'emu_LCDM_params', 'params_shape_list', 'params_shape_ranges',
+            'params_linear_list', 'params_linear_ranges', 'params_list',
+            'params_ranges', 'real_space', 'k_table', 'nk', 'nkloop',
+            'emu_output_length', 'training',
+        ]
+        if not self.real_space:
+            _cached_attrs += ['s12_for_P6', 'P6']
+        _EMULATOR_DATA_CACHE[fname] = {attr: getattr(self, attr) for attr in _cached_attrs}
+
         self.Bisp = Bispectrum(self.real_space, self.model, self.use_Mpc)
         self.BispNum = BispectrumNum(self.real_space, self.model, self.use_Mpc)
 
@@ -487,20 +520,28 @@ class PTEmu:
         r"""Load the emulator from pickle file.
 
         Loads an emulator object from a file (pickle format) and adds it to the
-        internal dictionary containing the emulators.
+        internal dictionary containing the emulators.  The loaded sklearn GP objects
+        are cached in ``_EMULATOR_PICKLE_CACHE`` (keyed by *fname_base*) so that
+        subsequent PTEmu instances for the same model avoid redundant pickle I/O.
+        ``_init_jax_gp_arrays`` is always called per-instance to create fresh
+        per-instance JAX arrays derived from those GP objects.
 
         Parameters
         ----------
         fname_base: str
             Root name of the input pickle file.
         """
-        self.emu['shape'] = pickle.load(
-            open('{}_shape.pickle'.format(fname_base), "rb"))
-        if 'nonu' not in self.model:
-            self.emu['linear'] = pickle.load(
-                open('{}_linear.pickle'.format(fname_base), "rb"))
-        self.emu['ratios'] = pickle.load(
-            open('{}_ratios.pickle'.format(fname_base), "rb"))
+        if fname_base in _EMULATOR_PICKLE_CACHE:
+            self.emu = _EMULATOR_PICKLE_CACHE[fname_base]
+        else:
+            self.emu['shape'] = pickle.load(
+                open('{}_shape.pickle'.format(fname_base), "rb"))
+            if 'nonu' not in self.model:
+                self.emu['linear'] = pickle.load(
+                    open('{}_linear.pickle'.format(fname_base), "rb"))
+            self.emu['ratios'] = pickle.load(
+                open('{}_ratios.pickle'.format(fname_base), "rb"))
+            _EMULATOR_PICKLE_CACHE[fname_base] = self.emu
         self._init_jax_gp_arrays()
 
     def _init_jax_gp_arrays(self):
@@ -522,6 +563,30 @@ class PTEmu:
                 'mat_amp2': jnp.float64(k.k1.k2.k1.constant_value),
                 'mat_ls':   jnp.array(k.k1.k2.k2.length_scale, dtype=jnp.float64),
             }
+
+    def clear_jax_state(self):
+        """Reset all quantities that may have been set to JAX arrays during a traced run.
+
+        Replaces every JAX tracer or non-numpy array in ``self.params`` with a numpy
+        zero of the same shape, and resets ``Pk_lin``, ``Pk_nw``, and ``Pk_ratios`` to
+        ``None`` so that the next call to ``_eval_emulator`` recomputes them from
+        scratch.
+
+        Call this at the end of any ``__call__`` that ran under JAX tracing to prevent
+        stale ``DynamicJaxprTracer`` objects from escaping into the next trace context.
+        The constants that are safe to keep (``_jax_gp``, ``emu``, ``training``,
+        ``k_table``, …) are left untouched.
+        """
+        import jax.core as _jaxcore
+        for _p, _v in list(self.params.items()):
+            if isinstance(_v, _jaxcore.Tracer) or (_is_jax(_v) and not isinstance(_v, np.ndarray)):
+                try:
+                    self.params[_p] = np.zeros(_v.shape, dtype=np.float64)
+                except Exception:
+                    self.params[_p] = np.zeros(1, dtype=np.float64)
+        self.Pk_lin = None
+        self.Pk_nw = None
+        self.Pk_ratios = {key: None for key in self.Pk_ratios}
 
     def define_units(self, use_Mpc):
         r"""Define units for the power spectrum and number density.
