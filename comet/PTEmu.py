@@ -369,6 +369,11 @@ class PTEmu:
                        self.obs_syst_params_list}
         self.params['w0'] = np.array([-1.0])
         self.params['q_tr'] = np.array([1.0])
+        # NaN taint factor for out-of-training-range derived GP coordinates (s12, f),
+        # set in _eval_emulator on the JAX path only (1.0 in range, NaN outside, None when
+        # unset / numpy path).  Consumers (e.g. desilike) read it after a prediction call
+        # and fold it into their own output masking.
+        self._range_nan_factor = None
         self.params['q_lo'] = np.array([1.0])
         self.params['alpha_tr'] = np.array([1.0])
         self.params['alpha_lo'] = np.array([1.0])
@@ -587,6 +592,7 @@ class PTEmu:
         self.Pk_lin = None
         self.Pk_nw = None
         self.Pk_ratios = {key: None for key in self.Pk_ratios}
+        self._range_nan_factor = None
 
     def define_units(self, use_Mpc):
         r"""Define units for the power spectrum and number density.
@@ -1130,6 +1136,10 @@ class PTEmu:
             the standard cosmological parameters, or be left undefined to use
             only :math:`\sigma_{12}`. Defaults to **None**.
         """
+        # Fresh evaluation: reset the out-of-range NaN taint factor (re-set in
+        # _eval_emulator's JAX path when the derived s12 / f fall outside their ranges).
+        self._range_nan_factor = None
+
         def clip_to_ranges(params_list):
             for p in params_list:
                 if p in self.params_ranges:
@@ -1947,6 +1957,17 @@ class PTEmu:
                 for p in list(set(['s12', 'f']) & set(self.params_list)):
                     if p in self.params_ranges:
                         lo, hi = self.params_ranges[p]
+                        if _use_jax:
+                            # JAX path only: record out-of-range derived GP coordinates
+                            # in _range_nan_factor for consumers to mask their outputs with
+                            # (the values are still clipped below, so the GP / spline
+                            # evaluation itself stays finite).
+                            import jax.numpy as jnp
+                            in_range = jnp.all((self.params[p] >= lo)
+                                               & (self.params[p] <= hi))
+                            factor = jnp.where(in_range, 1.0, jnp.nan)
+                            self._range_nan_factor = (factor if self._range_nan_factor is None
+                                                      else self._range_nan_factor * factor)
                         self.params[p] = _xp_clip(self.params[p], lo, hi)
 
                 if 'nonu' not in self.model:
