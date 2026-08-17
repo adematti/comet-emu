@@ -214,9 +214,10 @@ class Splines:
         """JAX-compatible eval_varx with power-law extrapolation outside the grid.
 
         Mirrors the numpy eval_varx behaviour: power-law (or linear, when
-        crossover_check triggers) outside [x_min, x_max], linear interp inside.
+        crossover_check triggers) outside [x_min, x_max], cubic interp inside.
         """
         import jax.numpy as jnp
+        import interpax
         n_col_flat = int(np.prod(self.ncol)) if len(self.ncol) > 0 else 1
         out_cols = []
         for col_idx in range(self.size_last):
@@ -278,7 +279,11 @@ class Splines:
                         slope * xi + intrcpt,
                         y_extrap_hi)
 
-                y_interp = jnp.interp(xi, xg, y_1d)
+                # Cubic, to match the numpy path's scipy spline: jnp.interp is piecewise
+                # linear, which on the emulator's ~6%-spaced k table leaves a b1-independent,
+                # sign-oscillating ~0.2% error in P_ell peaking between knots.
+                y_interp = interpax.interp1d(xi.ravel(), xg, y_1d, method='cubic2',
+                                             extrap=True).reshape(xi.shape)
                 y_out = jnp.where(xi < x_lo, y_extrap_lo,
                         jnp.where(xi > x_hi, y_extrap_hi, y_interp))
                 ncol_parts.append(y_out)
