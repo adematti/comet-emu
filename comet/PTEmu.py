@@ -2276,6 +2276,62 @@ class PTEmu:
         return (np.sqrt(quad_vec(integrand, 1e-4, 5, limit=100)[0] /
                 (2*np.pi**2)))
 
+    def sigmaR_fixed(self, R, params, de_model, nk=2048, kmin=1e-4, kmax=5.0):
+        r"""Rms density fluctuations within radius :math:`R`, on a fixed quadrature.
+
+        Same integrand and spline path as :meth:`sigmaR`, but with a static log-spaced
+        trapezoid rule instead of :func:`scipy.integrate.quad_vec`, so the result is
+        JAX-traceable and differentiable when the emulator is evaluated with JAX inputs.
+        :meth:`sigmaR` remains the reference; this is validated against it.
+
+        Parameters
+        ----------
+        R: float
+            Radius, in Mpc when ``use_Mpc`` else Mpc/h.
+        params: dict
+            Emulator parameters, as for :meth:`sigmaR`.
+        de_model: str
+            One of [`"lambda"`, `"w0"`, `"w0wa"`].
+        nk: int
+            Number of log-spaced quadrature points.
+        kmin, kmax: float
+            Integration range, matching :meth:`sigmaR`'s quad limits.
+
+        Returns
+        -------
+        sigmaR: float or jax array
+        """
+        self._eval_emulator(params, ell=[], de_model=de_model)
+        return self.sigmaR_from_pklin(R, self.Pk_lin, h=None if self.use_Mpc else params['h'],
+                                      nk=nk, kmin=kmin, kmax=kmax)
+
+    def sigmaR_from_pklin(self, R, pk_lin, h=None, nk=2048, kmin=1e-4, kmax=5.0):
+        r"""Rms fluctuations at radius *R* from an already-computed linear P(k) on ``k_table``.
+
+        Same fixed quadrature as :meth:`sigmaR_fixed`, but takes *pk_lin* directly, so a caller
+        that has just evaluated the emulator does not pay for a second evaluation.
+        JAX-traceable when *pk_lin* is a JAX array.
+        """
+        PL_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
+        PL_spline.build(self.k_table, pk_lin, h=h)
+        # eval_varx (not eval) is the one with a JAX branch, and it selects that branch from the
+        # dtype of *x*, so x must match pk_lin: build() early-exits for JAX y, leaving the
+        # numpy extrapolation attributes unset.
+        use_jax = _is_jax(pk_lin)
+        if use_jax:
+            import jax.numpy as jnp
+            xp = jnp
+        else:
+            xp = np
+        x = np.geomspace(kmin, kmax, nk)
+        xx = np.repeat(x[:, None], PL_spline.size_last, axis=1)
+        pk = PL_spline.eval_varx(xp.asarray(xx) if use_jax else xx)
+        pk = xp.squeeze(xp.reshape(xp.asarray(pk), (nk, -1))[:, 0])
+        xR = x * R
+        window = 3.0 * (xp.sin(xR) - xR * xp.cos(xR)) / xR**3
+        integrand = x**2 * pk * window**2
+        return xp.sqrt(xp.trapezoid(integrand, x) / (2.0 * np.pi**2))
+
     def Pnw(self, k, params, de_model=None):
         r"""Compute the no-wiggle power spectrum predictions.
 

@@ -218,7 +218,7 @@ class Splines:
         """
         import jax.numpy as jnp
         import interpax
-        n_col_flat = int(np.prod(self.ncol)) if len(self.ncol) > 0 else 1
+        n_col_flat = int(np.prod(self.ncol)) if sum(self.ncol) > 0 else 1
         out_cols = []
         for col_idx in range(self.size_last):
             xi = x[..., col_idx]
@@ -227,7 +227,7 @@ class Splines:
             else:
                 xg = jnp.asarray(self.x_raw) / self.h[col_idx]
 
-            if len(self.ncol) > 0:
+            if sum(self.ncol) > 0:
                 yi_col = self.y_raw[..., col_idx]
                 if not self.use_Mpc:
                     yi_col = yi_col * self.h3[col_idx]
@@ -245,7 +245,7 @@ class Splines:
 
             ncol_parts = []
             for j in range(n_col_flat):
-                if len(self.ncol) > 0:
+                if sum(self.ncol) > 0:
                     j_idx = np.unravel_index(j, self.ncol)
                     y_1d = jnp.asarray(yi_col[(slice(None),) + j_idx])
                 else:
@@ -288,7 +288,7 @@ class Splines:
                         jnp.where(xi > x_hi, y_extrap_hi, y_interp))
                 ncol_parts.append(y_out)
 
-            if len(self.ncol) > 0:
+            if sum(self.ncol) > 0:
                 out_col = jnp.stack(ncol_parts, axis=-1).reshape(xi.shape + self.ncol)
             else:
                 out_col = ncol_parts[0]
