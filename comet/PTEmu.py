@@ -2948,7 +2948,8 @@ class PTEmu:
 
     def Pell(self, k, params, ell, de_model=None, binning=None, obs_id=None,
              q_tr_lo=None, gamma_tr_lo=None, W_damping=None, z_error=None,
-             ell_for_recon=None, preserve_param_order=True):
+             ell_for_recon=None, preserve_param_order=True,
+             extra_damping=None):
         r"""Compute the power spectrum multipoles.
 
         Main method to compute the galaxy power spectrum multipoles.
@@ -3002,6 +3003,16 @@ class PTEmu:
             2d leading-order IR-resummed power spectrum. If **None**, all the
             even multipoles up to :math:`\ell=6` are used in the
             reconstruction. Defaults to **None**.
+        extra_damping: Callable[[float], float], optional
+            Extra multiplicative factor on the assembled :math:`P(k, \mu)`,
+            called with the **observed** (pre-AP) product :math:`k\mu` in the
+            units of *k*. Unlike **W_damping**, it is applied after the
+            stochastic term has been added and for every model, so it damps
+            the whole of what the estimator measures. Meant for effects that
+            act on the observed coordinates rather than on the true ones ---
+            residual redshift errors, for instance, whose line-of-sight
+            displacement lives in the fiducial frame the catalogue was built
+            in. Defaults to **None**, i.e. no extra factor.
 
         Returns
         -------
@@ -3084,6 +3095,9 @@ class PTEmu:
                 kp   = keff[:, None, None] * APfac[None, :, :]   # (nk, nmu, N)
                 mup  = (mu[:, None] / q_lo[None, :]) / APfac     # (nmu, N)
                 P2d_tot = P2d(kp, mup) * W_damping(kp, mup, z_error) + P2d_stoch(kp, mup)
+                if extra_damping is not None:
+                    # kp*mup = keff*mu/q_lo, so kp*mup*q_lo is the observed (pre-AP) k*mu
+                    P2d_tot = P2d_tot * extra_damping(kp * mup * q_lo)
                 legendre = eval_legendre.outer(ell, mu)           # (n_ell, nmu) numpy
                 return 0.5 * jnp.einsum("abc,db,b->adc", P2d_tot,
                                         jnp.asarray(legendre),
@@ -3095,6 +3109,8 @@ class PTEmu:
                 kp   = np.multiply.outer(keff, APfac)
                 mup  = np.divide.outer(mu, q_lo) / APfac
                 P2d_tot = P2d(kp, mup) * W_damping(kp, mup, z_error) + P2d_stoch(kp, mup)
+                if extra_damping is not None:
+                    P2d_tot = P2d_tot * extra_damping(kp * mup * q_lo)
                 legendre = eval_legendre.outer(ell, mu)
                 return 0.5 * np.einsum("abc,db,b->adc", P2d_tot, legendre,
                                        self.gl_weights)  # nk x nell x N
@@ -3109,6 +3125,9 @@ class PTEmu:
             legendre = eval_legendre.outer(ell, self.grid.mu)
             P2d_tot = P2d(kp, mup) * W_damping(kp, mup, z_error) \
                       + P2d_stoch(kp, mup)
+            if extra_damping is not None:
+                P2d_tot = P2d_tot * extra_damping(
+                    kp * mup * self.params['q_lo'])
             avg = np.add.reduceat(
                 np.einsum("ab,bc,b->bac", legendre, P2d_tot,
                           self.grid.weights),
@@ -3193,7 +3212,8 @@ class PTEmu:
                     params_eval, ell_for_mixing_matrix, de_model,
                     binning=None, obs_id=None, q_tr_lo=q_tr_lo,
                     gamma_tr_lo=gamma_tr_lo, W_damping=W_damping,
-                    z_error=z_error, ell_for_recon=ell_for_recon)
+                    z_error=z_error, ell_for_recon=ell_for_recon,
+                    extra_damping=extra_damping)
                 Pell_list = np.stack([Pell_model[ell] for ell in Pell_model],
                                      axis=1)
                 spline = make_interp_spline(
@@ -3699,7 +3719,8 @@ class PTEmu:
 
     def PX_ell(self, k, params, ell, X_list, de_model=None, binning=None,
                obs_id=None, q_tr_lo=None, gamma_tr_lo=None, W_damping=None,
-               z_error=None, ell_for_recon=None, preserve_param_order=True):
+               z_error=None, ell_for_recon=None, preserve_param_order=True,
+               extra_damping=None):
         r"""Get the individual contribution to the power spectrum multipoles.
 
         Computes the individual contribution X to the galaxy power spectrum
@@ -3762,6 +3783,11 @@ class PTEmu:
             2d leading-order IR-resummed power spectrum. If **None**, all the
             even multipoles up to :math:`\ell=6` are used in the
             reconstruction. Defaults to **None**.
+        extra_damping: Callable[[float], float], optional
+            Extra multiplicative factor on :math:`P(k, \mu)`, called with the
+            **observed** (pre-AP) product :math:`k\mu`; see :meth:`Pell`. It
+            multiplies *every* column, the **Pnoise** ones included, unlike
+            **W_damping**, which skips them. Defaults to **None**.
 
         Returns
         -------
@@ -3860,6 +3886,10 @@ class PTEmu:
                     w_d = W_damping(kp, mup, z_error)
                     P2d_tot = P2d_tot.at[:, col_for_damping[XNL], :, :].set(
                         P2d_tot[:, col_for_damping[XNL], :, :] * w_d[:, None, :, :])
+                if extra_damping is not None:
+                    # every column, Pnoise included: it acts on the observed
+                    # (pre-AP) coordinates, kp*mup*q_lo, not on the model
+                    P2d_tot = P2d_tot * extra_damping(kp * mup * q_lo)[:, None, :, :]
                 legendre = jnp.asarray(eval_legendre.outer(np.array(ell), np.array(mu)))
                 return 0.5 * jnp.einsum("aebc,db,b->adec", P2d_tot, legendre,
                                         jnp.asarray(self.gl_weights))
@@ -3871,6 +3901,8 @@ class PTEmu:
             P2d_tot = P2d(XNL, kp, mup)
             P2d_tot[:, col_for_damping[XNL]] *= \
                 W_damping(kp, mup, z_error)[:, None, ...]
+            if extra_damping is not None:
+                P2d_tot = P2d_tot * extra_damping(kp * mup * q_lo)[:, None, ...]
             legendre = eval_legendre.outer(ell, mu)
             return 0.5 * np.einsum("aebc,db,b->adec", P2d_tot, legendre,
                                    self.gl_weights) # nk x nell x nXNL x N
@@ -3885,6 +3917,9 @@ class PTEmu:
             legendre = eval_legendre.outer(ell, self.grid.mu)
             P2d_tot = P2d(XNL, kp, mup)
             P2d_tot[col_for_damping[XNL]] *= W_damping(kp, mup, z_error)
+            if extra_damping is not None:
+                P2d_tot = P2d_tot * extra_damping(
+                    kp * mup * self.params['q_lo'])
             avg = np.add.reduceat(
                 np.einsum("ab,dbc,b->badc", legendre, P2d_tot,
                           self.grid.weights),
@@ -4288,7 +4323,7 @@ class PTEmu:
         return Pdw  # (nk,)
 
     def _jax_bell_sugi(self, pair_arr, params, ell, de_model, q_tr_lo, quad_deg,
-                       mu12_transform, ell_for_recon):
+                       mu12_transform, ell_for_recon, extra_damping=None):
         """JAX-traceable Bell_Sugi for use with jax.grad / jax.jit."""
         import jax.numpy as jnp
 
@@ -4370,6 +4405,15 @@ class PTEmu:
         mu2_b = jnp.broadcast_to(mu2_p, full_shape)
         mu3_b = jnp.broadcast_to(mu3_p, full_shape)
 
+        # observed (pre-AP) k_i mu_i, one argument per field: the AP transform above
+        # maps to the model frame, while the extra damping acts on the coordinates
+        # the catalogue was built in
+        damp = None
+        if extra_damping is not None:
+            damp = jnp.broadcast_to(
+                extra_damping(k1_np * mu1_np, k2_np * mu2_np, k3_np * mu3_np),
+                full_shape)
+
         # 5. Pdw at AP-distorted k-values via JAX interpolation
         kg_j = jnp.asarray(kgrid)
         def _pdw(k_b):
@@ -4399,23 +4443,37 @@ class PTEmu:
             pdw1, pdw2, pdw3,
             b1, b2, g2, f, avirB, sv, MB0, NP0,
             cnloB, cB1, cB2, inv_nbar, inv_qiso6)
+        if damp is not None:
+            B_5d = B_5d * damp
 
         # 8. Project onto Sugiyama multipoles
         B_flat   = B_5d.reshape(n_pair, nmu1 * nmu12 * nphi, npar)
         proj_ops = self.BispNum._sugi_get_proj_ops_k3(
             ell, pair_arr, nmu1, nmu12, nphi, mu12_transform)
+        damp_flat = None if damp is None else \
+            damp.reshape(n_pair, nmu1 * nmu12 * nphi, npar)
 
         nbar_sq = float(self.BispNum.nbar) ** 2
         Bell_dict = {}
         for ll in ell:
-            B = jnp.einsum('ijc,ij->ic', B_flat, jnp.asarray(proj_ops[ll]))
-            if ll == (0, 0, 0):
-                B = B + NB0[None, :] / (nbar_sq * qiso6[None, :])
+            P_op = jnp.asarray(proj_ops[ll])
+            B = jnp.einsum('ijc,ij->ic', B_flat, P_op)
+            nb0 = NB0[None, :] / (nbar_sq * qiso6[None, :])
+            if damp_flat is None:
+                if ll == (0, 0, 0):
+                    B = B + nb0
+            else:
+                # NB0 is a constant field, so undamped it projects onto (0, 0, 0)
+                # alone. It is displaced along the line of sight like every other
+                # term, so it goes through the same damped angular integral rather
+                # than being short-circuited; this reduces to the branch above at
+                # unit damping, since <S_a> = delta_{a, (0, 0, 0)}.
+                B = B + nb0 * jnp.einsum('ijc,ij->ic', damp_flat, P_op)
             Bell_dict[ll] = jnp.squeeze(B)
         return Bell_dict
 
     def _jax_bx_ell_sugi(self, pair_arr, params, ell, de_model, q_tr_lo, quad_deg,
-                          mu12_transform, ell_for_recon, X_list):
+                          mu12_transform, ell_for_recon, X_list, extra_damping=None):
         """JAX-traceable BX_ell_Sugi for use with jax.grad / jax.jit."""
         import jax.numpy as jnp
 
@@ -4503,6 +4561,13 @@ class PTEmu:
         mu2_b = jnp.broadcast_to(mu2_p, full_shape)
         mu3_b = jnp.broadcast_to(mu3_p, full_shape)
 
+        # observed (pre-AP) k_i mu_i, one argument per field; see _jax_bell_sugi
+        damp = None
+        if extra_damping is not None:
+            damp = jnp.broadcast_to(
+                extra_damping(k1_np * mu1_np, k2_np * mu2_np, k3_np * mu3_np),
+                full_shape)
+
         kg_j = jnp.asarray(kgrid)
         def _pdw(k_b):
             return jnp.interp(k_b.ravel(), kg_j, Pdw_kg).reshape(k_b.shape)
@@ -4524,6 +4589,9 @@ class PTEmu:
             pdw1, pdw2, pdw3,
             f, avirB, sv, cnloB, inv_qiso6,
             tree_keep, stoch_keep)
+        if damp is not None:
+            spt_jax = spt_jax * damp[..., None]
+            stoch_jax = stoch_jax * damp[..., None]
 
         # spt_jax: (n_pair, nmu1, nmu12, nphi, npar, n_tree_keep)
         # stoch_jax: (n_pair, nmu1, nmu12, nphi, npar, n_stoch_keep)
@@ -4531,6 +4599,8 @@ class PTEmu:
         # Project each multipole
         proj_ops = self.BispNum._sugi_get_proj_ops_k3(
             ell, pair_arr, nmu1, nmu12, nphi, mu12_transform)
+        damp_flat = None if damp is None else \
+            damp.reshape(n_pair, nmu1 * nmu12 * nphi, npar)
         nb0_val  = jnp.squeeze(1.0 / qiso6)       # scalar for npar=1
 
         nb0_name   = self.BispNum.stoch_diagrams[-1]
@@ -4560,7 +4630,13 @@ class PTEmu:
                     if idx in stoch_pos:
                         BX[name] = jnp.squeeze(proj_st[:, :, stoch_pos[idx]])
             # NB0 noise term
-            if ll == (0, 0, 0):
+            if damp_flat is not None:
+                # a constant field, so undamped it lands on (0, 0, 0) alone; damped
+                # it is displaced like every other term, so it goes through the same
+                # angular integral -- see _jax_bell_sugi
+                BX[nb0_name] = jnp.squeeze(
+                    nb0_val * jnp.einsum('ijc,ij->ic', damp_flat, P_op))
+            elif ll == (0, 0, 0):
                 BX[nb0_name] = jnp.ones(n_pair) * nb0_val
             else:
                 BX[nb0_name] = jnp.zeros(n_pair)
@@ -4575,7 +4651,7 @@ class PTEmu:
     def Bell_Sugi(self, pair, params, ell=((0, 0, 0), (2, 0, 2)),
                   de_model=None, q_tr_lo=None,
                   quad_deg=(7, 16, 5), mu12_transform='k3',
-                  ell_for_recon=None):
+                  ell_for_recon=None, extra_damping=None):
         """Numerical-projection path for the Sugiyama bispectrum multipoles.
 
         Parameters
@@ -4591,13 +4667,25 @@ class PTEmu:
         mu12_transform : str
             Transformation to apply to the mu12 variable
             to improve stability around mu12~-1.
+        extra_damping : callable or None
+            Extra multiplicative factor on the bispectrum integrand, called as
+            ``extra_damping(k1*mu1, k2*mu2, k3*mu3)`` with the **observed**
+            (pre-AP) products; see :meth:`Pell`. One argument per field, since
+            the three galaxies are independent -- a pair, in :meth:`Pell`,
+            gives a single argument that the caller squares. It multiplies the
+            whole integrand, the stochastic diagrams included. jax path only.
         """
         pair = np.atleast_2d(pair)
         if _is_jax(params.get('b1')):
             if ell_for_recon is None:
                 ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
             return self._jax_bell_sugi(pair, params, ell, de_model, q_tr_lo,
-                                       quad_deg, mu12_transform, ell_for_recon)
+                                       quad_deg, mu12_transform, ell_for_recon,
+                                       extra_damping=extra_damping)
+        if extra_damping is not None:
+            raise NotImplementedError(
+                'extra_damping is implemented on the jax path only; pass jax '
+                'bias parameters, or drop the extra damping')
         Pdw_eval = self._get_pdw_fn(params, de_model, q_tr_lo, ell_for_recon)
         nmu1, nmu12, nphi = quad_deg
         return self.BispNum.Bell_Sugi(
@@ -4609,15 +4697,22 @@ class PTEmu:
                     X_list=None,
                     de_model=None, q_tr_lo=None,
                     quad_deg=(7, 16, 5), mu12_transform='k3',
-                    ell_for_recon=None):
+                    ell_for_recon=None, extra_damping=None):
         """Diagram-resolved companion to `Bell_Sugi` (numerical-projection
-        Sugiyama path). Returns ``{(l1,l2,L): {diagram_name: ndarray}}``."""
+        Sugiyama path). Returns ``{(l1,l2,L): {diagram_name: ndarray}}``.
+
+        ``extra_damping`` is as in :meth:`Bell_Sugi`."""
         pair = np.atleast_2d(pair)
         if _is_jax(params.get('b1')):
             if ell_for_recon is None:
                 ell_for_recon = [0, 2, 4, 6] if not self.real_space else [0]
             return self._jax_bx_ell_sugi(pair, params, ell, de_model, q_tr_lo,
-                                          quad_deg, mu12_transform, ell_for_recon, X_list)
+                                          quad_deg, mu12_transform, ell_for_recon, X_list,
+                                          extra_damping=extra_damping)
+        if extra_damping is not None:
+            raise NotImplementedError(
+                'extra_damping is implemented on the jax path only; pass jax '
+                'bias parameters, or drop the extra damping')
         Pdw_eval = self._get_pdw_fn(params, de_model, q_tr_lo, ell_for_recon)
         nmu1, nmu12, nphi = quad_deg
         return self.BispNum.BX_ell_Sugi(
