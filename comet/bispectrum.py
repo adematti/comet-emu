@@ -3984,15 +3984,15 @@ class BispectrumNum:
 
             lam1 = -ff*ff*k1*k1*mu1_sq
             den1 = 1.0 - lam1*av*av
-            st1 = np.exp(lam1*sv_p*sv_p/den1)/den1**1.5 * (bb1*mb0 + ff*np0*mu1_sq) * Z1_1
+            st1 = np.exp(lam1*sv_p*sv_p/den1)/den1**0.5 * (bb1*mb0 + ff*np0*mu1_sq) * Z1_1
             st1 = st1 * (1.0 + cnl*ff*ff*kmu1_sq)
             lam2 = -ff*ff*k2*k2*mu2_sq
             den2 = 1.0 - lam2*av*av
-            st2 = np.exp(lam2*sv_p*sv_p/den2)/den2**1.5 * (bb1*mb0 + ff*np0*mu2_sq) * Z1_2
+            st2 = np.exp(lam2*sv_p*sv_p/den2)/den2**0.5 * (bb1*mb0 + ff*np0*mu2_sq) * Z1_2
             st2 = st2 * (1.0 + cnl*ff*ff*kmu2_sq)
             lam3 = -ff*ff*k3*k3*mu3_sq
             den3 = 1.0 - lam3*av*av
-            st3 = np.exp(lam3*sv_p*sv_p/den3)/den3**1.5 * (bb1*mb0 + ff*np0*mu3_sq) * Z1_3
+            st3 = np.exp(lam3*sv_p*sv_p/den3)/den3**0.5 * (bb1*mb0 + ff*np0*mu3_sq) * Z1_3
             st3 = st3 * (1.0 + cnl*ff*ff*kmu3_sq)
             stoch = (st1*pd1 + st2*pd2 + st3*pd3) * inb
 
@@ -4150,13 +4150,13 @@ class BispectrumNum:
                 if cs0 >= 0 or cs1 >= 0 or cs2 >= 0:
                     lam1 = -f2*kmu1_sq
                     den1 = 1.0 - lam1*av*av
-                    W1 = np.exp(lam1*sv_p*sv_p/den1)/den1**1.5
+                    W1 = np.exp(lam1*sv_p*sv_p/den1)/den1**0.5
                     lam2 = -f2*kmu2_sq
                     den2 = 1.0 - lam2*av*av
-                    W2 = np.exp(lam2*sv_p*sv_p/den2)/den2**1.5
+                    W2 = np.exp(lam2*sv_p*sv_p/den2)/den2**0.5
                     lam3 = -f2*kmu3_sq
                     den3 = 1.0 - lam3*av*av
-                    W3 = np.exp(lam3*sv_p*sv_p/den3)/den3**1.5
+                    W3 = np.exp(lam3*sv_p*sv_p/den3)/den3**0.5
 
                 if cs0 >= 0:
                     out_stoch[q, cs0] = (W1*pd1 + W2*pd2 + W3*pd3) * iqs
@@ -4213,7 +4213,7 @@ class BispectrumNum:
             def _stoch_leg(ki, mui, mui_sq, Z1_i, pdw_i):
                 lam = -f*f*ki*ki*mui_sq
                 den = 1.0 - lam*avir*avir
-                W = jnp.exp(lam*sv*sv/den) / den**1.5
+                W = jnp.exp(lam*sv*sv/den) / den**0.5
                 return W * (b1*MB0 + f*NP0*mui_sq) * Z1_i * pdw_i * (1.0 + cnloB*f*f*ki*ki*mui_sq)
 
             stoch = (_stoch_leg(k1, mu1, mu1_sq, Z1_1, pdw1)
@@ -4323,7 +4323,7 @@ class BispectrumNum:
                 def _stoch_W(ki, mui_sq):
                     lam = -f2*ki*ki*mui_sq
                     den = 1.0 - lam*avir*avir
-                    return jnp.exp(lam*sv*sv/den) / den**1.5
+                    return jnp.exp(lam*sv*sv/den) / den**0.5
                 W1 = _stoch_W(k1, mu1_sq)
                 W2 = _stoch_W(k2, mu2_sq)
                 W3 = _stoch_W(k3, mu3_sq)
