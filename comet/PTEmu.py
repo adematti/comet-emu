@@ -74,26 +74,50 @@ def _xp_safe_param(x, ref):
 #  JAX-native GP helpers                                                      #
 # --------------------------------------------------------------------------- #
 
-def _jax_gp_predict(X_test, gp_dict):
-    """JAX GP prediction: K_star @ alpha + y_mean."""
-    import jax.numpy as jnp
-    X_train = gp_dict['X_train']
-    alpha   = gp_dict['alpha']
-    y_mean  = gp_dict['y_mean']
-    rbf_amp2 = gp_dict['rbf_amp2']
-    rbf_ls   = gp_dict['rbf_ls']
-    mat_amp2 = gp_dict['mat_amp2']
-    mat_ls   = gp_dict['mat_ls']
-    diff = X_test[:, None, :] - X_train[None, :, :]        # (N, n_train, d)
-    d_rbf = diff / rbf_ls
-    K_rbf = rbf_amp2 * jnp.exp(-0.5 * jnp.sum(d_rbf**2, axis=-1))
-    d_mat = diff / mat_ls
-    dist_sq3 = 3.0 * jnp.sum(d_mat**2, axis=-1)
+def _gp_stable_arrays(gp):
+    """Cholesky factor and whitened targets of a fitted sklearn GP, for :func:`_gp_predict_stable`.
+
+    The emulators interpolate their training sets (white noise ~0), so the kernel matrix is ill-conditioned
+    and ``alpha = K^-1 y`` is large with alternating signs: ``K_star @ alpha`` then cancels, amplifying float64
+    rounding by 1e9 - 1e11 (measured), a 1e-7 - 1e-5 relative jitter of the prediction that does not shrink
+    with the input step. ``(L^-1 K_star^T)^T (L^-1 y)``, with ``K = L L^T``, is the same prediction with the
+    amplification reduced to ~sqrt(cond K).
+    """
+    from scipy.linalg import solve_triangular
+    L = np.asarray(gp.L_, dtype=np.float64)
+    beta = solve_triangular(L, np.asarray(gp.y_train_, dtype=np.float64), lower=True)  # L^-1 y
+    return L, beta
+
+
+def _gp_kernel_star(X_test, gp_dict, xp=np):
+    """Cross-covariance K(X_test, X_train) of the (C1^2 RBF + C2^2 Matern(1.5)) kernel."""
+    diff = X_test[:, None, :] - gp_dict['X_train'][None, :, :]        # (N, n_train, d)
+    d_rbf = diff / gp_dict['rbf_ls']
+    K_rbf = gp_dict['rbf_amp2'] * xp.exp(-0.5 * xp.sum(d_rbf**2, axis=-1))
+    d_mat = diff / gp_dict['mat_ls']
+    dist_sq3 = 3.0 * xp.sum(d_mat**2, axis=-1)
     # Safe sqrt: avoid NaN gradient at dist_sq3=0 (e.g. when X_test == X_train)
-    safe_dist = jnp.where(dist_sq3 > 0, dist_sq3, jnp.ones_like(dist_sq3))
-    r_sq3 = jnp.where(dist_sq3 > 0, jnp.sqrt(safe_dist), 0.0)
-    K_mat = mat_amp2 * (1.0 + r_sq3) * jnp.exp(-r_sq3)
-    return (K_rbf + K_mat) @ alpha + y_mean                 # (N, n_out)
+    safe_dist = xp.where(dist_sq3 > 0, dist_sq3, xp.ones_like(dist_sq3))
+    r_sq3 = xp.where(dist_sq3 > 0, xp.sqrt(safe_dist), 0.0)
+    K_mat = gp_dict['mat_amp2'] * (1.0 + r_sq3) * xp.exp(-r_sq3)
+    return K_rbf + K_mat                                              # (N, n_train)
+
+
+def _gp_predict_stable(X_test, gp_dict, xp=np):
+    """GP mean K_star K^-1 y + y_mean, evaluated as (L^-1 K_star^T)^T (L^-1 y) + y_mean (see :func:`_gp_stable_arrays`)."""
+    if xp is np:
+        from scipy.linalg import solve_triangular
+    else:
+        from jax.scipy.linalg import solve_triangular
+    K_star = _gp_kernel_star(X_test, gp_dict, xp=xp)
+    v = solve_triangular(gp_dict['L'], K_star.T, lower=True)         # (n_train, N)
+    return v.T @ gp_dict['beta'] + gp_dict['y_mean']                  # (N, n_out)
+
+
+def _jax_gp_predict(X_test, gp_dict):
+    """JAX GP prediction: K_star K^-1 y + y_mean, in the numerically stable form of :func:`_gp_predict_stable`."""
+    import jax.numpy as jnp
+    return _gp_predict_stable(X_test, gp_dict, xp=jnp)
 
 
 
@@ -550,24 +574,29 @@ class PTEmu:
         self._init_jax_gp_arrays()
 
     def _init_jax_gp_arrays(self):
-        """Extract JAX-compatible arrays from sklearn GP objects after loading."""
+        """Extract the arrays of the stable GP prediction (:func:`_gp_predict_stable`) from the sklearn GP objects
+        after loading: numpy ones in ``self._np_gp``, JAX ones in ``self._jax_gp``."""
+        self._np_gp = {}
+        for name, gp in self.emu.items():
+            k = gp.kernel_
+            L, beta = _gp_stable_arrays(gp)
+            # Kernel structure: (C1^2 * RBF + C2^2 * Matern(1.5)) + WhiteKernel
+            self._np_gp[name] = {
+                'X_train':  np.asarray(gp.X_train_, dtype=np.float64),
+                'L':        L,
+                'beta':     beta,
+                'y_mean':   np.asarray(gp._y_train_mean, dtype=np.float64),
+                'rbf_amp2': np.float64(k.k1.k1.k1.constant_value),
+                'rbf_ls':   np.asarray(k.k1.k1.k2.length_scale, dtype=np.float64),
+                'mat_amp2': np.float64(k.k1.k2.k1.constant_value),
+                'mat_ls':   np.asarray(k.k1.k2.k2.length_scale, dtype=np.float64),
+            }
         try:
             import jax.numpy as jnp
         except ImportError:
             return
-        self._jax_gp = {}
-        for name, gp in self.emu.items():
-            k = gp.kernel_
-            # Kernel structure: (C1^2 * RBF + C2^2 * Matern(1.5)) + WhiteKernel
-            self._jax_gp[name] = {
-                'X_train':  jnp.array(gp.X_train_, dtype=jnp.float64),
-                'alpha':    jnp.array(gp.alpha_, dtype=jnp.float64),
-                'y_mean':   jnp.array(gp._y_train_mean, dtype=jnp.float64),
-                'rbf_amp2': jnp.float64(k.k1.k1.k1.constant_value),
-                'rbf_ls':   jnp.array(k.k1.k1.k2.length_scale, dtype=jnp.float64),
-                'mat_amp2': jnp.float64(k.k1.k2.k1.constant_value),
-                'mat_ls':   jnp.array(k.k1.k2.k2.length_scale, dtype=jnp.float64),
-            }
+        self._jax_gp = {name: {key: jnp.asarray(value, dtype=jnp.float64) for key, value in arrays.items()}
+                        for name, arrays in self._np_gp.items()}
 
     def clear_jax_state(self):
         """Reset all quantities that may have been set to JAX arrays during a traced run.
@@ -1845,7 +1874,8 @@ class PTEmu:
         def _gp_predict(name, X):
             if _use_jax:
                 return _jax_gp_predict(X, self._jax_gp[name])
-            return self.emu[name].predict(X)
+            # not self.emu[name].predict(X): sklearn computes K_star @ alpha_, which cancels (see _gp_stable_arrays)
+            return _gp_predict_stable(np.atleast_2d(X), self._np_gp[name])
 
         def _build_params(keys):
             if _use_jax:
