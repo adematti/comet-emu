@@ -432,7 +432,9 @@ class PTEmu:
                 setattr(self, attr, val)
             self._init_params_dict()
             self.Bisp = Bispectrum(self.real_space, self.model, self.use_Mpc)
-            self.BispNum = BispectrumNum(self.real_space, self.model, self.use_Mpc)
+            self.BispNum = BispectrumNum(
+                self.real_space, self.model, self.use_Mpc,
+                reparametrisation=self.reparametrisation)
             return
 
         hdul = fits.open(fname)
@@ -543,7 +545,9 @@ class PTEmu:
         _EMULATOR_DATA_CACHE[fname] = {attr: getattr(self, attr) for attr in _cached_attrs}
 
         self.Bisp = Bispectrum(self.real_space, self.model, self.use_Mpc)
-        self.BispNum = BispectrumNum(self.real_space, self.model, self.use_Mpc)
+        self.BispNum = BispectrumNum(
+            self.real_space, self.model, self.use_Mpc,
+            reparametrisation=self.reparametrisation)
 
     def _load_emulator(self, fname_base):
         r"""Load the emulator from pickle file.
@@ -2076,6 +2080,10 @@ class PTEmu:
                 self.params['NP22'] /= Aap
                 self.params['NB0'] /= Aap**2
                 self.params['MB0'] /= Aap
+            # Bispectrum counterterms, independent of the bias basis.
+            self.params['cnloB'] /= (Aap**2 * s12**4)
+            self.params['cB1'] /= (Aap * s12**2)
+            self.params['cB2'] /= (Aap * s12**2)
 
     def _W_kurt(self, k, mu):
         r"""Large scale limit of the velocity difference generating function.
@@ -4352,10 +4360,30 @@ class PTEmu:
             Pdw = Pdw + p6 * float(_ev_leg(6, mu))
         return Pdw  # (nk,)
 
+    def _jax_bisp_damping(self, _p, npar):
+        """(avirB, sv) for the JAX bispectrum kernels; zero (W_infty = 1) unless
+        VDG_infty, as in `BispectrumNum._get_damping_arrays`."""
+        import jax.numpy as jnp
+        if 'VDG_infty' not in self.model:
+            return jnp.zeros(npar), jnp.zeros(npar)
+        return _p('avirB'), _p('sv')
+
+    def _jax_bisp_ctr(self, _p, npar):
+        """(cnloB, cB1, cB2) for the JAX fused bispectrum kernel, selected by
+        model and cnlo_type, as in `BispectrumNum._get_ctr_arrays`."""
+        import jax.numpy as jnp
+        zeros = jnp.zeros(npar)
+        if not self.BispNum._has_ctr():
+            return zeros, zeros, zeros
+        if self.BispNum.cnlo_type == 'EggLeeSco':
+            return _p('cnloB'), zeros, zeros
+        return zeros, _p('cB1'), _p('cB2')
+
     def _jax_bell_sugi(self, pair_arr, params, ell, de_model, q_tr_lo, quad_deg,
                        mu12_transform, ell_for_recon, extra_damping=None):
         """JAX-traceable Bell_Sugi for use with jax.grad / jax.jit."""
         import jax.numpy as jnp
+        self.BispNum._check_model('Bell_Sugi')
 
         n_pair = pair_arr.shape[0]
         nmu1, nmu12, nphi = quad_deg
@@ -4459,11 +4487,9 @@ class PTEmu:
             return jnp.zeros(npar) if v is None else jnp.atleast_1d(jnp.asarray(v))
 
         b1 = _p('b1'); b2 = _p('b2'); g2 = _p('g2'); f = _p('f')
-        avirB = _p('avirB'); sv  = _p('sv')
+        avirB, sv = self._jax_bisp_damping(_p, npar)
         MB0 = _p('MB0');  NP0 = _p('NP0');  NB0 = _p('NB0')
-        cnloB = jnp.zeros(npar)
-        cB1   = jnp.zeros(npar)
-        cB2   = jnp.zeros(npar)
+        cnloB, cB1, cB2 = self._jax_bisp_ctr(_p, npar)
         inv_nbar  = jnp.ones(npar) / float(self.BispNum.nbar)
         inv_qiso6 = 1.0 / qiso6
 
@@ -4506,6 +4532,7 @@ class PTEmu:
                           mu12_transform, ell_for_recon, X_list, extra_damping=None):
         """JAX-traceable BX_ell_Sugi for use with jax.grad / jax.jit."""
         import jax.numpy as jnp
+        self.BispNum._check_model('BX_ell_Sugi')
 
         n_pair = pair_arr.shape[0]
         nmu1, nmu12, nphi = quad_deg
@@ -4608,17 +4635,18 @@ class PTEmu:
             return jnp.zeros(npar) if v is None else jnp.atleast_1d(jnp.asarray(v))
 
         f     = _p('f')
-        avirB = _p('avirB'); sv = _p('sv')
-        cnloB = jnp.zeros(npar)
+        avirB, sv = self._jax_bisp_damping(_p, npar)
         inv_qiso6 = 1.0 / qiso6
         NB0 = _p('NB0')
 
-        # JAX-jitted per-diagram kernel
+        # JAX-jitted per-diagram kernel; the specs are static, for JIT specialisation
+        tree_spec, stoch_spec, _ = self.BispNum._diagram_kernel_tables(
+            tree_keep, stoch_keep)
         spt_jax, stoch_jax = self.BispNum._bispectrum_5d_jax_diagrams(
             k1_b, k2_b, k3_b, mu1_b, mu2_b, mu3_b,
             pdw1, pdw2, pdw3,
-            f, avirB, sv, cnloB, inv_qiso6,
-            tree_keep, stoch_keep)
+            f, avirB, sv, inv_qiso6,
+            tree_spec, stoch_spec)
         if damp is not None:
             spt_jax = spt_jax * damp[..., None]
             stoch_jax = stoch_jax * damp[..., None]

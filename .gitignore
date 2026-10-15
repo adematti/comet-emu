@@ -63,8 +63,16 @@ venv.bak/
 # Data files
 comet/data_dir/models
 comet/data_dir/tables
+comet/data_dir/VERSION
 testscript.py
 testsTutorial.py
 .DS_Store
 
 # Docs
+
+# Hidden files/directories
+.*
+
+# discreteness outputs
+comet/discreteness/grid.o
+comet/discreteness/libgrid.so
