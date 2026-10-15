@@ -1220,8 +1220,11 @@ class PTEmu:
                 emu_params_updated = True
             for p in expected_params:
                 if p == 'z':
+                    # 1-d numpy, as upstream: float() of a size-1 array raises
+                    # with numpy >= 2.4, which left z silently at 0
                     try:
-                        self.params[p] = float(np.asarray(params[p]))
+                        self.params[p] = np.atleast_1d(
+                            np.asarray(params[p], dtype=float))
                     except Exception:
                         pass  # z must be concrete (numpy/float); skip if it's a JAX tracer
                 else:
@@ -4360,6 +4363,28 @@ class PTEmu:
             Pdw = Pdw + p6 * float(_ev_leg(6, mu))
         return Pdw  # (nk,)
 
+    def _jax_pdw_on_kgrid(self, Pdw_kt, k1_np, k2_np, k3_np):
+        """Interpolate Pdw(k_table) onto the static kgrid the legs are read from.
+
+        The grid spans all three legs, k3 included (down to |k1 - k2|, i.e. ~0
+        for equal sides), with a factor-2 margin for the AP rescaling, which is
+        traced and so unknown here; jnp.interp clamps outside the grid.
+
+        Pdw(k_table) goes onto the grid through the same `Splines` as the numpy
+        `Pdw` (cubic inside k_table, power law outside, h units): linear
+        interpolation on the ~6%-spaced k table is off by ~0.2%, see
+        `Splines._eval_varx_jax`.
+        """
+        import jax.numpy as jnp
+        kmin = max(0.5 * min(k1_np.min(), k2_np.min(), k3_np.min()), 1e-5)
+        kmax = 2.0 * max(k1_np.max(), k2_np.max(), k3_np.max())
+        kgrid = BispectrumNum._kgrid_compression(kmin, kmax, nk=500)   # static numpy
+        spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
+        spline.build(self.k_table, jnp.asarray(Pdw_kt)[:, None],
+                     h=None if self.use_Mpc else jnp.squeeze(jnp.asarray(self.params['h'])))
+        Pdw_kg = spline.eval_varx(jnp.asarray(kgrid)[:, None])[:, 0]
+        return kgrid, Pdw_kg
+
     def _jax_bisp_damping(self, _p, npar):
         """(avirB, sv) for the JAX bispectrum kernels; zero (W_infty = 1) unless
         VDG_infty, as in `BispectrumNum._get_damping_arrays`."""
@@ -4383,6 +4408,7 @@ class PTEmu:
                        mu12_transform, ell_for_recon, extra_damping=None):
         """JAX-traceable Bell_Sugi for use with jax.grad / jax.jit."""
         import jax.numpy as jnp
+        import interpax
         self.BispNum._check_model('Bell_Sugi')
 
         n_pair = pair_arr.shape[0]
@@ -4396,19 +4422,9 @@ class PTEmu:
                                  include_obs_syst_params=True)
         self._update_AP_params(params, de_model=de_model, q_tr_lo=q_tr_lo)
 
-        # 2. JAX Pdw at training k-table then interpolate onto a static kgrid
+        # 2. JAX Pdw at training k-table (onto a static kgrid once the geometry is known)
         mu_pdw  = 0.6
         Pdw_kt  = self._jax_pdw_at_ktable(ell_for_recon, mu_pdw)   # (nk,) JAX
-        kmin    = float(pair_arr.min()) * 0.5
-        kmax    = float(pair_arr.max()) * 2.0
-        kgrid   = BispectrumNum._kgrid_compression(kmin, kmax, nk=500)   # static numpy
-        if self.use_Mpc:
-            k_table_j = jnp.asarray(np.asarray(self.k_table, dtype=np.float64))
-            Pdw_kg = jnp.interp(jnp.asarray(kgrid), k_table_j, Pdw_kt)
-        else:
-            h_jax = jnp.squeeze(jnp.asarray(self.params['h']))
-            k_table_j = jnp.asarray(np.asarray(self.k_table, dtype=np.float64)) / h_jax
-            Pdw_kg = jnp.interp(jnp.asarray(kgrid), k_table_j, Pdw_kt * h_jax**3)
 
         # 3. Static quadrature geometry (all numpy — concrete at trace time)
         mu1_g, _, t_g, _, cphi_g, phi_g, _ = \
@@ -4437,6 +4453,7 @@ class PTEmu:
         sin_mu1  = np.sqrt(np.maximum(1.0 - mu1_np**2,  0.0))
         mu2_np   = mu12_np * mu1_np + sin_mu12 * sin_mu1 * cphi_np
         mu3_np   = -(k1_np * mu1_np + k2_np * mu2_np) / k3_np
+        kgrid, Pdw_kg = self._jax_pdw_on_kgrid(Pdw_kt, k1_np, k2_np, k3_np)
 
         # 4. AP correction in JAX
         q_lo   = jnp.atleast_1d(jnp.asarray(self.params['q_lo']))
@@ -4475,7 +4492,9 @@ class PTEmu:
         # 5. Pdw at AP-distorted k-values via JAX interpolation
         kg_j = jnp.asarray(kgrid)
         def _pdw(k_b):
-            return jnp.interp(k_b.ravel(), kg_j, Pdw_kg).reshape(k_b.shape)
+            # cubic, as the numpy path's CubicSpline on the same kgrid
+            return interpax.interp1d(k_b.ravel(), kg_j, Pdw_kg, method='cubic2',
+                                     extrap=True).reshape(k_b.shape)
 
         pdw1 = _pdw(k1_b)
         pdw2 = _pdw(k2_b)
@@ -4490,7 +4509,10 @@ class PTEmu:
         avirB, sv = self._jax_bisp_damping(_p, npar)
         MB0 = _p('MB0');  NP0 = _p('NP0');  NB0 = _p('NB0')
         cnloB, cB1, cB2 = self._jax_bisp_ctr(_p, npar)
-        inv_nbar  = jnp.ones(npar) / float(self.BispNum.nbar)
+        # nbar may be a scalar or a per-z array (define_nbar stores np.copy)
+        inv_nbar  = jnp.broadcast_to(
+            1.0 / jnp.asarray(np.asarray(self.BispNum.nbar, dtype=float).reshape(-1)),
+            (npar,))
         inv_qiso6 = 1.0 / qiso6
 
         # 7. JAX-jitted 5D bispectrum kernel
@@ -4509,12 +4531,11 @@ class PTEmu:
         damp_flat = None if damp is None else \
             damp.reshape(n_pair, nmu1 * nmu12 * nphi, npar)
 
-        nbar_sq = float(self.BispNum.nbar) ** 2
         Bell_dict = {}
         for ll in ell:
             P_op = jnp.asarray(proj_ops[ll])
             B = jnp.einsum('ijc,ij->ic', B_flat, P_op)
-            nb0 = NB0[None, :] / (nbar_sq * qiso6[None, :])
+            nb0 = NB0[None, :] * inv_nbar[None, :]**2 / qiso6[None, :]
             if damp_flat is None:
                 if ll == (0, 0, 0):
                     B = B + nb0
@@ -4532,6 +4553,7 @@ class PTEmu:
                           mu12_transform, ell_for_recon, X_list, extra_damping=None):
         """JAX-traceable BX_ell_Sugi for use with jax.grad / jax.jit."""
         import jax.numpy as jnp
+        import interpax
         self.BispNum._check_model('BX_ell_Sugi')
 
         n_pair = pair_arr.shape[0]
@@ -4561,16 +4583,6 @@ class PTEmu:
         self._update_AP_params(params, de_model=de_model, q_tr_lo=q_tr_lo)
 
         Pdw_kt = self._jax_pdw_at_ktable(ell_for_recon, 0.6)
-        kmin   = float(pair_arr.min()) * 0.5
-        kmax   = float(pair_arr.max()) * 2.0
-        kgrid  = BispectrumNum._kgrid_compression(kmin, kmax, nk=500)
-        if self.use_Mpc:
-            k_table_j = jnp.asarray(np.asarray(self.k_table, dtype=np.float64))
-            Pdw_kg = jnp.interp(jnp.asarray(kgrid), k_table_j, Pdw_kt)
-        else:
-            h_jax = jnp.squeeze(jnp.asarray(self.params['h']))
-            k_table_j = jnp.asarray(np.asarray(self.k_table, dtype=np.float64)) / h_jax
-            Pdw_kg = jnp.interp(jnp.asarray(kgrid), k_table_j, Pdw_kt * h_jax**3)
 
         mu1_g, _, t_g, _, cphi_g, phi_g, _ = \
             self.BispNum._sugi_get_quadrature(nmu1, nmu12, nphi, mu12_transform)
@@ -4594,6 +4606,7 @@ class PTEmu:
         sin_mu1  = np.sqrt(np.maximum(1.0 - mu1_np**2,  0.0))
         mu2_np   = mu12_np*mu1_np + sin_mu12*sin_mu1*cphi_np
         mu3_np   = -(k1_np*mu1_np + k2_np*mu2_np) / k3_np
+        kgrid, Pdw_kg = self._jax_pdw_on_kgrid(Pdw_kt, k1_np, k2_np, k3_np)
 
         q_lo  = jnp.atleast_1d(jnp.asarray(self.params['q_lo']))
         q_tr  = jnp.atleast_1d(jnp.asarray(self.params['q_tr']))
@@ -4627,7 +4640,9 @@ class PTEmu:
 
         kg_j = jnp.asarray(kgrid)
         def _pdw(k_b):
-            return jnp.interp(k_b.ravel(), kg_j, Pdw_kg).reshape(k_b.shape)
+            # cubic, as the numpy path's CubicSpline on the same kgrid
+            return interpax.interp1d(k_b.ravel(), kg_j, Pdw_kg, method='cubic2',
+                                     extrap=True).reshape(k_b.shape)
         pdw1 = _pdw(k1_b); pdw2 = _pdw(k2_b); pdw3 = _pdw(k3_b)
 
         def _p(k):

@@ -39,13 +39,15 @@ from comet.PTEmu import PTEmu
 MODEL    = 'VDG_infty'
 DE_MODEL = 'lambda'
 
+# As in units of 1e-9, as the emulators (trained at As = 2.1): As = 2.083e-9 puts
+# sigma12 at ~1e-5, far below the emulator range, where PTEmu clips it to 0.2
 P_FID = dict(
     wb=0.02237, wc=0.1200, ns=0.9649, Mnu=0.06,
-    As=2.083e-9, h=0.6736, Ok=0.0, w0=-1.0, wa=0.0, z=0.8,
+    As=2.083, h=0.6736, Ok=0.0, w0=-1.0, wa=0.0, z=0.8,
 )
 
 P_BASE = dict(
-    wb=0.02237, wc=0.1200, ns=0.9649, Mnu=0.06, As=2.083e-9,
+    wb=0.02237, wc=0.1200, ns=0.9649, Mnu=0.06, As=2.083,
     b1=2.0, b2=0.1, g2=-0.1, g21=0.0,
     c0=0.5, c2=0.3, c4=0.1, cnlo=0.0,
     NP0=300.0, NP20=200.0, NP22=100.0,
