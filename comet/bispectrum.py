@@ -3,7 +3,6 @@
 import numpy as np
 import numba as nb
 import pickle
-from scipy.interpolate import CubicSpline
 from scipy.special import factorial, lpmv
 from comet.grid import Grid, CtypedGrid
 
@@ -2780,10 +2779,320 @@ class Bispectrum:
 
 
 
+@nb.njit(cache=True, fastmath=True)
+def _bisp_node_total(k1, k2, k3, mu1, mu2, mu3, pd1, pd2, pd3,
+                     bb1, bb2, gg2, ff, av, sv_p, mb0, np0, cnl, ccB1,
+                     ccB2, inb, iqs):
+    """Bias-weighted VDG bispectrum at one quadrature node (AP-corrected
+    wavemodes and cosines, ``pd*`` the Pdw of each leg), used by
+    `BispectrumNum._fused_moments_njit`. Its JAX counterpart is
+    `BispectrumNum._bispectrum_5d_jax_fused`."""
+    mu1_sq = mu1*mu1; mu2_sq = mu2*mu2; mu3_sq = mu3*mu3
+    # Z1 includes the IvaPhiNis counterterms. Z2 is written out
+    # explicitly so its velocity term uses the bare Z1 = b1 + f mu^2.
+    Z1_1 = bb1 + ff*mu1_sq - ccB1*(k1*k1)*mu1_sq - ccB2*(k1*k1)*mu1_sq*mu1_sq
+    Z1_2 = bb1 + ff*mu2_sq - ccB1*(k2*k2)*mu2_sq - ccB2*(k2*k2)*mu2_sq*mu2_sq
+    Z1_3 = bb1 + ff*mu3_sq - ccB1*(k3*k3)*mu3_sq - ccB2*(k3*k3)*mu3_sq*mu3_sq
+
+    # the divisions by k_i are done with three reciprocals
+    i1 = 1.0/k1; i2 = 1.0/k2; i3 = 1.0/k3
+    k1_sq = k1*k1; k2_sq = k2*k2; k3_sq = k3*k3
+
+    # tree leg 12 (i=1, j=2, k=3, muk = -mu3)
+    muij = 0.5*(k3_sq - k1_sq - k2_sq)*i1*i2
+    muij2 = muij*muij
+    ratio = 0.5*(k1*i2 + k2*i1)*muij
+    F2 = 5.0/7.0 + 2.0/7.0*muij2 + ratio
+    G2 = 3.0/7.0 + 4.0/7.0*muij2 + ratio
+    K2 = bb1*F2 + 0.5*bb2 + gg2*(muij2 - 1.0)
+    muk = -mu3
+    Z2 = K2 + ff*muk*muk*G2 + 0.5*ff*k3*muk*(
+        bb1*(mu1*i1 + mu2*i2) + ff*mu1*mu2*(mu2*i1 + mu1*i2))
+    tree = 2.0*Z1_1*Z1_2*Z2 * pd1*pd2
+
+    # tree leg 23
+    muij = 0.5*(k1_sq - k2_sq - k3_sq)*i2*i3
+    muij2 = muij*muij
+    ratio = 0.5*(k2*i3 + k3*i2)*muij
+    F2 = 5.0/7.0 + 2.0/7.0*muij2 + ratio
+    G2 = 3.0/7.0 + 4.0/7.0*muij2 + ratio
+    K2 = bb1*F2 + 0.5*bb2 + gg2*(muij2 - 1.0)
+    muk = -mu1
+    Z2 = K2 + ff*muk*muk*G2 + 0.5*ff*k1*muk*(
+        bb1*(mu2*i2 + mu3*i3) + ff*mu2*mu3*(mu3*i2 + mu2*i3))
+    tree += 2.0*Z1_2*Z1_3*Z2 * pd2*pd3
+
+    # tree leg 31
+    muij = 0.5*(k2_sq - k3_sq - k1_sq)*i3*i1
+    muij2 = muij*muij
+    ratio = 0.5*(k3*i1 + k1*i3)*muij
+    F2 = 5.0/7.0 + 2.0/7.0*muij2 + ratio
+    G2 = 3.0/7.0 + 4.0/7.0*muij2 + ratio
+    K2 = bb1*F2 + 0.5*bb2 + gg2*(muij2 - 1.0)
+    muk = -mu2
+    Z2 = K2 + ff*muk*muk*G2 + 0.5*ff*k2*muk*(
+        bb1*(mu3*i3 + mu1*i1) + ff*mu3*mu1*(mu1*i3 + mu3*i1))
+    tree += 2.0*Z1_3*Z1_1*Z2 * pd3*pd1
+
+    kmu1_sq = k1*k1*mu1_sq
+    kmu2_sq = k2*k2*mu2_sq
+    kmu3_sq = k3*k3*mu3_sq
+    eft = 1.0 + cnl*ff*ff*(kmu1_sq + kmu2_sq + kmu3_sq)
+    tree = tree * eft
+    st1 = (bb1*mb0 + ff*np0*mu1_sq) * Z1_1 * (1.0 + cnl*ff*ff*kmu1_sq)
+    st2 = (bb1*mb0 + ff*np0*mu2_sq) * Z1_2 * (1.0 + cnl*ff*ff*kmu2_sq)
+    st3 = (bb1*mb0 + ff*np0*mu3_sq) * Z1_3 * (1.0 + cnl*ff*ff*kmu3_sq)
+
+    # W_infty damping (identically 1 when sv = 0, e.g. for EFT): the powers
+    # are written with sqrt, much cheaper than a generic pow
+    winfty = 1.0
+    if sv_p != 0.0:
+        sv2 = sv_p*sv_p
+        av2 = av*av
+        lamb2 = -0.5*ff*ff*(kmu1_sq + kmu2_sq + kmu3_sq)
+        denom = 1.0 - lamb2*av2
+        winfty = np.exp(lamb2*sv2/denom) / (denom*np.sqrt(denom))
+        lam1 = -ff*ff*kmu1_sq
+        den1 = 1.0 - lam1*av2
+        st1 *= np.exp(lam1*sv2/den1) / np.sqrt(den1)
+        lam2 = -ff*ff*kmu2_sq
+        den2 = 1.0 - lam2*av2
+        st2 *= np.exp(lam2*sv2/den2) / np.sqrt(den2)
+        lam3 = -ff*ff*kmu3_sq
+        den3 = 1.0 - lam3*av2
+        st3 *= np.exp(lam3*sv2/den3) / np.sqrt(den3)
+    stoch = (st1*pd1 + st2*pd2 + st3*pd3) * inb
+
+    return (tree*winfty + stoch) * iqs
+
+
+@nb.njit(cache=True, fastmath=True)
+def _bisp_node_diagrams(k1, k2, k3, mu1, mu2, mu3, pd1, pd2, pd3, ff, av,
+                        sv_p, iqs, tree_col, tree_a, tree_b, tree_ctr,
+                        stoch_part, stoch_ctr, need_ctr, A, Z, S, spt,
+                        stoch):
+    """Per-diagram, bias-stripped bispectrum at one quadrature node,
+    written into ``spt`` (tree diagrams) and ``stoch`` (stochastic
+    ones); ``A``, ``Z`` and ``S`` are scratch buffers. Tree diagram ``c``
+    is ``sum_legs sum_t 2 A[a_t] Z[b_t] P_i P_j`` over the terms ``t`` with
+    ``tree_col[t] == c``, times ``W_infty / qiso6`` and, if ``tree_ctr[c]``,
+    ``f^2 sum_j k_j^2 mu_j^2``. Stochastic diagram ``c`` is
+    ``sum_i S[stoch_part[c]] W_i P_i / qiso6`` (times ``f^2 k_i^2 mu_i^2``
+    if ``stoch_ctr[c]``). See `BispectrumNum._build_diagram_tables` for the
+    A, Z and S pieces. Used by `BispectrumNum._fused_moments_diagrams_njit`;
+    its JAX counterpart is `BispectrumNum._bispectrum_5d_jax_diagrams`."""
+    n_terms = tree_col.size
+    n_tree = tree_ctr.size
+    n_stoch = stoch_part.size
+    f2 = ff*ff
+    mu1_sq = mu1*mu1
+    mu2_sq = mu2*mu2
+    mu3_sq = mu3*mu3
+    kmu1_sq = k1*k1*mu1_sq
+    kmu2_sq = k2*k2*mu2_sq
+    kmu3_sq = k3*k3*mu3_sq
+    kmu_sum = kmu1_sq + kmu2_sq + kmu3_sq
+
+    if n_tree > 0:
+        for c in range(n_tree):
+            spt[c] = 0.0
+        for leg in range(3):
+            if leg == 0:
+                ki = k1; kj = k2; kk = k3
+                mui = mu1; muj = mu2; muk = mu3
+                mui_sq = mu1_sq; muj_sq = mu2_sq; muk_sq = mu3_sq
+                ui = kmu1_sq; uj = kmu2_sq
+                pp = pd1*pd2
+            elif leg == 1:
+                ki = k2; kj = k3; kk = k1
+                mui = mu2; muj = mu3; muk = mu1
+                mui_sq = mu2_sq; muj_sq = mu3_sq; muk_sq = mu1_sq
+                ui = kmu2_sq; uj = kmu3_sq
+                pp = pd2*pd3
+            else:
+                ki = k3; kj = k1; kk = k2
+                mui = mu3; muj = mu1; muk = mu2
+                mui_sq = mu3_sq; muj_sq = mu1_sq; muk_sq = mu2_sq
+                ui = kmu3_sq; uj = kmu1_sq
+                pp = pd3*pd1
+
+            inv_i = 1.0/ki
+            inv_j = 1.0/kj
+            muij = 0.5*(kk*kk - ki*ki - kj*kj)*inv_i*inv_j
+            muij2 = muij*muij
+            ratio = 0.5*(ki*inv_j + kj*inv_i)*muij
+            F2 = 5.0/7.0 + 2.0/7.0*muij2 + ratio
+            G2 = 3.0/7.0 + 4.0/7.0*muij2 + ratio
+            fkm = ff*kk*muk
+            a_i = fkm * mui*inv_i
+            a_j = fkm * muj*inv_j
+
+            Z[0] = F2 - 0.5*(a_i + a_j)
+            Z[1] = 0.5
+            Z[2] = muij2 - 1.0
+            Z[3] = ff*muk_sq*G2 - 0.5*ff*(a_i*muj_sq + a_j*mui_sq)
+
+            A[0] = 1.0
+            A[1] = ff*(mui_sq + muj_sq)
+            A[2] = f2*mui_sq*muj_sq
+            if need_ctr:
+                vi = ui*mui_sq
+                vj = uj*muj_sq
+                A[3] = -(ui + uj)
+                A[4] = -ff*(mui_sq*uj + muj_sq*ui)
+                A[5] = -(vi + vj)
+                A[6] = -ff*(mui_sq*vj + muj_sq*vi)
+                A[7] = ui*uj
+                A[8] = ui*vj + vi*uj
+                A[9] = vi*vj
+
+            for t in range(n_terms):
+                spt[tree_col[t]] += \
+                    2.0*A[tree_a[t]]*Z[tree_b[t]]*pp
+
+        winfac = iqs
+        if sv_p != 0.0:
+            lamb2 = -0.5*f2*kmu_sum
+            denom = 1.0 - lamb2*av*av
+            winfac *= np.exp(lamb2*sv_p*sv_p/denom) / (denom*np.sqrt(denom))
+        for c in range(n_tree):
+            if tree_ctr[c]:
+                spt[c] *= winfac*f2*kmu_sum
+            else:
+                spt[c] *= winfac
+
+    if n_stoch > 0:
+        for c in range(n_stoch):
+            stoch[c] = 0.0
+        for leg in range(3):
+            if leg == 0:
+                mui_sq = mu1_sq; ui = kmu1_sq; pdi = pd1
+            elif leg == 1:
+                mui_sq = mu2_sq; ui = kmu2_sq; pdi = pd2
+            else:
+                mui_sq = mu3_sq; ui = kmu3_sq; pdi = pd3
+            wp = pdi * iqs
+            if sv_p != 0.0:
+                lam = -f2*ui
+                den = 1.0 - lam*av*av
+                wp *= np.exp(lam*sv_p*sv_p/den) / np.sqrt(den)
+            vi = ui*mui_sq
+            S[0] = 1.0
+            S[1] = ff*mui_sq
+            S[2] = f2*mui_sq*mui_sq
+            S[3] = -ui
+            S[4] = -ff*mui_sq*ui
+            S[5] = -vi
+            S[6] = -ff*mui_sq*vi
+            for c in range(n_stoch):
+                if stoch_ctr[c]:
+                    stoch[c] += \
+                        S[stoch_part[c]]*wp*f2*ui
+                else:
+                    stoch[c] += S[stoch_part[c]]*wp
+
+
+@nb.njit(cache=True, fastmath=True, inline="always")
+def _ppoly_segment(q, j, V, seg, log_lo, inv_dlog):
+    """Index ``j`` of the largest distinct knot ``V[j] <= q``, for
+    ``V[0] <= q <= V[-1]``. With ``j < 0`` it is found with the O(1) bucket
+    table of `Splines.ppoly_table`; otherwise by stepping from the guess
+    ``j``, which is cheaper (no log) when ``q`` is in the guessed segment or
+    a neighbouring one, as between consecutive quadrature nodes. Both give
+    the same index. Its JAX counterpart is `BispectrumNum._ppoly_segment_jax`
+    (bucket table only)."""
+    nv = V.size
+    if j < 0:
+        b = min(max(int((np.log(q) - log_lo)*inv_dlog), 0), seg.size - 1)
+        j = seg[b]
+        if j + 1 < nv and q >= V[j + 1]:
+            j += 1
+        return j
+    while j + 1 < nv and q >= V[j + 1]:
+        j += 1
+    while j > 0 and q < V[j]:
+        j -= 1
+    return j
+
+
+@nb.njit(cache=True, fastmath=True, inline="always")
+def _ppoly_node(k, mu2, m, j, G, scale, seg, last_index, V, log_lo, inv_dlog,
+                coeffs, tails):
+    """Value at ``(k, mu^2)`` of the spline exported by
+    `_PdwEvaluator.ppoly_table`, for the parameter set ``m``, including its
+    power-law tails (exactly as `Splines.eval`). ``coeffs`` (4, nseg, nmu2,
+    nparams) holds the coefficients of the polynomial in ``mu^2``, which is
+    of degree 0 for a fixed-mu Pdw. The segment is found once (see
+    `_ppoly_segment`, ``j`` being the guess, or -1 for none) and returned
+    with the value, as the guess for the next call. Its JAX counterpart is
+    `BispectrumNum._ppoly_eval_jax`."""
+    sc = scale[m]
+    lo = G[0]*sc
+    hi = G[G.size - 1]*sc
+    if k < lo:
+        return tails[0, m]*(k/lo)**tails[1, m], j
+    if k > hi:
+        return tails[2, m]*(k/hi)**tails[3, m], j
+    q = min(max(k/sc, V[0]), V[V.size - 1])
+    j = _ppoly_segment(q, j, V, seg, log_lo, inv_dlog)
+    i = min(max(last_index[j], 0), G.size - 2)
+    dx = (q - G[i])*sc
+    n = coeffs.shape[2] - 1
+    val = ((coeffs[0, i, n, m]*dx + coeffs[1, i, n, m])*dx
+           + coeffs[2, i, n, m])*dx + coeffs[3, i, n, m]
+    for n in range(coeffs.shape[2] - 2, -1, -1):
+        val = val*mu2 + ((coeffs[0, i, n, m]*dx + coeffs[1, i, n, m])*dx
+                         + coeffs[2, i, n, m])*dx + coeffs[3, i, n, m]
+    return val, j
+
+
+class _PdwEvaluator:
+    r"""Callable returning the IR-resummed :math:`P_\mathrm{dw}(k)`, passed to
+    the numerical-bispectrum routines.
+
+    Besides ``__call__`` (which delegates to :meth:`PTEmu.Pdw`), it exposes
+    :meth:`ppoly_table`, handing out the underlying ``Pdw_spline`` in
+    power-basis form so the fused numba/jax kernels can evaluate it inline
+    without resampling and re-fitting a second spline. Both share the single
+    emulator evaluation that :meth:`PTEmu.Pdw` performs (cached via
+    ``dw_spline_up_to_date``).
+    """
+
+    def __init__(self, emu, params, de_model, ell_for_recon):
+        self._emu = emu
+        self._params = params
+        self._de_model = de_model
+        self._ell_for_recon = ell_for_recon
+
+    def __call__(self, k, mu=None):
+        mu = self._emu.Pdw_mu if mu is None else mu
+        if mu == 'leg':
+            raise ValueError("Pdw_mu is 'leg': pass an explicit mu.")
+        return self._emu.Pdw(k, self._params, de_model=self._de_model,
+                             mu=mu, ell_for_recon=self._ell_for_recon)
+
+    def ppoly_table(self):
+        """Power-basis export of ``Pdw_spline`` with its segment-lookup table
+        (see :meth:`comet.splines.Splines.ppoly_table`), with ``coeffs`` of
+        shape (4, nseg, nmu2, nparams) holding a polynomial in ``mu^2`` (see
+        `_ppoly_node`). For a fixed ``PTEmu.Pdw_mu``, ``nmu2 = 1``; for
+        ``'leg'`` it is the table of :meth:`PTEmu._Pdw_mu_ppoly_table`."""
+        if self._emu.Pdw_mu == 'leg':
+            return self._emu._Pdw_mu_ppoly_table(self._ell_for_recon)
+        # Ensure the fixed-mu IR-resummed spline is built (cheap single-point
+        # trigger; the emulator eval + spline build are cached inside Pdw)
+        self(self._emu.k_table[:1])
+        t = dict(self._emu.Pdw_spline.ppoly_table())
+        t['coeffs'] = t['coeffs'][:, :, None, :]
+        return t
+
+
 class BispectrumNum:
     """Numerical-integration bispectrum multipoles.
 
-    Supports two projection bases, both using shared 5D kernel evaluation.
+    Supports two projection bases, both evaluated by the same fused kernels
+    (see `_fused_moments`), which project the bispectrum node by node
+    without building the full quadrature grid:
 
     - **Sugiyama**: Projects onto ``(l1, l2, L)`` multipoles via a
       ``(mu1, mu12, phi)`` quadrature per ``(k1, k2)`` pair.
@@ -2826,12 +3135,63 @@ class BispectrumNum:
                 "backend='jax' requested but JAX is not installed.")
         self.backend = backend
         self._sugi_quad_cache = {}
-        self._sugi_proj_cache = {}
-        self._sugi_proj_cache_k3 = {}
+        self._sugi_weights_cache = {}
         self._scocc_quad_cache = {}
         self._scocc_proj_cache = {}
 
         self._build_diagram_tables()
+
+    # Configuration
+
+    def define_nbar(self, nbar):
+        self.nbar = np.copy(nbar)
+
+    def define_units(self, use_Mpc):
+        self.use_Mpc = use_Mpc
+
+    def change_reparametrisation(self, reparametrisation):
+        """Set the nuisance-parameter reparametrisation (None, 'TCM' or
+        'TCMlinear'), as in `PTEmu`. It only affects
+        `_get_bias_coeff_for_AM`: all other methods take physical
+        parameters."""
+        if reparametrisation not in (None, 'TCM', 'TCMlinear'):
+            raise ValueError(
+                "Unknown reparametrisation {!r}; use None, 'TCM' or "
+                "'TCMlinear'.".format(reparametrisation))
+        self.reparametrisation = reparametrisation
+
+    def change_RSD_model(self, model):
+        """Switch the RSD model and rebuild the diagram tables. Mirrors
+        `Bispectrum.change_RSD_model`."""
+        self.model = model
+        self._build_diagram_tables()
+
+    def change_cnlo_type(self, type):
+        """Switch the EFT counterterm flavour. Mirrors `Bispectrum.change_cnlo_type`."""
+        if type in ('EggLeeSco', 'IvaPhiNis'):
+            self.cnlo_type = type
+            self._build_diagram_tables()
+        else:
+            raise ValueError(
+                f"Unknown cnlo_type {type!r}; use 'EggLeeSco' or 'IvaPhiNis'.")
+
+    def clear_caches(self):
+        """Clear all internal caches."""
+        self._sugi_quad_cache.clear()
+        self._sugi_weights_cache.clear()
+        self._scocc_quad_cache.clear()
+        self._scocc_proj_cache.clear()
+
+    def _has_ctr(self):
+        return 'EFT' in self.model or 'VDG_infty_ctr' in self.model
+
+    def _check_model(self, fn):
+        if 'VDG_infty' not in self.model and 'EFT' not in self.model:
+            raise NotImplementedError(
+                "{} is currently implemented only for VDG_infty and EFT "
+                "models; got model={!r}.".format(fn, self.model))
+
+    # Diagrams and their coefficients
 
     # Diagram decomposition used by the diagram kernels. Per leg (i, j; k),
     # the tree integrand is 2 Z1_i Z1_j Z2 P_i P_j, with
@@ -2867,17 +3227,21 @@ class BispectrumNum:
         ('B0L_g2', ((2, 2),), ('g2',)),
         ('B0L_id', ((2, 3),), ()),
     )
+
     _BASE_STOCH_PARTS = (
         ('Bnoise_MB0b1b1', 0, ('MB0', 'b1', 'b1', '1/nbar')),
         ('Bnoise_MB0b1', 1, ('MB0', 'b1', '1/nbar')),
         ('Bnoise_NP0b1', 1, ('NP0', 'b1', '1/nbar')),
         ('Bnoise_NP0', 2, ('NP0', '1/nbar')),
     )
+
     _NB0_FACTORS = ('NB0', '1/nbar', '1/nbar')
+
     # Analytically marginalisable parameters and the power of
     # Aap = 1/(q_tr^2 q_lo) relating them to their TCM counterparts,
     # theta_TCM = Aap^n theta (see `PTEmu._rescale_params`).
     _TCM_AAP_POWER = {'MB0': 1, 'NP0': 1, 'NB0': 2}
+
     _COEFF_FACTORS = {
         'b1': lambda p, inb: p['b1'],
         'b2': lambda p, inb: p['b2'],
@@ -2890,15 +3254,6 @@ class BispectrumNum:
         'NB0': lambda p, inb: p['NB0'],
         '1/nbar': lambda p, inb: inb,
     }
-
-    def _has_ctr(self):
-        return 'EFT' in self.model or 'VDG_infty_ctr' in self.model
-
-    def _check_model(self, fn):
-        if 'VDG_infty' not in self.model and 'EFT' not in self.model:
-            raise NotImplementedError(
-                "{} is currently implemented only for VDG_infty and EFT "
-                "models; got model={!r}.".format(fn, self.model))
 
     def _build_diagram_tables(self):
         """Set the diagram names, kernel term tables and coefficient factors
@@ -3057,6 +3412,20 @@ class BispectrumNum:
             c = c * np.atleast_1d(self._COEFF_FACTORS[fac](params, inv_nbar))
         return c
 
+    def _diagram_names(self, X_list):
+        """**X_list** as a list of diagram names (all diagrams if **None**),
+        checking that they are valid."""
+        valid = self.tree_diagrams + self.stoch_diagrams
+        if X_list is None:
+            return list(valid)
+        X_list = [X_list] if isinstance(X_list, str) else list(X_list)
+        for x in X_list:
+            if x not in valid:
+                raise ValueError(
+                    "Unknown diagram '{}' in X_list. Valid names: {}."
+                    .format(x, sorted(valid)))
+        return X_list
+
     def _diagram_kernel_tables(self, tree_keep, stoch_keep):
         """Static specs (JAX) and flat term tables (numba) for the requested
         diagram indices. Output columns follow the order of ``*_keep``."""
@@ -3074,355 +3443,26 @@ class BispectrumNum:
                   np.array([ctr for _, ctr in stoch_spec], dtype=np.int64))
         return tree_spec, stoch_spec, tables
 
-    def define_nbar(self, nbar):
-        self.nbar = np.copy(nbar)
+    @staticmethod
+    def _format_BX(BX, names, as_dict):
+        """Format the diagram projections ``{ell: (n, nx, nparams)}``, as
+        ``{ell: {name: ndarray}}`` squeezed if **as_dict**, and otherwise as
+        ``{ell: ndarray}`` without the parameter axis for single-z."""
+        if as_dict:
+            return {ll: {name: np.squeeze(B[:, ix])
+                         for ix, name in enumerate(names)}
+                    for ll, B in BX.items()}
+        return {ll: B[..., 0] if B.shape[-1] == 1 else B
+                for ll, B in BX.items()}
 
-    def define_units(self, use_Mpc):
-        self.use_Mpc = use_Mpc
-
-    def change_reparametrisation(self, reparametrisation):
-        """Set the nuisance-parameter reparametrisation (None, 'TCM' or
-        'TCMlinear'), as in `PTEmu`. It only affects
-        `_get_bias_coeff_for_AM`: all other methods take physical
-        parameters."""
-        if reparametrisation not in (None, 'TCM', 'TCMlinear'):
-            raise ValueError(
-                "Unknown reparametrisation {!r}; use None, 'TCM' or "
-                "'TCMlinear'.".format(reparametrisation))
-        self.reparametrisation = reparametrisation
-
-    def change_RSD_model(self, model):
-        """Switch the RSD model and rebuild the diagram tables. Mirrors
-        `Bispectrum.change_RSD_model`."""
-        self.model = model
-        self._build_diagram_tables()
-
-    def change_cnlo_type(self, type):
-        """Switch the EFT counterterm flavour. Mirrors `Bispectrum.change_cnlo_type`."""
-        if type in ('EggLeeSco', 'IvaPhiNis'):
-            self.cnlo_type = type
-            self._build_diagram_tables()
-        else:
-            raise ValueError(
-                f"Unknown cnlo_type {type!r}; use 'EggLeeSco' or 'IvaPhiNis'.")
-
-    def _get_damping_arrays(self, params):
-        """Return ``(avir, sv)`` as contiguous per-z arrays.
-        Set to zero for 'EFT', which makes ``W_infty`` = 1.
-        """
-        nparams = np.atleast_1d(params['q_lo']).size
-        if 'VDG_infty' not in self.model:
-            zeros = np.zeros(nparams, dtype=float)
-            return zeros, zeros
-        def _get(k):
-            if k in params:
-                return np.ascontiguousarray(np.atleast_1d(params[k]))
-            return np.zeros(nparams, dtype=float)
-        return _get('avirB'), _get('sv')
-
-    def _get_ctr_arrays(self, params):
-        """Return the per-z cnloB, cB1, cB2 arrays.
-        Set to zero for pure VDG.
-        """
-        nparams = np.atleast_1d(params['q_lo']).size
-        if not ('EFT' in self.model or 'VDG_infty_ctr' in self.model):
-            return np.zeros(nparams, dtype=float), np.zeros(nparams, dtype=float), np.zeros(nparams, dtype=float)
-        elif self.cnlo_type == 'EggLeeSco':
-            return np.ascontiguousarray(
-                np.atleast_1d(params['cnloB'])), np.zeros(nparams, dtype=float), np.zeros(nparams, dtype=float)
-        elif self.cnlo_type == 'IvaPhiNis':
-            return np.zeros(nparams, dtype=float), np.ascontiguousarray(
-                np.atleast_1d(params['cB1'])), np.ascontiguousarray(
-                np.atleast_1d(params['cB2']))
-
-  
-    def _eval_pdw_legs(self, Pdw_eval, k1_p, k2_p, k3_p, full_shape):
-        """Evaluate Pdw at the AP-corrected wavemodes for all three legs
-        with a single ``Pdw_eval`` call.
-
-        ``Pdw_eval`` is evaluated on a compressed 500-point kgrid that
-        covers the AP-corrected range, and a per-z `CubicSpline` is then
-        evaluated at the three legs.
-        """
-        nparams = full_shape[-1]
-
-        kmin = min(float(np.min(k1_p)), float(np.min(k2_p)),
-                   float(np.min(k3_p)))
-        kmax = max(float(np.max(k1_p)), float(np.max(k2_p)),
-                   float(np.max(k3_p)))
-        kgrid = self._kgrid_compression(kmin, kmax, nk=500)
-        Pdw_grid = Pdw_eval(kgrid)  # shape (nk, nparams)
-        if nparams == 1:
-            Pdw_grid = Pdw_grid[:, np.newaxis]
-        pdw1 = np.empty(full_shape)
-        pdw2 = np.empty(full_shape)
-        pdw3 = np.empty(full_shape)
-        # Materialize broadcast views so we can slice the last axis per-z.
-        k1_b = np.broadcast_to(k1_p, full_shape)
-        k2_b = np.broadcast_to(k2_p, full_shape)
-        k3_b = np.broadcast_to(k3_p, full_shape)
-        for iz in range(nparams):
-            ss = CubicSpline(kgrid, Pdw_grid[:, iz])
-            pdw1[..., iz], pdw2[..., iz], pdw3[..., iz] = ss(np.stack([k1_b[..., iz], k2_b[..., iz], k3_b[..., iz]]))
-
-        return pdw1, pdw2, pdw3
-
-    def _eval_sugi_geometry(self, pair, params, nmu1, nmu12, nphi, mu12_transform):
-        """Build the full 5D (k1, k2, k3, mu1, mu2, mu3) geometry on the
-        Sugiyama ``(mu1, mu12, phi)`` quadrature grid, with AP correction applied.
-        Returns broadcast contiguous arrays sized
-        ``(n_pair, nmu1, nmu12, nphi, nparams)`` plus the AP volume factor ``qiso6``.
-        """
-        pair = np.atleast_2d(pair)
-        n_pair = pair.shape[0]
-        nparams = np.atleast_1d(params['q_lo']).size
-
-        mu1_g, _, mu12_g, _, cphi_g, _, _ = \
-            self._sugi_get_quadrature(nmu1, nmu12, nphi, mu12_transform)
-        mu1 = mu1_g[..., None]
-        cphi = cphi_g[..., None]
-        
-        k1 = pair[:, 0][:, None, None, None, None]
-        k2 = pair[:, 1][:, None, None, None, None]
-
-        if mu12_transform == 'k3':
-            t = mu12_g[..., None]              # (1, 1, nmu12, 1, 1)
-            k_lo = np.abs(k1 - k2)
-            k_hi = k1 + k2
-            k3, _ = self._k3_from_t(t, k_lo, k_hi)
-            k3 = np.maximum(k3, 1e-30)
-            mu12 = (k3*k3 - k1*k1 - k2*k2) / (2.0 * k1 * k2)
-            mu12 = np.clip(mu12, -1.0, 1.0)
-        else:
-            mu12 = mu12_g[..., None]
-            k3 = np.sqrt(k1*k1 + k2*k2 + 2.0*k1*k2*mu12)
-            k3 = np.maximum(k3, 1e-30)
-        sin_mu12 = np.sqrt(np.maximum(1.0 - mu12*mu12, 0.0))
-        sin_mu1 = np.sqrt(np.maximum(1.0 - mu1*mu1, 0.0))
-        mu2 = mu12*mu1 + sin_mu12*sin_mu1*cphi
-        mu3 = -(k1*mu1 + k2*mu2) / k3
-
-        qlo = np.atleast_1d(params['q_lo'])
-        qtr = np.atleast_1d(params['q_tr'])
-        qiso6 = qlo**2 * qtr**4
-
-        k1_p, mu1_p = self._apply_ap(k1, mu1, qlo, qtr)
-        k2_p, mu2_p = self._apply_ap(k2, mu2, qlo, qtr)
-        k3_p, mu3_p = self._apply_ap(k3, mu3, qlo, qtr)
-        full_shape = (n_pair, nmu1, nmu12, nphi, nparams)
-
-        return (k1_p, k2_p, k3_p, mu1_p, mu2_p, mu3_p,
-                qiso6, full_shape)
-     
-
-
-    def _run_diagram_kernels(self, k1_p, k2_p, k3_p, mu1_p, mu2_p, mu3_p,
-                             pdw1, pdw2, pdw3, params, qiso6, full_shape,
-                             tree_keep, stoch_keep):
-        """Evaluate the requested diagrams on the 5D grid with the selected
-        backend. Returns ``(spt_stack, stoch_stack)`` of shape
-        ``full_shape + (len(*_keep),)``."""
-        f = np.ascontiguousarray(np.atleast_1d(params['f']))
-        avir, sv = self._get_damping_arrays(params)
-        inv_qiso6 = np.ascontiguousarray(1.0 / qiso6)
-        tree_spec, stoch_spec, tables = self._diagram_kernel_tables(
-            tree_keep, stoch_keep)
-        n_tree_keep = len(tree_keep)
-        n_stoch_keep = len(stoch_keep)
-
-        if self.backend == 'jax':
-            spt_jax, stoch_jax = self._bispectrum_5d_jax_diagrams(
-                jnp.asarray(k1_p), jnp.asarray(k2_p), jnp.asarray(k3_p),
-                jnp.asarray(mu1_p), jnp.asarray(mu2_p), jnp.asarray(mu3_p),
-                jnp.asarray(pdw1), jnp.asarray(pdw2), jnp.asarray(pdw3),
-                jnp.asarray(f), jnp.asarray(avir), jnp.asarray(sv),
-                jnp.asarray(inv_qiso6), tree_spec, stoch_spec)
-            spt_stack = np.broadcast_to(
-                np.asarray(spt_jax), full_shape + (n_tree_keep,))
-            stoch_stack = np.broadcast_to(
-                np.asarray(stoch_jax), full_shape + (n_stoch_keep,))
-            return spt_stack, stoch_stack
-
-        def _full(a):
-            return np.ascontiguousarray(np.broadcast_to(a, full_shape))
-        k1_b, k2_b, k3_b = _full(k1_p), _full(k2_p), _full(k3_p)
-        mu1_b, mu2_b, mu3_b = _full(mu1_p), _full(mu2_p), _full(mu3_p)
-        pdw1_b, pdw2_b, pdw3_b = _full(pdw1), _full(pdw2), _full(pdw3)
-
-        N = int(np.prod(full_shape))
-        spt_flat = np.empty((N, max(n_tree_keep, 1)), dtype=float)
-        stoch_flat = np.empty((N, max(n_stoch_keep, 1)), dtype=float)
-        self._bispectrum_5d_diagrams_njit(
-            k1_b, k2_b, k3_b, mu1_b, mu2_b, mu3_b,
-            pdw1_b, pdw2_b, pdw3_b,
-            f, avir, sv, inv_qiso6, *tables, spt_flat, stoch_flat)
-        spt_stack = spt_flat[:, :n_tree_keep].reshape(
-            full_shape + (n_tree_keep,))
-        stoch_stack = stoch_flat[:, :n_stoch_keep].reshape(
-            full_shape + (n_stoch_keep,))
-        return spt_stack, stoch_stack
-
-    def _eval_sugi_5d_bispectrum(self, pair, Pdw_eval, params,
-                                 nmu1, nmu12, nphi, mu12_transform):
-        """5D bispectrum (no diagram axis) on the
-        ``(mu1, mu12, phi)`` quadrature grid.
-
-        Returns
-        -------
-        B_5d : ndarray, shape (n_pair, nmu1, nmu12, nphi, nparams)
-            Bias-weighted VDG bispectrum at each quadrature node, with
-            AP volume factor already applied. The constant `NB0` piece is
-            *not* included (it is added analytically by `Bell_sugiyama`).
-        qiso6 : ndarray, shape (nparams,)
-        """
-        (k1_p, k2_p, k3_p, mu1_p, mu2_p, mu3_p,
-         qiso6, full_shape) = self._eval_sugi_geometry(
-            pair, params, nmu1, nmu12, nphi, mu12_transform)
-        pdw1, pdw2, pdw3 = self._eval_pdw_legs(
-            Pdw_eval, k1_p, k2_p, k3_p, full_shape)
-
-        b1 = np.ascontiguousarray(np.atleast_1d(params['b1']))
-        b2 = np.ascontiguousarray(np.atleast_1d(params['b2']))
-        g2 = np.ascontiguousarray(np.atleast_1d(params['g2']))
-        f = np.ascontiguousarray(np.atleast_1d(params['f']))
-        avirB, sv = self._get_damping_arrays(params)
-        MB0 = np.ascontiguousarray(np.atleast_1d(params['MB0']))
-        NP0 = np.ascontiguousarray(np.atleast_1d(params['NP0']))
-        cnloB, cB1, cB2 = self._get_ctr_arrays(params)
-        inv_qiso6 = np.ascontiguousarray(1.0 / qiso6)
-        nb = np.atleast_1d(np.asarray(self.nbar, dtype=float)).reshape(-1)
-        if nb.size == 1:
-            nb = np.broadcast_to(nb, inv_qiso6.shape)
-        inv_nbar = np.ascontiguousarray(1.0 / nb)
-
-        if self.backend == 'jax':
-            B_5d = np.asarray(self._bispectrum_5d_jax_fused(
-                jnp.asarray(k1_p), jnp.asarray(k2_p), jnp.asarray(k3_p),
-                jnp.asarray(mu1_p), jnp.asarray(mu2_p), jnp.asarray(mu3_p),
-                jnp.asarray(pdw1), jnp.asarray(pdw2), jnp.asarray(pdw3),
-                jnp.asarray(b1), jnp.asarray(b2), jnp.asarray(g2),
-                jnp.asarray(f), jnp.asarray(avirB), jnp.asarray(sv),
-                jnp.asarray(MB0), jnp.asarray(NP0), 
-                jnp.asarray(cnloB), jnp.asarray(cB1), jnp.asarray(cB2),
-                jnp.asarray(inv_nbar), jnp.asarray(inv_qiso6)))
-            B_5d = np.broadcast_to(B_5d, full_shape)
-            return B_5d, qiso6
-
- 
-        def _full(a):
-            return np.ascontiguousarray(np.broadcast_to(a, full_shape))
-        k1_b, k2_b, k3_b = _full(k1_p), _full(k2_p), _full(k3_p)
-        mu1_b, mu2_b, mu3_b = _full(mu1_p), _full(mu2_p), _full(mu3_p)
-        pdw1, pdw2, pdw3 = _full(pdw1), _full(pdw2), _full(pdw3)
-        B_5d = np.empty(full_shape, dtype=float)
-        self._bispectrum_5d_njit(
-            k1_b, k2_b, k3_b, mu1_b, mu2_b, mu3_b,
-            pdw1, pdw2, pdw3,
-            b1, b2, g2, f, avirB, sv, MB0, NP0,
-            cnloB, cB1, cB2,
-            inv_nbar, inv_qiso6, B_5d)
-        return B_5d, qiso6
-
-    def _eval_sugi_5d_diagrams(self, pair, Pdw_eval, params,
-                               nmu1, nmu12, nphi, mu12_transform,
-                               tree_keep=None, stoch_keep=None):
-        """Build the diagram-stacked 5D bispectrum on the (mu1, mu12, phi)
-        quadrature grid.
-
-        Mirrors `_eval_sugi_5d_bispectrum` but emits per-diagram (bias-stripped)
-        contributions instead of the bias-collapsed scalar.
-
-        ``tree_keep`` / ``stoch_keep`` are tuples of diagram indices to
-        compute (defaults: all 10 SPT diagrams, all 3 stoch integrals).
-        Output stacks are compacted along the last axis to ``len(tree_keep)``
-        and ``len(stoch_keep)`` respectively.
-
-        Parameters
-        ----------
-        pair : ndarray, shape (n_pair, 2)
-            (k1, k2) pairs.
-        Pdw_eval : callable
-            Single-shot Pdw evaluator (see `_eval_5d_bispectrum`).
-        params : dict
-            COMET parameter dict; per-key arrays of length ``nparams``.
-
-        Returns
-        -------
-        spt_stack, stoch_stack : ndarrays of shape
-            ``(n_pair, nmu1, nmu12, nphi, nparams, n_keep)``
-        qiso6 : ndarray, shape ``(nparams,)``
-            AP volume factor :math:`q_\\parallel^2 q_\\perp^4`.
-        """
-        if tree_keep is None:
-            tree_keep = tuple(range(len(self.tree_diagrams)))
-        else:
-            tree_keep = tuple(tree_keep)
-        if stoch_keep is None:
-            stoch_keep = tuple(range(len(self.stoch_diagrams) - 1))
-        else:
-            stoch_keep = tuple(stoch_keep)
-
-        (k1_p, k2_p, k3_p, mu1_p, mu2_p, mu3_p,
-         qiso6, full_shape) = self._eval_sugi_geometry(
-            pair, params, nmu1, nmu12, nphi, mu12_transform)
-        pdw1, pdw2, pdw3 = self._eval_pdw_legs(
-            Pdw_eval, k1_p, k2_p, k3_p, full_shape)
-
-        spt_stack, stoch_stack = self._run_diagram_kernels(
-            k1_p, k2_p, k3_p, mu1_p, mu2_p, mu3_p, pdw1, pdw2, pdw3,
-            params, qiso6, full_shape, tree_keep, stoch_keep)
-        return spt_stack, stoch_stack, qiso6
-
-        def _full(a):
-            return np.ascontiguousarray(np.broadcast_to(a, full_shape))
-        k1_b, k2_b, k3_b = _full(k1_p), _full(k2_p), _full(k3_p)
-        mu1_b, mu2_b, mu3_b = _full(mu1_p), _full(mu2_p), _full(mu3_p)
-        pdw1_b, pdw2_b, pdw3_b = _full(pdw1), _full(pdw2), _full(pdw3)
-
-        tree_col = np.full(len(self.tree_diagrams), -1, dtype=np.int64)
-        for k, d in enumerate(tree_keep):
-            tree_col[d] = k
-        stoch_col = np.full(len(self.stoch_diagrams) - 1, -1, dtype=np.int64)
-        for k, d in enumerate(stoch_keep):
-            stoch_col[d] = k
-
-        N = int(np.prod(full_shape))
-        spt_flat = np.empty((N, max(n_tree_keep, 1)), dtype=float)
-        stoch_flat = np.empty((N, max(n_stoch_keep, 1)), dtype=float)
-        self._bispectrum_5d_diagrams_njit(
-            k1_b, k2_b, k3_b, mu1_b, mu2_b, mu3_b,
-            pdw1_b, pdw2_b, pdw3_b,
-            f, avirB, sv, cnloB,
-            inv_qiso6, tree_col, stoch_col, spt_flat, stoch_flat)
-        if n_tree_keep == 0:
-            spt_stack = np.empty(full_shape + (0,), dtype=float)
-        else:
-            spt_stack = spt_flat[:, :n_tree_keep].reshape(
-                full_shape + (n_tree_keep,))
-        if n_stoch_keep == 0:
-            stoch_stack = np.empty(full_shape + (0,), dtype=float)
-        else:
-            stoch_stack = stoch_flat[:, :n_stoch_keep].reshape(
-                full_shape + (n_stoch_keep,))
-        return spt_stack, stoch_stack, qiso6
-
-    def _sugi_project_stack(self, stack, ell, nmu1, nmu12, nphi, mu12_transform, pair=None):
-        n_pair = stack.shape[0]
-        nparams, n_diag = stack.shape[-2], stack.shape[-1]
-        flat = stack.reshape(n_pair, nmu1*nmu12*nphi, nparams, n_diag)
-        if mu12_transform == 'k3':
-            proj_ops = self._sugi_get_proj_ops_k3(ell, pair, nmu1, nmu12, nphi, 'k3')
-            return {tuple(ll): np.einsum('ijcd,ij->icd', flat, proj_ops[tuple(ll)],
-                                        optimize='optimal') for ll in ell}
-        proj_ops = self._sugi_get_proj_ops(ell, nmu1, nmu12, nphi, mu12_transform)
-        return {tuple(ll): np.einsum('ijcd,j->icd', flat, proj_ops[tuple(ll)],
-                                    optimize='optimal') for ll in ell}
+    # Sugiyama multipoles
 
     def Bell_Sugi(self, pair, Pdw_eval, params,
                   ell=((0, 0, 0), (2, 0, 2)),
                   nmu1=5, nmu12=12, nphi=5,
                   mu12_transform='quadratic'):
-        """Bispectrum Sugiyama multipoles via numerical 3D quadrature.
+        """Bispectrum Sugiyama multipoles via numerical 3D quadrature, with
+        the fused kernels of `Bell_Sugi_factorized`.
 
         Returns
         -------
@@ -3431,45 +3471,18 @@ class BispectrumNum:
             single-z and ``(n_pair, nparams)`` for batched-z.
         """
         self._check_model('Bell_Sugi')
-
-        ell = tuple(tuple(ll) for ll in ell)
-        B_5d, qiso6 = self._eval_sugi_5d_bispectrum(
-            pair, Pdw_eval, params, nmu1, nmu12, nphi, mu12_transform)
-
-        n_pair = B_5d.shape[0]
-        nparams = qiso6.size
-        B_flat = B_5d.reshape(n_pair, nmu1*nmu12*nphi, nparams)
-        NB0 = np.ascontiguousarray(np.atleast_1d(params['NB0']))
-        inv_nbar = np.ascontiguousarray(np.broadcast_to(1.0 / np.atleast_1d(self.nbar), qiso6.shape))
-        Bell_dict = {}
-        if mu12_transform == 'k3':
-            # Per-pair projection kernel; the dmu12/dt Jacobian is folded
-            # into `proj_ops[ll][p, q]` so the contraction is per-pair.
-            proj_ops = self._sugi_get_proj_ops_k3(
-                ell, pair, nmu1, nmu12, nphi, mu12_transform)
-            for ll in ell:
-                B = np.einsum('ijc,ij->ic', B_flat, proj_ops[ll],
-                              optimize='optimal')
-                if ll == (0, 0, 0):
-                    B = B + (NB0 / self.nbar**2)[None, :] / qiso6[None, :]
-                Bell_dict[ll] = np.squeeze(B)
-        else:
-            proj_ops = self._sugi_get_proj_ops(
-                ell, nmu1, nmu12, nphi, mu12_transform)
-            for ll in ell:
-                B = np.einsum('ijc,j->ic', B_flat, proj_ops[ll],
-                              optimize='optimal')
-                if ll == (0, 0, 0):
-                    B = B + (NB0 * inv_nbar**2)[None, :] / qiso6[None, :]
-                Bell_dict[ll] = np.squeeze(B)
-        return Bell_dict
+        out = self.Bell_Sugi_factorized(
+            pair, Pdw_eval, params, ell, nmu1=nmu1, nmu12=nmu12, nphi=nphi,
+            mu12_transform=mu12_transform)
+        return {ll: np.squeeze(B) for ll, B in out.items()}
 
     def BX_ell_Sugi(self, pair, Pdw_eval, params,
                     ell=((0, 0, 0), (2, 0, 2)),
                     nmu1=5, nmu12=12, nphi=5,
                     mu12_transform='quadratic',
                     X_list=None):
-        """Diagram-resolved Sugiyama bispectrum multipoles.
+        """Diagram-resolved Sugiyama bispectrum multipoles, with the fused
+        kernels of `Bell_Sugi_factorized`.
 
         If ``X_list`` is **None** (default), returns
         ``{(l1, l2, L): {diagram_name: ndarray}}`` where each diagram value
@@ -3481,259 +3494,490 @@ class BispectrumNum:
         returns ``{(l1, l2, L): ndarray}`` where the array has shape
         ``(n_pair, nx, nparams)`` for batched-z and ``(n_pair, nx)`` for
         single-z, with the diagram axis ordered to match ``X_list``. Only
-        the requested diagrams are projected.
+        the requested diagrams are computed.
 
         The `Bnoise_NB0` slice is `1/qiso6` for `(0, 0, 0)` and zero
         otherwise, matching the analytical path.
-
-        `Pdw_eval` is the single-shot Pdw callable consumed by the
-        integrator; see `_eval_sugi_5d_diagrams` for its contract.
         """
-
         self._check_model('BX_ell_Sugi')
+        names = self._diagram_names(X_list)
+        BX = self.Bell_Sugi_factorized(
+            pair, Pdw_eval, params, ell, nmu1=nmu1, nmu12=nmu12, nphi=nphi,
+            mu12_transform=mu12_transform, X_list=names)
+        return self._format_BX(BX, names, X_list is None)
 
-        ell = tuple(tuple(ll) for ll in ell)
-        nb0_name = self.stoch_diagrams[-1]
-        tree_set = set(self.tree_diagrams)
-        stoch_set = set(self.stoch_diagrams[:-1])
+    def Bell_Sugi_factorized(self, pair, Pdw_eval, params, ell,
+                             nmu1=5, nmu12=12, nphi=5,
+                             mu12_transform='quadratic', X_list=None):
+        """Sugiyama multipoles for many ``(l1, l2, L)`` at once.
 
-        if X_list is None:
-            tree_keep = tuple(range(len(self.tree_diagrams)))
-            stoch_keep = tuple(range(len(self.stoch_diagrams) - 1))
-        else:
-            X_list_local = ([X_list] if isinstance(X_list, str)
-                            else list(X_list))
-            valid_names = tree_set | stoch_set | {nb0_name}
-            for x in X_list_local:
-                if x not in valid_names:
-                    raise ValueError(
-                        "Unknown diagram '{}' in X_list. Valid names: {}."
-                        .format(x, sorted(valid_names)))
-            tree_keep = tuple(sorted({self.tree_index[x] for x in X_list_local
-                                      if x in tree_set}))
-            stoch_keep = tuple(sorted({self.stoch_index[x] for x in X_list_local
-                                       if x in stoch_set}))
+        Same quadrature and conventions as `Bell_Sugi` (``X_list=None``) and
+        `BX_ell_Sugi` (``X_list`` given), but with the factorised projection
+        of `_sugi_factorized_plan`, evaluated by fused kernels that never
+        build the 5D quadrature grid (memory only grows with the number of
+        pairs and moments). The cost barely grows with the number of
+        multipoles. ``Pdw_eval`` must provide ``ppoly_table()`` (see
+        `PTEmu._get_pdw_fn`). Used by `Bell_Sugi` and `BX_ell_Sugi`.
 
-        spt_stack, stoch_stack, qiso6 = self._eval_sugi_5d_diagrams(
-            pair, Pdw_eval, params, nmu1, nmu12, nphi, mu12_transform,
-            tree_keep=tree_keep, stoch_keep=stoch_keep)
-
-        n_pair = np.atleast_2d(pair).shape[0]
-        nparams = qiso6.size
-        nb0_value = np.broadcast_to(1.0 / qiso6[None, :], (n_pair, nparams))
-
-        spt_proj = None
-        stoch_proj = None
-        if tree_keep:
-            spt_proj = self._sugi_project_stack(
-                spt_stack, ell, nmu1, nmu12, nphi, mu12_transform, pair=pair)
-        if stoch_keep:
-            stoch_proj = self._sugi_project_stack(
-                stoch_stack, ell, nmu1, nmu12, nphi, mu12_transform, pair=pair)
-
-        tree_pos = {orig: k for k, orig in enumerate(tree_keep)}
-        stoch_pos = {orig: k for k, orig in enumerate(stoch_keep)}
-
-        if X_list is None:
-            BX_ell_dict = {}
-            for ll in ell:
-                out = {}
-                for name in self.tree_diagrams:
-                    d = tree_pos[self.tree_index[name]]
-                    out[name] = np.squeeze(spt_proj[ll][:, :, d])
-                for name in self.stoch_diagrams[:-1]:
-                    d = stoch_pos[self.stoch_index[name]]
-                    out[name] = np.squeeze(stoch_proj[ll][:, :, d])
-                if ll == (0, 0, 0):
-                    out[nb0_name] = np.squeeze(nb0_value)
-                else:
-                    out[nb0_name] = \
-                        np.squeeze(np.zeros((n_pair, nparams)))
-                BX_ell_dict[ll] = out
-            return BX_ell_dict
-
-        nx = len(X_list_local)
-        BX_ell_dict = {}
-        for ll in ell:
-            res = np.empty((n_pair, nx, nparams))
-            for ix, name in enumerate(X_list_local):
-                if name == nb0_name:
-                    if ll == (0, 0, 0):
-                        res[:, ix, :] = nb0_value
-                    else:
-                        res[:, ix, :] = 0.0
-                elif name in tree_set:
-                    d = tree_pos[self.tree_index[name]]
-                    res[:, ix, :] = spt_proj[ll][:, :, d]
-                else:
-                    d = stoch_pos[self.stoch_index[name]]
-                    res[:, ix, :] = stoch_proj[ll][:, :, d]
-            if nparams == 1:
-                res = res[..., 0]
-            BX_ell_dict[ll] = res
-        return BX_ell_dict
-
-
-    def _eval_scocc_geometry(self, tri, params, nmu, nphi):
-        """Build the full 5D (k1, k2, k3, mu1, mu2, mu3) geometry on the
-        Scoccimarro ``(mu1, phi)`` quadrature grid, with AP correction applied.
-        Returns broadcast contiguous arrays sized
-        ``(n_tri, nmu, nphi, nparams)`` plus the AP volume factor ``qiso6``.
+        Returns
+        -------
+        dict ``{(l1, l2, L): ndarray}`` with shape ``(n_pair, nparams)`` if
+        ``X_list`` is **None**, and ``(n_pair, nx, nparams)`` otherwise, with
+        the diagram axis ordered as ``X_list``. Never squeezed.
         """
-        tri = np.atleast_2d(tri)
-        n_tri = tri.shape[0]
-        nparams = np.atleast_1d(params['q_lo']).size
+        self._check_model('Bell_Sugi_factorized')
 
-        mu_g, _, cphi_g, _, _, _ = self._scocc_get_quadrature(nmu, nphi)
-        # Add trailing nparams axis: (1, nmu, 1, 1), (1, 1, nphi, 1)
-        mu1 = mu_g[..., None]
-        cphi = cphi_g[..., None]
-
-        k1 = tri[:, 0][:, None, None, None]
-        k2 = tri[:, 1][:, None, None, None]
-        k3 = tri[:, 2][:, None, None, None]
-
-        # Triangle condition cosine.
-        mu12 = (k3*k3 - k1*k1 - k2*k2) / (2.0 * k1 * k2)
-        mu12 = np.clip(mu12, -1.0, 1.0)
-        sin_mu12 = np.sqrt(np.maximum(1.0 - mu12*mu12, 0.0))
-        sin_mu1 = np.sqrt(np.maximum(1.0 - mu1*mu1, 0.0))
-        mu2 = mu12*mu1 + sin_mu12*sin_mu1*cphi
-        mu3 = -(k1*mu1 + k2*mu2) / np.maximum(k3, 1e-30)
-
+        ell = tuple(tuple(int(x) for x in ll) for ll in ell)
+        pair = np.atleast_2d(pair)
+        n_pair = pair.shape[0]
+        _, LM, combos, terms = self._sugi_factorized_plan(ell)
         qlo = np.atleast_1d(params['q_lo'])
         qtr = np.atleast_1d(params['q_tr'])
+        nparams = qlo.size
         qiso6 = qlo**2 * qtr**4
 
-        k1_p, mu1_p = self._apply_ap(k1, mu1, qlo, qtr)
-        k2_p, mu2_p = self._apply_ap(k2, mu2, qlo, qtr)
-        k3_p, mu3_p = self._apply_ap(k3, mu3, qlo, qtr)
+        if X_list is None:
+            if combos:
+                moments, qiso6 = self._sugi_moments(
+                    pair, Pdw_eval, params, LM, combos, nmu1, nmu12, nphi,
+                    mu12_transform)
+            else:
+                moments = np.zeros((n_pair, 0, nparams))
+            proj = self._sugi_factorized_combine(terms, moments)
+            NB0 = np.atleast_1d(params['NB0'])
+            out = {}
+            for ll in ell:
+                out[ll] = proj[ll]
+                if ll == (0, 0, 0):
+                    out[ll] = out[ll] \
+                        + (NB0 / self.nbar**2)[None, :] / qiso6[None, :]
+            return out
 
-        full_shape = (n_tri, nmu, nphi, nparams)
-        return (k1_p, k2_p, k3_p, mu1_p, mu2_p, mu3_p,
-                qiso6, full_shape)
+        X_list = self._diagram_names(X_list)
+        nb0_name = self.stoch_diagrams[-1]
+        tree_set = set(self.tree_diagrams)
+        # Moments are only needed for the diagrams other than NB0 (constant)
+        integrate = bool(combos) and any(x != nb0_name for x in X_list)
+        if integrate:
+            (mt, ms, tree_keep, stoch_keep), qiso6 = self._sugi_moments(
+                pair, Pdw_eval, params, LM, combos, nmu1, nmu12, nphi,
+                mu12_transform, X_list=X_list)
+            spt_proj = self._sugi_factorized_combine(terms, mt)
+            stoch_proj = self._sugi_factorized_combine(terms, ms)
+            tree_pos = {orig: k for k, orig in enumerate(tree_keep)}
+            stoch_pos = {orig: k for k, orig in enumerate(stoch_keep)}
 
-    def _eval_scocc_5d_bispectrum(self, tri, Pdw_eval, params, nmu, nphi):
-        """Bias-weighted bispectrum on the Scoccimarro (mu, phi) grid via 5D
-        kernel evaluation.
+        BX_dict = {}
+        for ll in ell:
+            res = np.zeros((n_pair, len(X_list), nparams))
+            for ix, name in enumerate(X_list):
+                if name == nb0_name:
+                    res[:, ix, :] = 1.0 / qiso6[None, :] \
+                        if ll == (0, 0, 0) else 0.0
+                elif not integrate:
+                    continue
+                elif name in tree_set:
+                    res[:, ix, :] = \
+                        spt_proj[ll][..., tree_pos[self.tree_index[name]]]
+                else:
+                    res[:, ix, :] = \
+                        stoch_proj[ll][..., stoch_pos[self.stoch_index[name]]]
+            BX_dict[ll] = res
+        return BX_dict
 
-        Internally uses the shared 5D kernel `_bispectrum_5d_njit` evaluated
-        on the full (k1, k2, k3, mu1, mu2, mu3) space, then projected onto
-        Scoccimarro (mu1, phi) multipoles. Returns ``(B_out, qiso6)`` where
-        ``B_out`` has shape ``(n_tri, nmu, nphi, nparams)``.
+    # Sugiyama quadrature and factorised projection
+
+    # Transforms sampling k3 per (k1, k2) pair instead of mu12
+    _K3_TRANSFORMS = ('k3', 'logk3')
+
+    # Linear core of the 'logk3' map, in h/Mpc, close to the peak of P(k)
+    _LOGK3_SCALE = 0.05
+
+    def _sugi_get_quadrature(self, nmu1, nmu12, nphi, mu12_transform):
+        """Build (and cache) the (mu1, mu12, phi) quadrature grids.
+
+        Supported ``mu12_transform`` modes:
+        - ``'linear'``: Gauss-Legendre nodes in mu12 directly.
+        - ``'quadratic'``: clusters nodes near mu12 = -1 to capture the
+          colinear (k3 -> 0) limit.
+        - ``'quartic'``: stronger clustering near mu12 = -1.
+        - ``'k3'``: sample k3 uniformly per (k1, k2) pair instead of mu12.
+          Returns Gauss-Legendre t-nodes in [-1, 1]; the caller maps
+          ``k3(t; k1, k2) = max(k1,k2) + min(k1,k2)*t`` per pair, derives
+          ``mu12 = (k3^2 - k1^2 - k2^2)/(2 k1 k2)``, and folds the
+          Jacobian ``dmu12/dt = min(k1,k2) * k3/(k1*k2)`` into the
+          projection kernel. This regularises the colinear region by
+          construction.
+        - ``'logk3'``: as ``'k3'``, but with the k3 nodes log-spaced above
+          ``|k1 - k2|`` with a linear core of size ``_LOGK3_SCALE`` (see
+          `_k3_map`). This resolves the peak of P(k3) at small k3 for large
+          k1 ~ k2, and needs about half the mu12 nodes of ``'k3'`` for the
+          same accuracy.
         """
-        (k1_p, k2_p, k3_p, mu1_p, mu2_p, mu3_p,
-         qiso6, full_shape) = self._eval_scocc_geometry(
-            tri, params, nmu, nphi)
+        key = (nmu1, nmu12, nphi, mu12_transform)
+        cached = self._sugi_quad_cache.get(key)
+        if cached is not None:
+            return cached
 
-        pdw1, pdw2, pdw3 = self._eval_pdw_legs(
-            Pdw_eval, k1_p, k2_p, k3_p, full_shape)
+        mu1, w_mu1 = np.polynomial.legendre.leggauss(nmu1)
+        x_mu12, w_x_mu12 = np.polynomial.legendre.leggauss(nmu12)
+        if mu12_transform == 'linear':
+            mu12 = x_mu12
+            w_mu12 = w_x_mu12
+        elif mu12_transform == 'quadratic':
+            # Resolves the k3 ~ 0 singularity when k1 ~ k2 by clustering nodes
+            # near mu12 = -1, where (k1+k2*mu12) collapses.
+            mu12 = 0.5 * (x_mu12 + 1.0)**2 - 1.0
+            w_mu12 = w_x_mu12 * (x_mu12 + 1.0)
+        elif mu12_transform == 'quartic':
+            mu12 = 0.125 * (x_mu12 + 1.0)**4 - 1.0
+            w_mu12 = w_x_mu12 * 0.5 * (x_mu12 + 1.0)**3
+        elif mu12_transform in self._K3_TRANSFORMS:
+            # mu12 is per-pair; the values stashed here are the underlying
+            # t-nodes in [-1, 1] (the caller maps them to per-pair mu12).
+            mu12 = x_mu12
+            w_mu12 = w_x_mu12
+        else:
+            raise ValueError(
+                f"Unsupported mu12_transform: {mu12_transform!r}")
 
-        b1 = np.ascontiguousarray(np.atleast_1d(params['b1']))
-        b2 = np.ascontiguousarray(np.atleast_1d(params['b2']))
-        g2 = np.ascontiguousarray(np.atleast_1d(params['g2']))
-        f = np.ascontiguousarray(np.atleast_1d(params['f']))
-        avir, sv = self._get_damping_arrays(params)
-        MB0 = np.ascontiguousarray(np.atleast_1d(params['MB0']))
-        NP0 = np.ascontiguousarray(np.atleast_1d(params['NP0']))
-        cnloB, cB1, cB2 = self._get_ctr_arrays(params)
-        inv_qiso6 = np.ascontiguousarray(1.0 / qiso6)
-        nb = np.atleast_1d(np.asarray(self.nbar, dtype=float)).reshape(-1)
-        if nb.size == 1:
-            nb = np.broadcast_to(nb, inv_qiso6.shape)
-        inv_nbar = np.ascontiguousarray(1.0 / nb)
+        phi = np.linspace(0.0, 2.0*np.pi, nphi, endpoint=False)
+        w_phi = 2.0 * np.pi / nphi
 
-        if self.backend == 'jax':
-            B_5d = np.asarray(self._bispectrum_5d_jax_fused(
-                jnp.asarray(k1_p), jnp.asarray(k2_p), jnp.asarray(k3_p),
-                jnp.asarray(mu1_p), jnp.asarray(mu2_p), jnp.asarray(mu3_p),
-                jnp.asarray(pdw1), jnp.asarray(pdw2), jnp.asarray(pdw3),
-                jnp.asarray(b1), jnp.asarray(b2), jnp.asarray(g2),
-                jnp.asarray(f), jnp.asarray(avir), jnp.asarray(sv),
-                jnp.asarray(MB0), jnp.asarray(NP0), 
-                jnp.asarray(cnloB), jnp.asarray(cB1), jnp.asarray(cB2),
-                jnp.asarray(inv_nbar), jnp.asarray(inv_qiso6)))
-            B_5d = np.broadcast_to(B_5d, full_shape)
-            return B_5d, qiso6
+        # Shape: (1, nmu1, 1, 1), (1, 1, nmu12, 1), (1, 1, 1, nphi)
+        mu1_g = mu1[None, :, None, None]
+        w_mu1_g = w_mu1[None, :, None, None]
+        mu12_g = mu12[None, None, :, None]
+        w_mu12_g = w_mu12[None, None, :, None]
+        cphi_g = np.cos(phi)[None, None, None, :]
+        phi_g = phi[None, None, None, :]
+        w_phi_g = w_phi * np.ones_like(cphi_g)
 
-        def _full(a):
-            return np.ascontiguousarray(np.broadcast_to(a, full_shape))
-        k1_b, k2_b, k3_b = _full(k1_p), _full(k2_p), _full(k3_p)
-        mu1_b, mu2_b, mu3_b = _full(mu1_p), _full(mu2_p), _full(mu3_p)
-        pdw1, pdw2, pdw3 = _full(pdw1), _full(pdw2), _full(pdw3)
-        B_5d = np.empty(full_shape, dtype=float)
-        self._bispectrum_5d_njit(
-            k1_b, k2_b, k3_b, mu1_b, mu2_b, mu3_b,
-            pdw1, pdw2, pdw3,
-            b1, b2, g2, f, avir, sv, MB0, NP0,
-            cnloB, cB1, cB2,
-            inv_nbar, inv_qiso6, B_5d)
-        return B_5d, qiso6
+        out = (mu1_g, w_mu1_g, mu12_g, w_mu12_g, cphi_g, phi_g, w_phi_g)
+        self._sugi_quad_cache[key] = out
+        return out
 
-    def _eval_scocc_5d_diagrams(self, tri, Pdw_eval, params, nmu, nphi,
-                                tree_keep=None, stoch_keep=None):
-        """Per-diagram bias-stripped bispectrum on the Scoccimarro (mu, phi)
-        grid via 5D kernel evaluation.
+    def _k3_map(self, t, k_lo, k_hi, mu12_transform):
+        """Map t in [-1, 1] -> (k3, dk3/dt) for the per-pair-k3 transforms.
 
-        Internally uses the shared 5D diagram kernel `_bispectrum_5d_diagrams_njit`
-        on the full (k1, k2, k3, mu1, mu2, mu3) space, then projects onto
-        Scoccimarro multipoles. Returns ``(spt_stack, stoch_stack, qiso6)``
-        with shape ``(n_tri, nmu, nphi, nparams, n_keep)``. ``tree_keep`` and
-        ``stoch_keep`` select which diagrams to compute (default: all).
+        ``'k3'`` uses the linear map of `_k3_from_t`. ``'logk3'`` uses
+        ``k3 = k_lo + s (exp(x ln(1 + (k_hi - k_lo)/s)) - 1)``, with
+        ``x = (1 + t)/2`` and ``s`` equal to `_LOGK3_SCALE` (converted to
+        1/Mpc with h = 0.7 if ``use_Mpc``; its precise value is not
+        important).
         """
-        if tree_keep is None:
-            tree_keep = tuple(range(len(self.tree_diagrams)))
+        if mu12_transform == 'k3':
+            return self._k3_from_t(t, k_lo, k_hi)
+        scale = self._LOGK3_SCALE * (0.7 if self.use_Mpc else 1.0)
+        x = 0.5 * (1.0 + t)
+        lnr = np.log1p((k_hi - k_lo) / scale)
+        u = scale * np.expm1(x * lnr)
+        return k_lo + u, 0.5 * lnr * (u + scale)
+
+    @staticmethod
+    def _k3_from_t(t, k_lo, k_hi):
+        """Map t in [-1, 1] -> (k3, dk3/dt).
+        All arrays broadcast against `t * (k_lo, k_hi)`. The Jacobian
+        ``dk3/dt`` is needed by the per-pair projection weights (folded via
+        ``dmu12/dt = (dk3/dt) * k3 / (k1 k2)``).
+        """
+        mid = 0.5 * (k_hi + k_lo)
+        half = 0.5 * (k_hi - k_lo)
+        k3 = mid + half * t
+        dk3_dt = half * np.ones_like(t)
+        return k3, dk3_dt
+
+    @staticmethod
+    def _wigner_3j_000M(l1, l2, L, M, _cache={}):
+        """Cached ``(wigner_3j(l1, l2, L, 0, 0, 0), wigner_3j(l1, l2, L, 0, -M, M))``."""
+        key = (l1, l2, L, M)
+        if key not in _cache:
+            from sympy.physics.wigner import wigner_3j
+            _cache[key] = (float(wigner_3j(l1, l2, L, 0, 0, 0).evalf()),
+                           float(wigner_3j(l1, l2, L, 0, -M, M).evalf()))
+        return _cache[key]
+
+    def _sugi_factorized_plan(self, ell):
+        """Factorised Sugiyama projection, as moments of the bispectrum.
+
+        Pairing the ``+-M`` terms of the Sugiyama kernel
+        (``l1 + l2 + L`` even) gives
+
+        ``B_l1l2L = h (2l1+1)(2l2+1)(2L+1)/(8pi) sum_{M>=0} (2-delta_M0)
+        (-1)^M w3j(l1,l2,L;0,-M,M) int n_l2M P_l2^M(mu12) n_LM P_L^M(mu1)
+        cos(M phi) B``,
+
+        with ``n_lm = sqrt((l-m)!/(l+m)!)``. The integral only depends on
+        ``(l2, L, M)``: these moments are computed once (see
+        `_fused_moments_njit`) and ``l1`` only enters through the Wigner-3j
+        coefficients, so many multipoles cost about as much as one.
+
+        Returns
+        -------
+        ell : tuple of (l1, l2, L)
+        LM : list of the (L, M) angular modes
+        combos : list of the (l2, L, M) moments
+        terms : dict ``{(l1, l2, L): [(index in combos, coefficient), ...]}``
+        """
+        ell = tuple(sorted(set(tuple(int(x) for x in ll) for ll in ell)))
+        LM, combos, terms = [], [], {}
+        for ll in ell:
+            l1, l2, L = ll
+            terms[ll] = []
+            h = self._wigner_3j_000M(l1, l2, L, 0)[0]
+            if h == 0.0:
+                continue
+            prefactor = h * (2*l1 + 1) * (2*l2 + 1) * (2*L + 1) / (8.0*np.pi)
+            for M in range(min(l2, L) + 1):
+                w3j = self._wigner_3j_000M(l1, l2, L, M)[1]
+                if w3j == 0.0:
+                    continue
+                if (L, M) not in LM:
+                    LM.append((L, M))
+                if (l2, L, M) not in combos:
+                    combos.append((l2, L, M))
+                terms[ll].append((combos.index((l2, L, M)),
+                                  prefactor * (2.0 - (M == 0)) * (-1.0)**M
+                                  * w3j))
+        return ell, LM, combos, terms
+
+    def _sugi_factorized_weights(self, LM, combos, pair, nmu1, nmu12, nphi,
+                                 mu12_transform):
+        """Per-pair geometry and projection weights of the moments.
+
+        Returns
+        -------
+        k3, mu12 : ndarray, shape (n_pair, nmu12)
+            Third side and cosine of each ``mu12`` node.
+        ang : ndarray, shape (nLM, nmu1, nphi)
+            ``n_LM P_L^M(mu1) cos(M phi)`` times the ``(mu1, phi)`` weights.
+        ang_id : ndarray, shape (nq,)
+            Row of ``ang`` used by each moment in ``combos``.
+        rad : ndarray, shape (n_pair, nq, nmu12)
+            ``n_l2M P_l2^M(mu12)`` times the ``mu12`` weights (and, for the
+            per-pair-k3 transforms, the ``dmu12/dt`` Jacobian).
+        """
+        pair = np.atleast_2d(pair)
+        n_pair = pair.shape[0]
+        mu1_g, w_mu1_g, mu12_g, w_mu12_g, _, phi_g, w_phi_g = \
+            self._sugi_get_quadrature(nmu1, nmu12, nphi, mu12_transform)
+        mu1, w_mu1 = mu1_g.ravel(), w_mu1_g.ravel()
+        phi, w_phi = phi_g.ravel(), w_phi_g.ravel()
+        k1 = pair[:, 0][:, None]
+        k2 = pair[:, 1][:, None]
+        if mu12_transform in self._K3_TRANSFORMS:
+            k3, dk3_dt = self._k3_map(mu12_g.ravel()[None, :],
+                                      np.abs(k1 - k2), k1 + k2,
+                                      mu12_transform)
+            k3 = np.maximum(k3, 1e-30)
+            mu12 = np.clip((k3*k3 - k1*k1 - k2*k2) / (2.0 * k1 * k2),
+                           -1.0, 1.0)
+            w_mu12 = w_mu12_g.ravel()[None, :] * dk3_dt * k3 / (k1 * k2)
         else:
-            tree_keep = tuple(tree_keep)
-        if stoch_keep is None:
-            stoch_keep = tuple(range(len(self.stoch_diagrams) - 1))
+            mu12 = np.broadcast_to(mu12_g.ravel(), (n_pair, nmu12))
+            k3 = np.maximum(np.sqrt(k1*k1 + k2*k2 + 2.0*k1*k2*mu12), 1e-30)
+            w_mu12 = np.broadcast_to(w_mu12_g.ravel(), (n_pair, nmu12))
+
+        def _n(l, m):
+            return np.sqrt(factorial(l - m) / factorial(l + m))
+
+        ang = np.stack([np.outer(_n(L, M) * lpmv(M, L, mu1) * w_mu1,
+                                 np.cos(M*phi) * w_phi) for L, M in LM])
+        ang_id = np.array([LM.index((L, M)) for _, L, M in combos],
+                          dtype=np.int64)
+        rad = np.stack([_n(l2, M) * lpmv(M, l2, mu12) * w_mu12
+                        for l2, _, M in combos], axis=1)
+        return (np.ascontiguousarray(k3), np.ascontiguousarray(mu12),
+                np.ascontiguousarray(ang), ang_id, np.ascontiguousarray(rad))
+
+    # Number of pair sets whose weights are kept (the 3PCF k-grid weights
+    # take ~70 MB for the default settings)
+    _SUGI_WEIGHTS_CACHE_SIZE = 2
+
+    def _sugi_cached_weights(self, LM, combos, pair, nmu1, nmu12, nphi,
+                             mu12_transform):
+        """`_sugi_factorized_weights`, cached: they only depend on the pairs,
+        the multipoles and the quadrature, not on the parameters, so repeated
+        calls on the same pairs (e.g. the FFTLog grid of the 3PCF) reuse
+        them."""
+        key = (tuple(LM), tuple(combos), nmu1, nmu12, nphi, mu12_transform,
+               self.use_Mpc, pair.shape)
+        hit = self._sugi_weights_cache.get(key)
+        if hit is not None and np.array_equal(hit[0], pair):
+            return hit[1]
+        out = self._sugi_factorized_weights(LM, combos, pair, nmu1, nmu12,
+                                            nphi, mu12_transform)
+        if len(self._sugi_weights_cache) >= self._SUGI_WEIGHTS_CACHE_SIZE:
+            self._sugi_weights_cache.pop(next(iter(self._sugi_weights_cache)))
+        self._sugi_weights_cache[key] = (pair.copy(), out)
+        return out
+
+    @staticmethod
+    def _sugi_factorized_combine(terms, moments):
+        """Sugiyama multipoles from the moments (n_pair, nq, ...) of
+        `_sugi_factorized_weights`, see `_sugi_factorized_plan`."""
+        out = {}
+        for ll, t in terms.items():
+            B = np.zeros(moments.shape[:1] + moments.shape[2:])
+            for iq, coeff in t:
+                B += coeff * moments[:, iq]
+            out[ll] = B
+        return out
+
+    def _sugi_moments(self, pair, Pdw_eval, params, LM, combos, nmu1, nmu12,
+                      nphi, mu12_transform, X_list=None):
+        """Moments of the bispectrum (or of its diagrams) for all pairs, see
+        `_fused_moments`, with the weights of `_sugi_factorized_weights`."""
+        pair = np.atleast_2d(pair)
+        k3, mu12, ang, ang_id, rad = self._sugi_cached_weights(
+            LM, combos, pair, nmu1, nmu12, nphi, mu12_transform)
+        mu1_g, _, _, _, cphi_g, _, _ = self._sugi_get_quadrature(
+            nmu1, nmu12, nphi, mu12_transform)
+        return self._fused_moments(pair[:, 0], pair[:, 1], k3, mu12,
+                                   mu1_g.ravel(), cphi_g.ravel(), ang, ang_id,
+                                   rad, Pdw_eval, params, X_list=X_list)
+
+    # Scoccimarro multipoles
+
+    def Bell_Scocc(self, tri, Pdw_eval, params, ell=((0, 0), (2, 0)),
+                   norm='sphharm', nmu=5, nphi=5):
+        """Scoccimarro bispectrum multipoles via numerical 2D quadrature,
+        with the fused kernels (see `_scocc_moments`).
+
+        Parameters
+        ----------
+        tri : ndarray, shape (n_tri, 3)
+            Triangle wavemodes ``(k1, k2, k3)``.
+        Pdw_eval : callable
+            Pdw evaluator providing ``ppoly_table()`` (see
+            `PTEmu._get_pdw_fn`).
+        params : dict
+            COMET parameter dictionary (single-z or batched-z).
+        ell : iterable of (l, m) tuples
+        norm: str
+            Normalisation convention for the multipoles. Options are
+            'sphharm' (default), which gives the standard spherical harmonic
+            normalisation, and 'legendre', which gives the normalisation used
+            in Legendre multipoles.
+        nmu, nphi : int
+        Returns
+        -------
+        dict ``{(l, m): ndarray}`` with shape ``(n_tri,)`` for single-z and
+        ``(n_tri, nparams)`` for batched-z. NB0 contributes only to ``(0, 0)``.
+        """
+        if self.real_space:
+            raise NotImplementedError('Numerical quadrature is not implemented in real space yet.')
+        self._check_model('Bell_Scocc')
+
+        ell = tuple(tuple(ll) for ll in ell)
+        moments, qiso6 = self._scocc_moments(
+            tri, Pdw_eval, params, ell, nmu, nphi)
+        NB0 = np.atleast_1d(params['NB0'])
+        inv_nbar = np.broadcast_to(1.0 / np.atleast_1d(self.nbar),
+                                   qiso6.shape)
+
+        Bell_dict = {}
+        for i, ll in enumerate(ell):
+            B = moments[:, i]
+            if ll == (0, 0):
+                # Y_00 = 1/sqrt(4pi): a constant c projects to sqrt(4pi)*c.
+                B = B + np.sqrt(4.0*np.pi) \
+                    * (NB0 * inv_nbar**2)[None, :] / qiso6[None, :]
+            Bell_dict[ll] = self._scocc_normfact(ll, norm) * np.squeeze(B)
+        return Bell_dict
+
+    def BX_ell_Scocc(self, tri, Pdw_eval, params,
+                     ell=((0, 0), (2, 0)), norm='sphharm', nmu=5, nphi=5,
+                     X_list=None):
+        """Diagram-resolved Scoccimarro bispectrum multipoles.
+
+        If ``X_list`` is **None** (default), returns
+        ``{(l, m): {diagram_name: ndarray}}`` with values squeezed to
+        ``(n_tri,)`` for single-z and ``(n_tri, nparams)`` for batched-z.
+
+        If ``X_list`` is provided, returns ``{(l, m): ndarray}`` with shape
+        ``(n_tri, nx, nparams)`` for batched-z and ``(n_tri, nx)`` for
+        single-z. The diagram axis is ordered to match ``X_list`` and only
+        the requested diagrams are computed.
+        """
+        if self.real_space:
+            raise NotImplementedError('Numerical quadrature is not implemented in real space yet.')
+        self._check_model('BX_ell_Scocc')
+
+        ell = tuple(tuple(ll) for ll in ell)
+        names = self._diagram_names(X_list)
+        nb0_name = self.stoch_diagrams[-1]
+        tri = np.atleast_2d(tri)
+        qiso6 = np.atleast_1d(params['q_lo'])**2 \
+            * np.atleast_1d(params['q_tr'])**4
+
+        res = np.zeros((tri.shape[0], len(ell), len(names), qiso6.size))
+        if any(x != nb0_name for x in names):
+            (mt, ms, tree_keep, stoch_keep), qiso6 = self._scocc_moments(
+                tri, Pdw_eval, params, ell, nmu, nphi, X_list=names)
+            for ix, name in enumerate(names):
+                if name in self.tree_index:
+                    res[:, :, ix] = mt[..., tree_keep.index(
+                        self.tree_index[name])]
+                elif name != nb0_name:
+                    res[:, :, ix] = ms[..., stoch_keep.index(
+                        self.stoch_index[name])]
+
+        BX = {}
+        for i, ll in enumerate(ell):
+            B = res[:, i]
+            if ll == (0, 0):
+                # Y_00 = 1/sqrt(4pi): a constant c projects to sqrt(4pi)*c.
+                for ix, name in enumerate(names):
+                    if name == nb0_name:
+                        B[:, ix] = np.sqrt(4.0*np.pi) / qiso6[None, :]
+            BX[ll] = self._scocc_normfact(ll, norm) * B
+        return self._format_BX(BX, names, X_list is None)
+
+    @staticmethod
+    def _scocc_normfact(ll, norm):
+        """Factor converting the ``'sphharm'`` normalisation to **norm**."""
+        if norm == 'legendre':
+            return np.sqrt((2*ll[0] + 1)/(4*np.pi))
+        return 1.0
+
+    # Scoccimarro quadrature and projection
+
+    def _scocc_get_quadrature(self, nmu, nphi):
+        """Build (and cache) the (mu, phi) quadrature grids for Scoccimarro multipoles."""
+        key = (nmu, nphi)
+        cached = self._scocc_quad_cache.get(key)
+        if cached is not None:
+            return cached
+
+        mu, w_mu = np.polynomial.legendre.leggauss(nmu)
+        phi = np.linspace(0.0, 2.0*np.pi, nphi, endpoint=False)
+        w_phi = 2.0 * np.pi / nphi
+
+        # Shape: (1, nmu, 1), (1, 1, nphi)
+        mu_g = mu[None, :, None]
+        w_mu_g = w_mu[None, :, None]
+        cphi_g = np.cos(phi)[None, None, :]
+        sphi_g = np.sin(phi)[None, None, :]
+        phi_g = phi[None, None, :]
+        w_phi_g = w_phi * np.ones_like(cphi_g)
+
+        out = (mu_g, w_mu_g, cphi_g, sphi_g, phi_g, w_phi_g)
+        self._scocc_quad_cache[key] = out
+        return out
+
+    @staticmethod
+    def _sph_harm_real(l, m, costheta, phi, normalized=True):
+        norm = np.sqrt(factorial(l - abs(m)) / factorial(l + abs(m)))
+        norm = norm * (-1)**(0.5 * (m - abs(m)))
+        if normalized:
+            norm = norm * np.sqrt((2*l + 1)/(4*np.pi))
+        if m > 0:
+            return np.sqrt(2) * norm * lpmv(m, l, costheta) * np.cos(m * phi)
+        elif m < 0:
+            return np.sqrt(2) * norm * lpmv(-m, l, costheta) * np.sin(-m * phi)
         else:
-            stoch_keep = tuple(stoch_keep)
-
-        (k1_p, k2_p, k3_p, mu1_p, mu2_p, mu3_p,
-         qiso6, full_shape) = self._eval_scocc_geometry(
-            tri, params, nmu, nphi)
-
-        pdw1, pdw2, pdw3 = self._eval_pdw_legs(
-            Pdw_eval, k1_p, k2_p, k3_p, full_shape)
-
-        spt_stack, stoch_stack = self._run_diagram_kernels(
-            k1_p, k2_p, k3_p, mu1_p, mu2_p, mu3_p, pdw1, pdw2, pdw3,
-            params, qiso6, full_shape, tree_keep, stoch_keep)
-        return spt_stack, stoch_stack, qiso6
-
-        def _full(a):
-            return np.ascontiguousarray(np.broadcast_to(a, full_shape))
-        k1_b, k2_b, k3_b = _full(k1_p), _full(k2_p), _full(k3_p)
-        mu1_b, mu2_b, mu3_b = _full(mu1_p), _full(mu2_p), _full(mu3_p)
-        pdw1_b, pdw2_b, pdw3_b = _full(pdw1), _full(pdw2), _full(pdw3)
-
-        tree_col = np.full(len(self.tree_diagrams), -1, dtype=np.int64)
-        for k, d in enumerate(tree_keep):
-            tree_col[d] = k
-        stoch_col = np.full(len(self.stoch_diagrams) - 1, -1, dtype=np.int64)
-        for k, d in enumerate(stoch_keep):
-            stoch_col[d] = k
-
-        N = int(np.prod(full_shape))
-        spt_flat = np.empty((N, max(n_tree_keep, 1)), dtype=float)
-        stoch_flat = np.empty((N, max(n_stoch_keep, 1)), dtype=float)
-        self._bispectrum_5d_diagrams_njit(
-            k1_b, k2_b, k3_b, mu1_b, mu2_b, mu3_b,
-            pdw1_b, pdw2_b, pdw3_b,
-            f, avir, sv, cnloB,
-            inv_qiso6, tree_col, stoch_col, spt_flat, stoch_flat)
-        if n_tree_keep == 0:
-            spt_stack = np.empty(full_shape + (0,), dtype=float)
-        else:
-            spt_stack = spt_flat[:, :n_tree_keep].reshape(
-                full_shape + (n_tree_keep,))
-        if n_stoch_keep == 0:
-            stoch_stack = np.empty(full_shape + (0,), dtype=float)
-        else:
-            stoch_stack = stoch_flat[:, :n_stoch_keep].reshape(
-                full_shape + (n_stoch_keep,))
-        return spt_stack, stoch_stack, qiso6
+            return norm * lpmv(0, l, costheta)
 
     def _scocc_get_proj_ops(self, ell, nmu, nphi):
         """Compute and cache the ``(l, m)`` Scoccimarro projection operators.
@@ -3767,481 +4011,377 @@ class BispectrumNum:
         self._scocc_proj_cache[key] = proj
         return proj
 
-    def Bell_Scocc(self, tri, Pdw_eval, params, ell=((0, 0), (2, 0)),
-                   norm='sphharm', nmu=5, nphi=5):
-        """Scoccimarro bispectrum multipoles via numerical 2D quadrature.
+    def _scocc_moments(self, tri, Pdw_eval, params, ell, nmu, nphi,
+                       X_list=None):
+        """Scoccimarro ``(l, m)`` projections of the bispectrum (or of its
+        diagrams) for all triangles, before the normalisation and NB0, see
+        `_fused_moments`. Each triangle is a pair with a single ``mu12``
+        node, and the operators of `_scocc_get_proj_ops` are the angular
+        weights. The moment axis follows **ell**."""
+        tri = np.atleast_2d(tri)
+        mu_g, _, cphi_g, _, _, _ = self._scocc_get_quadrature(nmu, nphi)
+        proj = self._scocc_get_proj_ops(ell, nmu, nphi)
+        ang = np.stack([proj[ll].reshape(nmu, nphi) for ll in ell])
+        ang_id = np.arange(len(ell), dtype=np.int64)
+        rad = np.ones((tri.shape[0], len(ell), 1))
+        k1 = tri[:, 0:1]
+        k2 = tri[:, 1:2]
+        k3 = tri[:, 2:3]
+        mu12 = np.clip((k3*k3 - k1*k1 - k2*k2) / (2.0*k1*k2), -1.0, 1.0)
+        return self._fused_moments(tri[:, 0], tri[:, 1], k3, mu12,
+                                   mu_g.ravel(), cphi_g.ravel(), ang, ang_id,
+                                   rad, Pdw_eval, params, X_list=X_list)
 
-        Parameters
-        ----------
-        tri : ndarray, shape (n_tri, 3)
-            Triangle wavemodes ``(k1, k2, k3)``.
-        Pdw_eval : callable
-            Single-shot Pdw evaluator (see `Bell_sugiyama`).
-        params : dict
-            COMET parameter dictionary (single-z or batched-z).
-        ell : iterable of (l, m) tuples
-        norm: str
-            Normalisation convention for the multipoles. Options are
-            'sphharm' (default), which gives the standard spherical harmonic
-            normalisation, and 'legendre', which gives the normalisation used
-            in Legendre multipoles.
-        nmu, nphi : int
-        Returns
-        -------
-        dict ``{(l, m): ndarray}`` with shape ``(n_tri,)`` for single-z and
-        ``(n_tri, nparams)`` for batched-z. NB0 contributes only to ``(0, 0)``.
+    # Fused moments, shared by both bases
+
+    def _get_damping_arrays(self, params):
+        """Return ``(avir, sv)`` as contiguous per-z arrays.
+        Set to zero for 'EFT', which makes ``W_infty`` = 1.
         """
-        if self.real_space:
-            raise NotImplementedError('Numerical quadrature is not implemented in real space yet.')
-        self._check_model('Bell_Scocc')
+        nparams = np.atleast_1d(params['q_lo']).size
+        if 'VDG_infty' not in self.model:
+            zeros = np.zeros(nparams, dtype=float)
+            return zeros, zeros
+        def _get(k):
+            if k in params:
+                return np.ascontiguousarray(np.atleast_1d(params[k]))
+            return np.zeros(nparams, dtype=float)
+        return _get('avirB'), _get('sv')
 
-        ell = tuple(tuple(ll) for ll in ell)
-        B_5d, qiso6 = self._eval_scocc_5d_bispectrum(
-            tri, Pdw_eval, params, nmu, nphi)
+    def _get_ctr_arrays(self, params):
+        """Return the per-z cnloB, cB1, cB2 arrays.
+        Set to zero for pure VDG.
+        """
+        nparams = np.atleast_1d(params['q_lo']).size
+        if not ('EFT' in self.model or 'VDG_infty_ctr' in self.model):
+            return np.zeros(nparams, dtype=float), np.zeros(nparams, dtype=float), np.zeros(nparams, dtype=float)
+        elif self.cnlo_type == 'EggLeeSco':
+            return np.ascontiguousarray(
+                np.atleast_1d(params['cnloB'])), np.zeros(nparams, dtype=float), np.zeros(nparams, dtype=float)
+        elif self.cnlo_type == 'IvaPhiNis':
+            return np.zeros(nparams, dtype=float), np.ascontiguousarray(
+                np.atleast_1d(params['cB1'])), np.ascontiguousarray(
+                np.atleast_1d(params['cB2']))
 
-        n_tri = B_5d.shape[0]
+    @staticmethod
+    def _merge_phi_nodes(cphi, ang):
+        """Merge the ``phi`` nodes with the same ``cos(phi)``.
+
+        The bispectrum only depends on ``phi`` through ``cos(phi)``, so the
+        nodes ``phi`` and ``2 pi - phi`` of the uniform ``phi`` grids give the
+        same value: they are evaluated once, with their angular weights
+        ``ang`` (nang, nmu1, nphi) summed. This removes a third of the nodes
+        for ``nphi = 3`` and two fifths for ``nphi = 5``.
+        """
+        cphi = np.asarray(cphi, dtype=float)
+        _, first, inv = np.unique(np.round(cphi, 12), return_index=True,
+                                  return_inverse=True)
+        ang = np.asarray(ang, dtype=float)
+        if first.size < cphi.size:
+            merge = np.zeros((cphi.size, first.size))
+            merge[np.arange(cphi.size), inv.ravel()] = 1.0
+            ang = ang @ merge
+            cphi = cphi[first]
+        return (np.ascontiguousarray(cphi), np.ascontiguousarray(ang))
+
+    def _fused_moments(self, k1, k2, k3, mu12, mu1, cphi, ang, ang_id, rad,
+                       Pdw_eval, params, X_list=None):
+        """Moments ``sum_{j,a,b} B ang[ang_id[q], a, b] rad[i, q, j]`` of the
+        bispectrum (or of its diagrams) over the ``(mu12, mu1, phi)`` nodes
+        ``(j, a, b)`` of each pair ``i``, with the fused kernels
+        (`_fused_moments_njit` or its JAX counterpart), which evaluate the
+        exact Pdw spline of ``Pdw_eval.ppoly_table()`` inline.
+
+        Returns ``(moments, qiso6)``, with ``moments`` of shape
+        (n_pair, nq, nparams) if **X_list** is **None**, and otherwise a tuple
+        ``(tree, stoch, tree_keep, stoch_keep)`` with the moments of the
+        requested tree and stochastic diagrams, (n_pair, nq, nparams, n).
+        """
+        n_pair = k1.size
+        k1 = np.ascontiguousarray(k1, dtype=float)
+        k2 = np.ascontiguousarray(k2, dtype=float)
+        k3 = np.ascontiguousarray(k3, dtype=float)
+        mu12 = np.ascontiguousarray(mu12, dtype=float)
+        mu1 = np.ascontiguousarray(mu1, dtype=float)
+        cphi, ang = self._merge_phi_nodes(cphi, ang)
+        rad = np.ascontiguousarray(rad, dtype=float)
+
+        qlo = np.atleast_1d(params['q_lo'])
+        qtr = np.atleast_1d(params['q_tr'])
+        qiso6 = qlo**2 * qtr**4
         nparams = qiso6.size
-        B_flat = B_5d.reshape(n_tri, nmu*nphi, nparams)
-        NB0 = np.ascontiguousarray(np.atleast_1d(params['NB0']))
-        inv_nbar = np.ascontiguousarray(np.broadcast_to(1.0 / np.atleast_1d(self.nbar), qiso6.shape))
-        proj_ops = self._scocc_get_proj_ops(ell, nmu, nphi)
+        inv_qtr = np.ascontiguousarray(1.0 / qtr, dtype=float)
+        inv_F = np.ascontiguousarray(qtr / qlo, dtype=float)
+        c = np.ascontiguousarray(inv_F*inv_F - 1.0)
+        t = Pdw_eval.ppoly_table()
+        tab = (t['G'], t['scale'], t['seg'], t['last_index'], t['V'],
+               t['log_lo'], t['inv_dlog'], t['coeffs'], t['tails'])
+        f = np.ascontiguousarray(np.atleast_1d(params['f']))
+        avir, sv = self._get_damping_arrays(params)
+        inv_qiso6 = np.ascontiguousarray(1.0 / qiso6)
+        geom = (k1, k2, k3, mu12, mu1, cphi, inv_qtr, inv_F, c)
+        nq = ang_id.size
 
-        Bell_dict = {}
-        for ll in ell:
-            B = np.einsum('ijc,j->ic', B_flat, proj_ops[ll],
-                          optimize='optimal')
-            if ll == (0, 0):
-                # Y_00 = 1/sqrt(4pi): a constant c projects to sqrt(4pi)*c.
-                B = B + np.sqrt(4.0*np.pi) \
-                    * (NB0 * inv_nbar**2)[None, :] / qiso6[None, :]
-            normfact = 1.0
-            if norm == 'legendre':
-                l, m = ll
-                normfact = np.sqrt((2*l+1)/(4*np.pi))
-            Bell_dict[ll] = normfact * np.squeeze(B)
-        return Bell_dict
+        if X_list is None:
+            b1 = np.ascontiguousarray(np.atleast_1d(params['b1']))
+            b2 = np.ascontiguousarray(np.atleast_1d(params['b2']))
+            g2 = np.ascontiguousarray(np.atleast_1d(params['g2']))
+            MB0 = np.ascontiguousarray(np.atleast_1d(params['MB0']))
+            NP0 = np.ascontiguousarray(np.atleast_1d(params['NP0']))
+            cnloB, cB1, cB2 = self._get_ctr_arrays(params)
+            nb_ = np.atleast_1d(np.asarray(self.nbar, dtype=float)).reshape(-1)
+            inv_nbar = np.ascontiguousarray(
+                1.0 / np.broadcast_to(nb_, inv_qiso6.shape))
+            bias = (b1, b2, g2, f, avir, sv, MB0, NP0, cnloB, cB1, cB2,
+                    inv_nbar, inv_qiso6)
+            if self.backend == 'jax':
+                out = self._jax_blocks(
+                    lambda g, r: self._fused_moments_jax(
+                        *g, *tab, *bias, jnp.asarray(ang[ang_id]), r),
+                    geom, rad)
+            else:
+                out = np.empty((n_pair, nq, nparams))
+                self._fused_moments_njit(*geom, *tab, *bias, ang, ang_id, rad,
+                                        out)
+            return out, qiso6
 
-    def BX_ell_Scocc(self, tri, Pdw_eval, params,
-                     ell=((0, 0), (2, 0)), norm='sphharm', nmu=5, nphi=5,
-                     X_list=None):
-        """Diagram-resolved Scoccimarro bispectrum multipoles.
-
-        If ``X_list`` is **None** (default), returns
-        ``{(l, m): {diagram_name: ndarray}}`` with values squeezed to
-        ``(n_tri,)`` for single-z and ``(n_tri, nparams)`` for batched-z.
-
-        If ``X_list`` is provided, returns ``{(l, m): ndarray}`` with shape
-        ``(n_tri, nx, nparams)`` for batched-z and ``(n_tri, nx)`` for
-        single-z. The diagram axis is ordered to match ``X_list`` and only
-        the requested diagrams are projected.
-        """
-        if self.real_space:
-            raise NotImplementedError('Numerical quadrature is not implemented in real space yet.')
-
-        self._check_model('BX_ell_Scocc')
-
-        ell = tuple(tuple(ll) for ll in ell)
-        nb0_name = self.stoch_diagrams[-1]
         tree_set = set(self.tree_diagrams)
         stoch_set = set(self.stoch_diagrams[:-1])
-
-        if X_list is None:
-            tree_keep = tuple(range(len(self.tree_diagrams)))
-            stoch_keep = tuple(range(len(self.stoch_diagrams) - 1))
+        tree_keep = tuple(sorted({self.tree_index[x] for x in X_list
+                                  if x in tree_set}))
+        stoch_keep = tuple(sorted({self.stoch_index[x] for x in X_list
+                                   if x in stoch_set}))
+        tree_spec, stoch_spec, tables = self._diagram_kernel_tables(
+            tree_keep, stoch_keep)
+        if self.backend == 'jax':
+            ang_q = jnp.asarray(ang[ang_id])
+            out_t, out_s = self._jax_blocks(
+                lambda g, r: self._fused_moments_diagrams_jax(
+                    *g, *tab, f, avir, sv, inv_qiso6, ang_q, r, tree_spec,
+                    stoch_spec), geom, rad, n_out=2)
         else:
-            X_list_local = ([X_list] if isinstance(X_list, str)
-                            else list(X_list))
-            valid_names = tree_set | stoch_set | {nb0_name}
-            for x in X_list_local:
-                if x not in valid_names:
-                    raise ValueError(
-                        "Unknown diagram '{}' in X_list. Valid names: {}."
-                        .format(x, sorted(valid_names)))
-            tree_keep = tuple(sorted({self.tree_index[x] for x in X_list_local
-                                      if x in tree_set}))
-            stoch_keep = tuple(sorted({self.stoch_index[x] for x in X_list_local
-                                       if x in stoch_set}))
+            out_t = np.empty((n_pair, nq, nparams, len(tree_keep)))
+            out_s = np.empty((n_pair, nq, nparams, len(stoch_keep)))
+            self._fused_moments_diagrams_njit(
+                *geom, *tab, f, avir, sv, inv_qiso6, *tables, ang, ang_id, rad,
+                out_t, out_s)
+        return (out_t, out_s, tree_keep, stoch_keep), qiso6
 
-        spt_stack, stoch_stack, qiso6 = self._eval_scocc_5d_diagrams(
-            tri, Pdw_eval, params, nmu, nphi,
-            tree_keep=tree_keep, stoch_keep=stoch_keep)
-        proj_ops = self._scocc_get_proj_ops(ell, nmu, nphi)
+    # Pairs per jitted block in the JAX path (blocks are padded to this size,
+    # so the kernels are compiled once per shape)
+    _JAX_PAIR_BLOCK = 1024
 
-        n_tri = np.atleast_2d(tri).shape[0]
-        nparams = qiso6.size
-        # Y_00 = 1/sqrt(4pi): a constant c projects to sqrt(4pi)*c.
-        nb0_value = np.broadcast_to(
-            np.sqrt(4.0*np.pi) / qiso6[None, :], (n_tri, nparams))
+    def _jax_blocks(self, fn, geom, rad, n_out=1):
+        """Apply the jitted block kernel ``fn(geom_block, rad_block)`` over
+        blocks of `_JAX_PAIR_BLOCK` pairs or triangles (the last one padded
+        by repeating its last pair, so the kernel is compiled once) and
+        concatenate."""
+        k1, k2, k3, mu12 = geom[:4]
+        n_pair = k1.size
+        blk = min(self._JAX_PAIR_BLOCK, n_pair)
+        outs = [[] for _ in range(n_out)]
+        for i0 in range(0, n_pair, blk):
+            idx = np.minimum(np.arange(i0, i0 + blk), n_pair - 1)
+            g = tuple(jnp.asarray(a[idx]) for a in (k1, k2, k3, mu12)) \
+                + tuple(jnp.asarray(a) for a in geom[4:])
+            res = fn(g, jnp.asarray(rad[idx]))
+            res = (res,) if n_out == 1 else res
+            nvalid = min(blk, n_pair - i0)
+            for o, r in zip(outs, res):
+                o.append(np.asarray(r)[:nvalid])
+        outs = [np.concatenate(o, axis=0) for o in outs]
+        return outs[0] if n_out == 1 else tuple(outs)
 
-        def _normfact(ll):
-            if norm == 'legendre':
-                l, _ = ll
-                return np.sqrt((2*l+1)/(4*np.pi))
-            return 1.0
-
-        spt_flat = (spt_stack.reshape(n_tri, nmu*nphi, nparams, len(tree_keep))
-                    if tree_keep else None)
-        stoch_flat = (stoch_stack.reshape(n_tri, nmu*nphi, nparams,
-                                          len(stoch_keep))
-                      if stoch_keep else None)
-
-        tree_pos = {orig: k for k, orig in enumerate(tree_keep)}
-        stoch_pos = {orig: k for k, orig in enumerate(stoch_keep)}
-
-        if X_list is None:
-            BX_ell_dict = {}
-            for ll in ell:
-                normfact = _normfact(ll)
-                spt_proj = normfact * np.einsum(
-                    'ijcd,j->icd', spt_flat, proj_ops[ll], optimize='optimal')
-                stoch_proj = normfact * np.einsum(
-                    'ijcd,j->icd', stoch_flat, proj_ops[ll],
-                    optimize='optimal')
-                out = {}
-                for name in self.tree_diagrams:
-                    d = tree_pos[self.tree_index[name]]
-                    out[name] = np.squeeze(spt_proj[:, :, d])
-                for name in self.stoch_diagrams[:-1]:
-                    d = stoch_pos[self.stoch_index[name]]
-                    out[name] = np.squeeze(stoch_proj[:, :, d])
-                if ll == (0, 0):
-                    out[nb0_name] = np.squeeze(normfact * nb0_value)
-                else:
-                    out[nb0_name] = \
-                        np.squeeze(np.zeros((n_tri, nparams)))
-                BX_ell_dict[ll] = out
-            return BX_ell_dict
-
-        nx = len(X_list_local)
-        BX_ell_dict = {}
-        for ll in ell:
-            normfact = _normfact(ll)
-            spt_proj = None
-            stoch_proj = None
-            if tree_keep:
-                spt_proj = normfact * np.einsum(
-                    'ijcd,j->icd', spt_flat, proj_ops[ll],
-                    optimize='optimal')
-            if stoch_keep:
-                stoch_proj = normfact * np.einsum(
-                    'ijcd,j->icd', stoch_flat, proj_ops[ll],
-                    optimize='optimal')
-
-            res = np.empty((n_tri, nx, nparams))
-            for ix, name in enumerate(X_list_local):
-                if name == nb0_name:
-                    if ll == (0, 0):
-                        res[:, ix, :] = normfact * nb0_value
-                    else:
-                        res[:, ix, :] = 0.0
-                elif name in tree_set:
-                    d = tree_pos[self.tree_index[name]]
-                    res[:, ix, :] = spt_proj[:, :, d]
-                else:
-                    d = stoch_pos[self.stoch_index[name]]
-                    res[:, ix, :] = stoch_proj[:, :, d]
-            if nparams == 1:
-                res = res[..., 0]
-            BX_ell_dict[ll] = res
-        return BX_ell_dict
-
-    @staticmethod
-    def _apply_ap(k, mu, qlo, qtr):
-        F = qlo / qtr
-        fac = np.sqrt(1.0 + mu**2 * (1.0/F**2 - 1.0))
-        return k / qtr * fac, mu / F / fac
-
-    @staticmethod
-    def _sph_harm(l, m, costheta, phi):
-        """Complex spherical harmonic Y_l^m(theta, phi) using Condon-Shortley sign.
-        Matches the convention used in the original external implementation."""
-        norm = np.sqrt(factorial(l - abs(m)) / factorial(l + abs(m)))
-        norm = norm * (-1.0)**(0.5 * (m - abs(m)))
-        return norm * lpmv(abs(m), l, costheta) * np.exp(1j * m * phi)
-    
-    @staticmethod
-    def _sph_harm_real(l, m, costheta, phi, normalized=True):
-        norm = np.sqrt(factorial(l - abs(m)) / factorial(l + abs(m)))
-        norm = norm * (-1)**(0.5 * (m - abs(m)))
-        if normalized:
-            norm = norm * np.sqrt((2*l + 1)/(4*np.pi))
-        if m > 0:
-            return np.sqrt(2) * norm * lpmv(m, l, costheta) * np.cos(m * phi)
-        elif m < 0:
-            return np.sqrt(2) * norm * lpmv(-m, l, costheta) * np.sin(-m * phi)
-        else:
-            return norm * lpmv(0, l, costheta)
+    # Numba kernels (JAX counterparts below)
 
     @staticmethod
     @nb.njit(cache=True, fastmath=True, parallel=True)
-    def _bispectrum_5d_njit(
-            k1_p, k2_p, k3_p, mu1_p, mu2_p, mu3_p,
-            pdw1, pdw2, pdw3,
-            b1, b2, g2, f, avir, sv, MB0, NP0,
-            cnloB, cB1, cB2,
-            inv_nbar, inv_qiso6, out):
-        """Fused bias-weighted VDG bispectrum on the 5D quadrature grid. 
+    def _fused_moments_njit(k1, k2, k3, mu12, mu1, cphi, inv_qtr, inv_F, c,
+                            G, scale, seg, last_index, V, log_lo, inv_dlog,
+                            coeffs, tails, b1, b2, g2, f, avir, sv, MB0, NP0,
+                            cnloB, cB1, cB2, inv_nbar, inv_qiso6,
+                            ang, ang_id, rad, out):
+        """Projected moments of the bispectrum, fusing geometry, AP, Pdw and
+        projection per (k1, k2) pair, without building the 5D grid. Used by
+        both bases (see `_fused_moments`): Sugiyama integrates over the
+        ``mu12`` nodes, while Scoccimarro has a single node per triangle.
+
+        For each pair ``i``, moment ``q`` and parameter set ``m``,
+        ``out[i, q, m] = sum_{j,a,b} B(i, a, j, b, m) ang[ang_id[q], a, b]
+        rad[i, q, j]``, with ``j``, ``a``, ``b`` the ``mu12``, ``mu1`` and
+        ``phi`` nodes, ``B`` from `_bisp_node_total` and Pdw from
+        `_ppoly_node`. See `_sugi_factorized_weights` and `_scocc_moments`
+        for ``ang``/``rad``. Its JAX counterpart is `_fused_moments_jax`.
+
+        Inputs: ``k1``, ``k2`` (n_pair,); ``k3``, ``mu12`` (n_pair, nmu12);
+        ``mu1`` (nmu1,); ``cphi`` (nphi,); the AP scalars and the bias
+        parameters (nparams,); the spline table of `Splines.ppoly_table`.
+        Output: ``out`` (n_pair, nq, nparams).
         """
-        flat = out.reshape(-1)
-        k1f = k1_p.reshape(-1)
-        k2f = k2_p.reshape(-1)
-        k3f = k3_p.reshape(-1)
-        m1f = mu1_p.reshape(-1)
-        m2f = mu2_p.reshape(-1)
-        m3f = mu3_p.reshape(-1)
-        p1f = pdw1.reshape(-1)
-        p2f = pdw2.reshape(-1)
-        p3f = pdw3.reshape(-1)
-        b1f = b1.reshape(-1)
-        b2f = b2.reshape(-1)
-        g2f = g2.reshape(-1)
-        ff_ = f.reshape(-1)
-        avf = avir.reshape(-1)
-        svf = sv.reshape(-1)
-        mbf = MB0.reshape(-1)
-        npf = NP0.reshape(-1)
-        cnf = cnloB.reshape(-1)
-        cB1f = cB1.reshape(-1)
-        cB2f = cB2.reshape(-1)
-        inbf = inv_nbar.reshape(-1)
-        iqf = inv_qiso6.reshape(-1)
-        nparams = b1f.size
-        N = flat.size
-        for q in nb.prange(N):
-            p = q % nparams
-            bb1 = b1f[p]; bb2 = b2f[p]; gg2 = g2f[p]
-            ff = ff_[p]; av = avf[p]; sv_p = svf[p]
-            mb0 = mbf[p]; np0 = npf[p]; cnl = cnf[p]
-            ccB1 = cB1f[p]; ccB2 = cB2f[p]
-            iqs = iqf[p]; inb = inbf[p]
-            k1 = k1f[q]; k2 = k2f[q]; k3 = k3f[q]
-            mu1 = m1f[q]; mu2 = m2f[q]; mu3 = m3f[q]
-            pd1 = p1f[q]; pd2 = p2f[q]; pd3 = p3f[q]
-
-            mu1_sq = mu1*mu1; mu2_sq = mu2*mu2; mu3_sq = mu3*mu3
-            # Z1 includes the IvaPhiNis counterterms. Z2 is written out
-            # explicitly so its velocity term uses the bare Z1 = b1 + f mu^2.
-            Z1_1 = bb1 + ff*mu1_sq - ccB1*(k1*k1)*mu1_sq - ccB2*(k1*k1)*mu1_sq*mu1_sq
-            Z1_2 = bb1 + ff*mu2_sq - ccB1*(k2*k2)*mu2_sq - ccB2*(k2*k2)*mu2_sq*mu2_sq
-            Z1_3 = bb1 + ff*mu3_sq - ccB1*(k3*k3)*mu3_sq - ccB2*(k3*k3)*mu3_sq*mu3_sq
-
-            # tree leg 12 (i=1, j=2, k=3, muk = -mu3)
-            muij = (k3*k3 - k1*k1 - k2*k2) / (2.0*k1*k2)
-            muij2 = muij*muij
-            ratio = 0.5*(k1/k2 + k2/k1)*muij
-            F2 = 5.0/7.0 + 2.0/7.0*muij2 + ratio
-            G2 = 3.0/7.0 + 4.0/7.0*muij2 + ratio
-            K2 = bb1*F2 + 0.5*bb2 + gg2*(muij2 - 1.0)
-            muk = -mu3
-            Z2 = K2 + ff*muk*muk*G2 + 0.5*ff*k3*muk*(
-                bb1*(mu1/k1 + mu2/k2) + ff*mu1*mu2*(mu2/k1 + mu1/k2))
-            tree = 2.0*Z1_1*Z1_2*Z2 * pd1*pd2
-
-            # tree leg 23
-            muij = (k1*k1 - k2*k2 - k3*k3) / (2.0*k2*k3)
-            muij2 = muij*muij
-            ratio = 0.5*(k2/k3 + k3/k2)*muij
-            F2 = 5.0/7.0 + 2.0/7.0*muij2 + ratio
-            G2 = 3.0/7.0 + 4.0/7.0*muij2 + ratio
-            K2 = bb1*F2 + 0.5*bb2 + gg2*(muij2 - 1.0)
-            muk = -mu1
-            Z2 = K2 + ff*muk*muk*G2 + 0.5*ff*k1*muk*(
-                bb1*(mu2/k2 + mu3/k3) + ff*mu2*mu3*(mu3/k2 + mu2/k3))
-            tree += 2.0*Z1_2*Z1_3*Z2 * pd2*pd3
-
-            # tree leg 31
-            muij = (k2*k2 - k3*k3 - k1*k1) / (2.0*k3*k1)
-            muij2 = muij*muij
-            ratio = 0.5*(k3/k1 + k1/k3)*muij
-            F2 = 5.0/7.0 + 2.0/7.0*muij2 + ratio
-            G2 = 3.0/7.0 + 4.0/7.0*muij2 + ratio
-            K2 = bb1*F2 + 0.5*bb2 + gg2*(muij2 - 1.0)
-            muk = -mu2
-            Z2 = K2 + ff*muk*muk*G2 + 0.5*ff*k2*muk*(
-                bb1*(mu3/k3 + mu1/k1) + ff*mu3*mu1*(mu1/k3 + mu3/k1))
-            tree += 2.0*Z1_3*Z1_1*Z2 * pd3*pd1
-
-            kmu1_sq = k1*k1*mu1_sq
-            kmu2_sq = k2*k2*mu2_sq
-            kmu3_sq = k3*k3*mu3_sq
-            lamb2 = -0.5*ff*ff*(kmu1_sq + kmu2_sq + kmu3_sq)
-            denom = 1.0 - lamb2*av*av
-            winfty = np.exp(lamb2*sv_p*sv_p/denom) / denom**1.5
-            eft = 1.0 + cnl*ff*ff*(kmu1_sq + kmu2_sq + kmu3_sq)
-            tree = tree * eft
-
-            lam1 = -ff*ff*k1*k1*mu1_sq
-            den1 = 1.0 - lam1*av*av
-            st1 = np.exp(lam1*sv_p*sv_p/den1)/den1**0.5 * (bb1*mb0 + ff*np0*mu1_sq) * Z1_1
-            st1 = st1 * (1.0 + cnl*ff*ff*kmu1_sq)
-            lam2 = -ff*ff*k2*k2*mu2_sq
-            den2 = 1.0 - lam2*av*av
-            st2 = np.exp(lam2*sv_p*sv_p/den2)/den2**0.5 * (bb1*mb0 + ff*np0*mu2_sq) * Z1_2
-            st2 = st2 * (1.0 + cnl*ff*ff*kmu2_sq)
-            lam3 = -ff*ff*k3*k3*mu3_sq
-            den3 = 1.0 - lam3*av*av
-            st3 = np.exp(lam3*sv_p*sv_p/den3)/den3**0.5 * (bb1*mb0 + ff*np0*mu3_sq) * Z1_3
-            st3 = st3 * (1.0 + cnl*ff*ff*kmu3_sq)
-            stoch = (st1*pd1 + st2*pd2 + st3*pd3) * inb
-
-            flat[q] = (tree*winfty + stoch) * iqs
+        n_pair = k1.size
+        nmu12 = k3.shape[1]
+        nmu1 = mu1.size
+        nphi = cphi.size
+        nq = ang_id.size
+        nparams = b1.size
+        for i in nb.prange(n_pair):
+            k1_i = k1[i]
+            k2_i = k2[i]
+            k1p = np.empty(nmu1)
+            mu1p = np.empty(nmu1)
+            pd1 = np.empty(nmu1)
+            acc = np.empty(nq)
+            # the parameter sets are the outer loop, so that the spline
+            # segments of legs 2 and 3 at the previous node (the guesses for
+            # the next one, see _ppoly_segment) are scalars
+            for m in range(nparams):
+                # leg 1 only depends on mu1
+                for a in range(nmu1):
+                    fac1 = np.sqrt(1.0 + mu1[a]*mu1[a]*c[m])
+                    k1p[a] = k1_i*inv_qtr[m]*fac1
+                    mu1p[a] = mu1[a]*inv_F[m]/fac1
+                    pd1[a] = _ppoly_node(k1p[a], mu1p[a]**2, m, -1, G, scale,
+                                         seg, last_index, V, log_lo,
+                                         inv_dlog, coeffs, tails)[0]
+                j2 = -1
+                j3 = -1
+                for q in range(nq):
+                    acc[q] = 0.0
+                for j in range(nmu12):
+                    k3_ij = k3[i, j]
+                    mu12_ij = mu12[i, j]
+                    s12 = 1.0 - mu12_ij*mu12_ij
+                    sin12 = np.sqrt(s12) if s12 > 0.0 else 0.0
+                    inv_k3 = 1.0/k3_ij
+                    for a in range(nmu1):
+                        mu1_a = mu1[a]
+                        s1 = 1.0 - mu1_a*mu1_a
+                        sin1 = np.sqrt(s1) if s1 > 0.0 else 0.0
+                        for b in range(nphi):
+                            mu2 = mu12_ij*mu1_a + sin12*sin1*cphi[b]
+                            mu3 = -(k1_i*mu1_a + k2_i*mu2)*inv_k3
+                            fac2 = np.sqrt(1.0 + mu2*mu2*c[m])
+                            fac3 = np.sqrt(1.0 + mu3*mu3*c[m])
+                            k2p = k2_i*inv_qtr[m]*fac2
+                            k3p = k3_ij*inv_qtr[m]*fac3
+                            mu2p = mu2*inv_F[m]*(1.0/fac2)
+                            mu3p = mu3*inv_F[m]*(1.0/fac3)
+                            pd2, j2 = _ppoly_node(
+                                k2p, mu2p*mu2p, m, j2, G, scale, seg,
+                                last_index, V, log_lo, inv_dlog, coeffs,
+                                tails)
+                            pd3, j3 = _ppoly_node(
+                                k3p, mu3p*mu3p, m, j3, G, scale, seg,
+                                last_index, V, log_lo, inv_dlog, coeffs,
+                                tails)
+                            Bv = _bisp_node_total(
+                                k1p[a], k2p, k3p, mu1p[a], mu2p, mu3p,
+                                pd1[a], pd2, pd3, b1[m], b2[m], g2[m],
+                                f[m], avir[m], sv[m], MB0[m], NP0[m],
+                                cnloB[m], cB1[m], cB2[m], inv_nbar[m],
+                                inv_qiso6[m])
+                            for q in range(nq):
+                                acc[q] += Bv*ang[ang_id[q], a, b] \
+                                    * rad[i, q, j]
+                for q in range(nq):
+                    out[i, q, m] = acc[q]
 
     @staticmethod
     @nb.njit(cache=True, fastmath=True, parallel=True)
-    def _bispectrum_5d_diagrams_njit(
-            k1_p, k2_p, k3_p, mu1_p, mu2_p, mu3_p,
-            pdw1, pdw2, pdw3,
-            f, avir, sv, inv_qiso6,
-            tree_col, tree_a, tree_b, tree_ctr, stoch_part, stoch_ctr,
-            out_spt, out_stoch):
-        """Per-diagram, bias-stripped bispectrum on the 5D grid.
-
-        Tree diagram ``c`` is ``sum_legs sum_t 2 A[a_t] Z[b_t] P_i P_j`` over
-        the terms ``t`` with ``tree_col[t] == c``, times ``W_infty / qiso6``
-        and, if ``tree_ctr[c]``, ``f^2 sum_j k_j^2 mu_j^2``. Stochastic
-        diagram ``c`` is ``sum_i S[stoch_part[c]] W_i P_i / qiso6`` (times
-        ``f^2 k_i^2 mu_i^2`` if ``stoch_ctr[c]``). See
-        `BispectrumNum._build_diagram_tables` for the A, Z and S pieces.
-        """
-        k1f = k1_p.reshape(-1)
-        k2f = k2_p.reshape(-1)
-        k3f = k3_p.reshape(-1)
-        m1f = mu1_p.reshape(-1)
-        m2f = mu2_p.reshape(-1)
-        m3f = mu3_p.reshape(-1)
-        p1f = pdw1.reshape(-1)
-        p2f = pdw2.reshape(-1)
-        p3f = pdw3.reshape(-1)
-        ff_ = f.reshape(-1)
-        avf = avir.reshape(-1)
-        svf = sv.reshape(-1)
-        iqf = inv_qiso6.reshape(-1)
-        nparams = ff_.size
-        N = out_spt.shape[0]
-        n_terms = tree_col.size
+    def _fused_moments_diagrams_njit(k1, k2, k3, mu12, mu1, cphi, inv_qtr,
+                                     inv_F, c, G, scale, seg, last_index, V,
+                                     log_lo, inv_dlog, coeffs, tails, f, avir,
+                                     sv, inv_qiso6, tree_col, tree_a, tree_b,
+                                     tree_ctr, stoch_part, stoch_ctr,
+                                     ang, ang_id, rad, out_spt, out_stoch):
+        """Diagram-resolved companion to `_fused_moments_njit`, with the
+        per-node diagrams of `_bisp_node_diagrams`. Outputs ``out_spt``
+        (n_pair, nq, nparams, n_tree) and ``out_stoch`` (n_pair, nq, nparams,
+        n_stoch). Its JAX counterpart is `_fused_moments_diagrams_jax`."""
+        n_pair = k1.size
+        nmu12 = k3.shape[1]
+        nmu1 = mu1.size
+        nphi = cphi.size
+        nq = ang_id.size
+        nparams = f.size
         n_tree = tree_ctr.size
         n_stoch = stoch_part.size
         need_ctr = False
-        for t in range(n_terms):
+        for t in range(tree_col.size):
             if tree_a[t] >= 3:
                 need_ctr = True
-
-        # Chunk the grid so the scratch buffers are allocated once per chunk.
-        chunk = 1024
-        n_chunks = (N + chunk - 1) // chunk
-        for ic in nb.prange(n_chunks):
+        for i in nb.prange(n_pair):
+            k1_i = k1[i]
+            k2_i = k2[i]
             A = np.zeros(10)
             Z = np.empty(4)
             S = np.empty(7)
-            q_end = min((ic + 1)*chunk, N)
-            for q in range(ic*chunk, q_end):
-                p = q % nparams
-                ff = ff_[p]; av = avf[p]; sv_p = svf[p]
-                iqs = iqf[p]
-                k1 = k1f[q]; k2 = k2f[q]; k3 = k3f[q]
-                mu1 = m1f[q]; mu2 = m2f[q]; mu3 = m3f[q]
-                pd1 = p1f[q]; pd2 = p2f[q]; pd3 = p3f[q]
+            spt = np.zeros(max(n_tree, 1))
+            st = np.zeros(max(n_stoch, 1))
+            acc_t = np.empty((nq, max(n_tree, 1)))
+            acc_s = np.empty((nq, max(n_stoch, 1)))
+            k1p = np.empty(nmu1)
+            mu1p = np.empty(nmu1)
+            pd1 = np.empty(nmu1)
+            # parameter sets as the outer loop, see _fused_moments_njit
+            for m in range(nparams):
+                for a in range(nmu1):
+                    fac1 = np.sqrt(1.0 + mu1[a]*mu1[a]*c[m])
+                    k1p[a] = k1_i*inv_qtr[m]*fac1
+                    mu1p[a] = mu1[a]*inv_F[m]/fac1
+                    pd1[a] = _ppoly_node(k1p[a], mu1p[a]**2, m, -1, G, scale,
+                                         seg, last_index, V, log_lo,
+                                         inv_dlog, coeffs, tails)[0]
+                j2 = -1
+                j3 = -1
+                acc_t[:] = 0.0
+                acc_s[:] = 0.0
+                for j in range(nmu12):
+                    k3_ij = k3[i, j]
+                    mu12_ij = mu12[i, j]
+                    s12 = 1.0 - mu12_ij*mu12_ij
+                    sin12 = np.sqrt(s12) if s12 > 0.0 else 0.0
+                    inv_k3 = 1.0/k3_ij
+                    for a in range(nmu1):
+                        mu1_a = mu1[a]
+                        s1 = 1.0 - mu1_a*mu1_a
+                        sin1 = np.sqrt(s1) if s1 > 0.0 else 0.0
+                        for b in range(nphi):
+                            mu2 = mu12_ij*mu1_a + sin12*sin1*cphi[b]
+                            mu3 = -(k1_i*mu1_a + k2_i*mu2)*inv_k3
+                            fac2 = np.sqrt(1.0 + mu2*mu2*c[m])
+                            fac3 = np.sqrt(1.0 + mu3*mu3*c[m])
+                            k2p = k2_i*inv_qtr[m]*fac2
+                            k3p = k3_ij*inv_qtr[m]*fac3
+                            mu2p = mu2*inv_F[m]*(1.0/fac2)
+                            mu3p = mu3*inv_F[m]*(1.0/fac3)
+                            pd2, j2 = _ppoly_node(
+                                k2p, mu2p*mu2p, m, j2, G, scale, seg,
+                                last_index, V, log_lo, inv_dlog, coeffs,
+                                tails)
+                            pd3, j3 = _ppoly_node(
+                                k3p, mu3p*mu3p, m, j3, G, scale, seg,
+                                last_index, V, log_lo, inv_dlog, coeffs,
+                                tails)
+                            _bisp_node_diagrams(
+                                k1p[a], k2p, k3p, mu1p[a], mu2p, mu3p,
+                                pd1[a], pd2, pd3, f[m], avir[m], sv[m],
+                                inv_qiso6[m], tree_col, tree_a, tree_b,
+                                tree_ctr, stoch_part, stoch_ctr, need_ctr,
+                                A, Z, S, spt, st)
+                            for q in range(nq):
+                                w = ang[ang_id[q], a, b]*rad[i, q, j]
+                                for d in range(n_tree):
+                                    acc_t[q, d] += w*spt[d]
+                                for d in range(n_stoch):
+                                    acc_s[q, d] += w*st[d]
+                for q in range(nq):
+                    for d in range(n_tree):
+                        out_spt[i, q, m, d] = acc_t[q, d]
+                    for d in range(n_stoch):
+                        out_stoch[i, q, m, d] = acc_s[q, d]
 
-                f2 = ff*ff
-                mu1_sq = mu1*mu1
-                mu2_sq = mu2*mu2
-                mu3_sq = mu3*mu3
-                kmu1_sq = k1*k1*mu1_sq
-                kmu2_sq = k2*k2*mu2_sq
-                kmu3_sq = k3*k3*mu3_sq
-                kmu_sum = kmu1_sq + kmu2_sq + kmu3_sq
-
-                if n_tree > 0:
-                    for c in range(n_tree):
-                        out_spt[q, c] = 0.0
-                    for leg in range(3):
-                        if leg == 0:
-                            ki = k1; kj = k2; kk = k3
-                            mui = mu1; muj = mu2; muk = mu3
-                            mui_sq = mu1_sq; muj_sq = mu2_sq; muk_sq = mu3_sq
-                            ui = kmu1_sq; uj = kmu2_sq
-                            pp = pd1*pd2
-                        elif leg == 1:
-                            ki = k2; kj = k3; kk = k1
-                            mui = mu2; muj = mu3; muk = mu1
-                            mui_sq = mu2_sq; muj_sq = mu3_sq; muk_sq = mu1_sq
-                            ui = kmu2_sq; uj = kmu3_sq
-                            pp = pd2*pd3
-                        else:
-                            ki = k3; kj = k1; kk = k2
-                            mui = mu3; muj = mu1; muk = mu2
-                            mui_sq = mu3_sq; muj_sq = mu1_sq; muk_sq = mu2_sq
-                            ui = kmu3_sq; uj = kmu1_sq
-                            pp = pd3*pd1
-
-                        muij = (kk*kk - ki*ki - kj*kj) / (2.0*ki*kj)
-                        muij2 = muij*muij
-                        ratio = 0.5*(ki/kj + kj/ki)*muij
-                        F2 = 5.0/7.0 + 2.0/7.0*muij2 + ratio
-                        G2 = 3.0/7.0 + 4.0/7.0*muij2 + ratio
-                        fkm = ff*kk*muk
-                        a_i = fkm * mui/ki
-                        a_j = fkm * muj/kj
-
-                        Z[0] = F2 - 0.5*(a_i + a_j)
-                        Z[1] = 0.5
-                        Z[2] = muij2 - 1.0
-                        Z[3] = ff*muk_sq*G2 - 0.5*ff*(a_i*muj_sq + a_j*mui_sq)
-
-                        A[0] = 1.0
-                        A[1] = ff*(mui_sq + muj_sq)
-                        A[2] = f2*mui_sq*muj_sq
-                        if need_ctr:
-                            vi = ui*mui_sq
-                            vj = uj*muj_sq
-                            A[3] = -(ui + uj)
-                            A[4] = -ff*(mui_sq*uj + muj_sq*ui)
-                            A[5] = -(vi + vj)
-                            A[6] = -ff*(mui_sq*vj + muj_sq*vi)
-                            A[7] = ui*uj
-                            A[8] = ui*vj + vi*uj
-                            A[9] = vi*vj
-
-                        for t in range(n_terms):
-                            out_spt[q, tree_col[t]] += \
-                                2.0*A[tree_a[t]]*Z[tree_b[t]]*pp
-
-                    lamb2 = -0.5*f2*kmu_sum
-                    denom = 1.0 - lamb2*av*av
-                    winfac = np.exp(lamb2*sv_p*sv_p/denom) / denom**1.5 * iqs
-                    for c in range(n_tree):
-                        if tree_ctr[c]:
-                            out_spt[q, c] *= winfac*f2*kmu_sum
-                        else:
-                            out_spt[q, c] *= winfac
-
-                if n_stoch > 0:
-                    for c in range(n_stoch):
-                        out_stoch[q, c] = 0.0
-                    for leg in range(3):
-                        if leg == 0:
-                            mui_sq = mu1_sq; ui = kmu1_sq; pdi = pd1
-                        elif leg == 1:
-                            mui_sq = mu2_sq; ui = kmu2_sq; pdi = pd2
-                        else:
-                            mui_sq = mu3_sq; ui = kmu3_sq; pdi = pd3
-                        lam = -f2*ui
-                        den = 1.0 - lam*av*av
-                        wp = np.exp(lam*sv_p*sv_p/den) / den**0.5 * pdi * iqs
-                        vi = ui*mui_sq
-                        S[0] = 1.0
-                        S[1] = ff*mui_sq
-                        S[2] = f2*mui_sq*mui_sq
-                        S[3] = -ui
-                        S[4] = -ff*mui_sq*ui
-                        S[5] = -vi
-                        S[6] = -ff*mui_sq*vi
-                        for c in range(n_stoch):
-                            if stoch_ctr[c]:
-                                out_stoch[q, c] += \
-                                    S[stoch_part[c]]*wp*f2*ui
-                            else:
-                                out_stoch[q, c] += S[stoch_part[c]]*wp
+    # JAX kernels
 
     if HAS_JAX:
         @staticmethod
@@ -4309,7 +4449,7 @@ class BispectrumNum:
                 tree_spec, stoch_spec):
             """JAX-traced per-diagram bispectrum on the broadcast grid.
 
-            Mirrors `_bispectrum_5d_diagrams_njit`. ``tree_spec`` is a static
+            Mirrors `_bisp_node_diagrams`. ``tree_spec`` is a static
             tuple of ``(((a, b), ...), ctr)`` per requested tree diagram and
             ``stoch_spec`` a static tuple of ``(s, ctr)`` per requested
             stochastic diagram; JAX JIT specializes per combination.
@@ -4414,230 +4554,141 @@ class BispectrumNum:
             jax.jit(_bispectrum_5d_jax_diagrams.__func__,
                     static_argnums=(13, 14)))
 
-    def _sugi_get_quadrature(self, nmu1, nmu12, nphi, mu12_transform):
-        """Build (and cache) the (mu1, mu12, phi) quadrature grids.
+        @staticmethod
+        def _ppoly_segment_jax(q, lq, V, seg, log_lo, inv_dlog):
+            """JAX counterpart of `_ppoly_segment`, with the bucket table
+            only (a guessed segment brings nothing to vectorised code), for
+            ``q`` and its log ``lq``."""
+            nv, nbucket = V.shape[0], seg.shape[0]
+            b = jnp.clip(((lq - log_lo)*inv_dlog).astype(jnp.int32),
+                         0, nbucket - 1)
+            j = seg[b]
+            return jnp.minimum(j + (q >= V[jnp.minimum(j + 1, nv - 1)]),
+                               nv - 1)
 
-        Supported ``mu12_transform`` modes:
-        - ``'linear'``: Gauss-Legendre nodes in mu12 directly.
-        - ``'quadratic'``: clusters nodes near mu12 = -1 to capture the
-          colinear (k3 -> 0) limit.
-        - ``'quartic'``: stronger clustering near mu12 = -1.
-        - ``'k3'``: sample k3 uniformly per (k1, k2) pair instead of mu12.
-          Returns Gauss-Legendre t-nodes in [-1, 1]; the caller maps
-          ``k3(t; k1, k2) = max(k1,k2) + min(k1,k2)*t`` per pair, derives
-          ``mu12 = (k3^2 - k1^2 - k2^2)/(2 k1 k2)``, and folds the
-          Jacobian ``dmu12/dt = min(k1,k2) * k3/(k1*k2)`` into the
-          projection kernel. This regularises the colinear region by
-          construction.
-        """
-        key = (nmu1, nmu12, nphi, mu12_transform)
-        cached = self._sugi_quad_cache.get(key)
-        if cached is not None:
-            return cached
+        @staticmethod
+        def _ppoly_eval_jax(k, mu2, G, scale, seg, last_index, V, log_lo,
+                            inv_dlog, coeffs, tails):
+            """JAX counterpart of `_ppoly_node`, for ``k`` and ``mu2`` with
+            the parameter batch along their last axis.
 
-        mu1, w_mu1 = np.polynomial.legendre.leggauss(nmu1)
-        x_mu12, w_x_mu12 = np.polynomial.legendre.leggauss(nmu12)
-        if mu12_transform == 'linear':
-            mu12 = x_mu12
-            w_mu12 = w_x_mu12
-        elif mu12_transform == 'quadratic':
-            # Resolves the k3 ~ 0 singularity when k1 ~ k2 by clustering nodes
-            # near mu12 = -1, where (k1+k2*mu12) collapses.
-            mu12 = 0.5 * (x_mu12 + 1.0)**2 - 1.0
-            w_mu12 = w_x_mu12 * (x_mu12 + 1.0)
-        elif mu12_transform == 'quartic':
-            mu12 = 0.125 * (x_mu12 + 1.0)**4 - 1.0
-            w_mu12 = w_x_mu12 * 0.5 * (x_mu12 + 1.0)**3
-        elif mu12_transform == 'k3':
-            # mu12 is per-pair; the values stashed here are the underlying
-            # t-nodes in [-1, 1] (the caller maps them to per-pair mu12).
-            mu12 = x_mu12
-            w_mu12 = w_x_mu12
-        else:
-            raise ValueError(
-                f"Unsupported mu12_transform: {mu12_transform!r}")
+            Arranged for XLA rather than as a copy of the numba code (same
+            values, to rounding): the coefficients are gathered from the
+            flattened table at a computed index (XLA handles these 1-D
+            gathers much better than indexing the 3-D table), and the log of
+            ``k`` serves both the bucket lookup and the power-law tails, so
+            each leg costs one log and one exp instead of three logs and two
+            exps."""
+            nk = G.shape[0]
+            nmu2, npar = coeffs.shape[2], coeffs.shape[3]
+            lraw = jnp.log(k/scale)                  # log of k in units of G
+            log_g0, log_g1 = jnp.log(G[0]), jnp.log(G[-1])
+            q = jnp.clip(k/scale, V[0], V[-1])
+            lq = jnp.clip(lraw, jnp.log(V[0]), jnp.log(V[-1]))
+            j = BispectrumNum._ppoly_segment_jax(q, lq, V, seg, log_lo,
+                                                 inv_dlog)
+            i = jnp.clip(last_index[j], 0, nk - 2)
+            dx = (q - G[i])*scale
+            cf = coeffs.reshape(4, -1)
+            base = i*(nmu2*npar) + jnp.arange(npar)
+            val = 0.0
+            for n in range(nmu2 - 1, -1, -1):
+                ix = base + n*npar
+                val = val*mu2 + ((cf[0][ix]*dx + cf[1][ix])*dx
+                                 + cf[2][ix])*dx + cf[3][ix]
+            # power-law tails, y_edge (k/k_edge)^neff, both from one exp
+            below = lraw < log_g0
+            outside = below | (lraw > log_g1)
+            amp = jnp.where(below, tails[0], tails[2])
+            neff = jnp.where(below, tails[1], tails[3])
+            edge = jnp.where(below, log_g0, log_g1)
+            return jnp.where(outside, amp*jnp.exp(neff*(lraw - edge)), val)
 
-        phi = np.linspace(0.0, 2.0*np.pi, nphi, endpoint=False)
-        w_phi = 2.0 * np.pi / nphi
+        @staticmethod
+        def _ppoly_eval_legs_jax(k1p, k2p, k3p, mu1p, mu2p, mu3p, tab):
+            """Pdw at the three legs, for the 5D kernels. Leg 1 lives on the
+            (pair, mu1) grid and is broadcast to the full one, which the 5D
+            kernels take from it. The optimization barrier makes XLA compute
+            each leg once and store it: without it, the diagram kernel
+            recomputes the spline inside every diagram's fusion (~2x slower
+            for `_fused_moments_diagrams_jax`)."""
+            pd1, pd2, pd3 = jax.lax.optimization_barrier(tuple(
+                BispectrumNum._ppoly_eval_jax(kp, mup*mup, *tab)
+                for kp, mup in ((k1p, mu1p), (k2p, mu2p), (k3p, mu3p))))
+            return jnp.broadcast_to(pd1, mu2p.shape), pd2, pd3
 
-        # Shape: (1, nmu1, 1, 1), (1, 1, nmu12, 1), (1, 1, 1, nphi)
-        mu1_g = mu1[None, :, None, None]
-        w_mu1_g = w_mu1[None, :, None, None]
-        mu12_g = mu12[None, None, :, None]
-        w_mu12_g = w_mu12[None, None, :, None]
-        cphi_g = np.cos(phi)[None, None, None, :]
-        phi_g = phi[None, None, None, :]
-        w_phi_g = w_phi * np.ones_like(cphi_g)
+        @staticmethod
+        def _fused_geom_jax(k1, k2, k3, mu12, mu1, cphi, inv_qtr, inv_F, c):
+            """AP-corrected wavemodes and cosines of the three legs on the
+            (pair, mu1, mu12, phi, params) grid, as in the geometry part of
+            `_fused_moments_njit`."""
+            k1_ = k1[:, None, None, None, None]
+            k2_ = k2[:, None, None, None, None]
+            k3_ = k3[:, None, :, None, None]
+            mu1_ = mu1[None, :, None, None, None]
+            mu12_ = mu12[:, None, :, None, None]
+            cphi_ = cphi[None, None, None, :, None]
+            sin1 = jnp.sqrt(jnp.clip(1.0 - mu1_*mu1_, 0.0))
+            sin12 = jnp.sqrt(jnp.clip(1.0 - mu12_*mu12_, 0.0))
+            mu2 = mu12_*mu1_ + sin12*sin1*cphi_
+            mu3 = -(k1_*mu1_ + k2_*mu2)/k3_
+            fac1 = jnp.sqrt(1.0 + mu1_*mu1_*c)
+            fac2 = jnp.sqrt(1.0 + mu2*mu2*c)
+            fac3 = jnp.sqrt(1.0 + mu3*mu3*c)
+            return (k1_*inv_qtr*fac1, k2_*inv_qtr*fac2, k3_*inv_qtr*fac3,
+                    mu1_*inv_F/fac1, mu2*inv_F/fac2, mu3*inv_F/fac3)
 
-        out = (mu1_g, w_mu1_g, mu12_g, w_mu12_g, cphi_g, phi_g, w_phi_g)
-        self._sugi_quad_cache[key] = out
-        return out
-    
-    def _scocc_get_quadrature(self, nmu, nphi):
-        """Build (and cache) the (mu, phi) quadrature grids for Scoccimarro multipoles."""
-        key = (nmu, nphi)
-        cached = self._scocc_quad_cache.get(key)
-        if cached is not None:
-            return cached
+        @staticmethod
+        def _fused_moments_jax(k1, k2, k3, mu12, mu1, cphi, inv_qtr, inv_F, c,
+                               G, scale, seg, last_index, V, log_lo, inv_dlog,
+                               coeffs, tails, b1, b2, g2, f, avir, sv, MB0,
+                               NP0, cnloB, cB1, cB2, inv_nbar, inv_qiso6,
+                               ang_q, rad, damp=None):
+            """JAX counterpart of `_fused_moments_njit` for a block of pairs,
+            with ``ang_q = ang[ang_id]``. Returns (n_pair, nq, nparams).
 
-        mu, w_mu = np.polynomial.legendre.leggauss(nmu)
-        phi = np.linspace(0.0, 2.0*np.pi, nphi, endpoint=False)
-        w_phi = 2.0 * np.pi / nphi
+            ``damp``, if given, multiplies the bispectrum at every node before
+            the projection; it broadcasts against the (pair, mu1, mu12, phi,
+            params) grid (see `PTEmu._jax_bell_sugi`)."""
+            k1p, k2p, k3p, mu1p, mu2p, mu3p = BispectrumNum._fused_geom_jax(
+                k1, k2, k3, mu12, mu1, cphi, inv_qtr, inv_F, c)
+            tab = (G, scale, seg, last_index, V, log_lo, inv_dlog, coeffs,
+                   tails)
+            pd1, pd2, pd3 = BispectrumNum._ppoly_eval_legs_jax(
+                k1p, k2p, k3p, mu1p, mu2p, mu3p, tab)
+            B = BispectrumNum._bispectrum_5d_jax_fused(
+                k1p, k2p, k3p, mu1p, mu2p, mu3p, pd1, pd2, pd3, b1, b2, g2,
+                f, avir, sv, MB0, NP0, cnloB, cB1, cB2, inv_nbar, inv_qiso6)
+            if damp is not None:
+                B = B * damp
+            return jnp.einsum('pajbm,qab,pqj->pqm', B, ang_q, rad)
 
-        # Shape: (1, nmu, 1), (1, 1, nphi)
-        mu_g = mu[None, :, None]
-        w_mu_g = w_mu[None, :, None]
-        cphi_g = np.cos(phi)[None, None, :]
-        sphi_g = np.sin(phi)[None, None, :]
-        phi_g = phi[None, None, :]
-        w_phi_g = w_phi * np.ones_like(cphi_g)
+        _fused_moments_jax = staticmethod(jax.jit(_fused_moments_jax.__func__))
 
-        out = (mu_g, w_mu_g, cphi_g, sphi_g, phi_g, w_phi_g)
-        self._scocc_quad_cache[key] = out
-        return out
+        @staticmethod
+        def _fused_moments_diagrams_jax(k1, k2, k3, mu12, mu1, cphi, inv_qtr,
+                                        inv_F, c, G, scale, seg, last_index, V,
+                                        log_lo, inv_dlog, coeffs, tails, f,
+                                        avir, sv, inv_qiso6, ang_q, rad,
+                                        tree_spec, stoch_spec, damp=None):
+            """JAX counterpart of `_fused_moments_diagrams_njit` for a block of
+            pairs. Returns (n_pair, nq, nparams, n_tree) and
+            (n_pair, nq, nparams, n_stoch). ``damp`` is as in
+            `_fused_moments_jax`."""
+            k1p, k2p, k3p, mu1p, mu2p, mu3p = BispectrumNum._fused_geom_jax(
+                k1, k2, k3, mu12, mu1, cphi, inv_qtr, inv_F, c)
+            tab = (G, scale, seg, last_index, V, log_lo, inv_dlog, coeffs,
+                   tails)
+            pd1, pd2, pd3 = BispectrumNum._ppoly_eval_legs_jax(
+                k1p, k2p, k3p, mu1p, mu2p, mu3p, tab)
+            spt, stoch = BispectrumNum._bispectrum_5d_jax_diagrams(
+                k1p, k2p, k3p, mu1p, mu2p, mu3p, pd1, pd2, pd3, f, avir, sv,
+                inv_qiso6, tree_spec, stoch_spec)
+            if damp is not None:
+                spt = spt * damp[..., None]
+                stoch = stoch * damp[..., None]
+            return (jnp.einsum('pajbmd,qab,pqj->pqmd', spt, ang_q, rad),
+                    jnp.einsum('pajbmd,qab,pqj->pqmd', stoch, ang_q, rad))
 
-    def _sugi_get_proj_ops(self, ell, nmu1, nmu12, nphi, mu12_transform):
-        """Compute and cache the (l1, l2, L) Sugiyama projection operators.
-
-        Each entry maps an `(l1, l2, L)` tuple to a 1D array of length
-        nmu1*nmu12*nphi, containing the real part of the projection kernel
-        multiplied by integration weights. Inner product with the raveled
-        5D bispectrum yields the multipole.
-        """
-        ell_key = tuple(sorted(set(tuple(int(x) for x in ll) for ll in ell)))
-        key = (nmu1, nmu12, nphi, mu12_transform, ell_key)
-        cached = self._sugi_proj_cache.get(key)
-        if cached is not None:
-            return cached
-
-        try:
-            from sympy.physics.wigner import wigner_3j
-        except ImportError as exc:
-            raise ImportError(
-                "Sugiyama multipoles require `sympy` for Wigner-3j "
-                "coefficients. Install it via `pip install sympy`."
-            ) from exc
-
-        mu1_g, w_mu1_g, mu12_g, w_mu12_g, _, phi_g, w_phi_g = \
-            self._sugi_get_quadrature(nmu1, nmu12, nphi, mu12_transform)
-        weights = (w_mu1_g * w_mu12_g * w_phi_g).squeeze()
-
-        proj = {}
-        for ll in ell_key:
-            l1, l2, L = ll
-            h = float(wigner_3j(l1, l2, L, 0, 0, 0).evalf())
-            if h == 0.0:
-                proj[ll] = np.zeros(nmu1 * nmu12 * nphi)
-                continue
-            op = np.zeros((1, nmu1, nmu12, nphi), dtype=complex)
-            for M in range(-L, L+1):
-                w3j = float(wigner_3j(l1, l2, L, 0, -M, M).evalf())
-                if w3j == 0.0:
-                    continue
-                y1 = self._sph_harm(l2, -M, mu12_g, 0.0)
-                y2 = self._sph_harm(L, M, mu1_g, -phi_g)
-                op = op + w3j * y1 * y2
-            op = op.squeeze() * weights
-            prefactor = h * (2*l1 + 1) * (2*l2 + 1) * (2*L + 1) / (8.0*np.pi)
-            proj[ll] = np.real(op.ravel() * prefactor)
-
-        self._sugi_proj_cache[key] = proj
-        return proj
-
-    def _sugi_get_proj_ops_k3(self, ell, pair, nmu1, nmu12, nphi,
-                              mu12_transform='k3'):
-        """Per-pair projection operators for the per-pair-k3 quadratures.
-
-        Each entry maps an `(l1, l2, L)` tuple to an array of shape
-        `(n_pair, nmu1*nmu12*nphi)`. The per-pair Jacobian ``dmu12/dt``
-        is folded into the operator together with the underlying
-        quadrature weights.
-
-        Result is cached on the pair contents and shape so that repeated
-        calls with the same ``(pair, nmu1, nmu12, nphi, mu12_transform,
-        ell)`` reuse the operator. 
-        """
-        pair = np.atleast_2d(pair)
-        ell_key = tuple(sorted(set(tuple(int(x) for x in ll) for ll in ell)))
-        cache_key = (pair.shape, pair.tobytes(),
-                     nmu1, nmu12, nphi, mu12_transform, ell_key)
-        cached = self._sugi_proj_cache_k3.get(cache_key)
-        if cached is not None:
-            return cached
-
-        try:
-            from sympy.physics.wigner import wigner_3j
-        except ImportError as exc:
-            raise ImportError(
-                "Sugiyama multipoles require `sympy` for Wigner-3j "
-                "coefficients. Install it via `pip install sympy`."
-            ) from exc
-
-        mu1_g, w_mu1_g, t_g, w_t_g, _, phi_g, w_phi_g = \
-            self._sugi_get_quadrature(nmu1, nmu12, nphi, mu12_transform)
-
-        n_pair = pair.shape[0]
-        k1 = pair[:, 0][:, None, None, None]
-        k2 = pair[:, 1][:, None, None, None]
-        k_lo = np.abs(k1 - k2)
-        k_hi = k1 + k2
-        # `t_g` has shape (1, 1, nmu12, 1) from `_sugi_get_quadrature`.
-        k3_pair, dk3_dt = self._k3_from_t(t_g, k_lo, k_hi)
-        k3_pair = np.maximum(k3_pair, 1e-30)
-        mu12_pair = np.clip(
-            (k3_pair*k3_pair - k1*k1 - k2*k2) / (2.0 * k1 * k2), -1.0, 1.0)
-        # dmu12/dt = (dk3/dt) * dmu12/dk3 = (dk3/dt) * k3/(k1 k2)
-        jac = dk3_dt * k3_pair / (k1 * k2)
-        weight_pair = (w_mu1_g * w_t_g * w_phi_g * jac).reshape(
-            n_pair, nmu1*nmu12*nphi)
-
-        proj = {}
-        for ll in ell_key:
-            l1, l2, L = ll
-            h = float(wigner_3j(l1, l2, L, 0, 0, 0).evalf())
-            if h == 0.0:
-                proj[ll] = np.zeros((n_pair, nmu1*nmu12*nphi))
-                continue
-            op = np.zeros((n_pair, nmu1, nmu12, nphi), dtype=complex)
-            for M in range(-L, L+1):
-                w3j = float(wigner_3j(l1, l2, L, 0, -M, M).evalf())
-                if w3j == 0.0:
-                    continue
-                y1 = self._sph_harm(l2, -M, mu12_pair, 0.0)
-                y2 = self._sph_harm(L, M, mu1_g, -phi_g)
-                op = op + w3j * y1 * y2
-            prefactor = h * (2*l1 + 1) * (2*l2 + 1) * (2*L + 1) / (8.0*np.pi)
-            proj[ll] = np.real(op.reshape(n_pair, -1) * weight_pair
-                               * prefactor)
-        self._sugi_proj_cache_k3[cache_key] = proj
-        return proj
-    
-    def clear_caches(self):
-        """Clear all internal caches."""
-        self._sugi_quad_cache.clear()
-        self._sugi_proj_cache.clear()
-        self._sugi_proj_cache_k3.clear()
-        self._scocc_quad_cache.clear()
-        self._scocc_proj_cache.clear()
-
-    @staticmethod
-    def _kgrid_compression(kmin, kmax, nk=100):
-        kcenter, power = 0.65, 1.5
-        croot = lambda x: np.sign(x) * np.abs(x)**(1.0 / power)
-        qmin = croot(np.log10(kmin) + kcenter, )
-        qmax = croot(np.log10(kmax) + kcenter, )
-        s = qmin + (qmax - qmin) * np.linspace(0.0, 1.0, nk)
-        return 10.0**(np.sign(s) * np.abs(s)**power - kcenter)
-
-    @staticmethod
-    def _k3_from_t(t, k_lo, k_hi):
-        """Map t in [-1, 1] -> (k3, dk3/dt).
-        All arrays broadcast against `t * (k_lo, k_hi)`. The Jacobian
-        ``dk3/dt`` is needed by the per-pair projection weights (folded via
-        ``dmu12/dt = (dk3/dt) * k3 / (k1 k2)``).
-        """
-        mid = 0.5 * (k_hi + k_lo)
-        half = 0.5 * (k_hi - k_lo)
-        k3 = mid + half * t
-        dk3_dt = half * np.ones_like(t)
-        return k3, dk3_dt
+        _fused_moments_diagrams_jax = staticmethod(jax.jit(
+            _fused_moments_diagrams_jax.__func__, static_argnums=(24, 25)))

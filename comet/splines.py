@@ -1,12 +1,176 @@
 """Spline module."""
 
 import numpy as np
-from scipy.interpolate import make_interp_spline
+from scipy.interpolate import PPoly, make_interp_spline
+
+
+def _build_bucket_table(G, nbucket=2048):
+    r"""Precompute an O(1) segment-lookup table for the breakpoints ``G``.
+
+    Evaluating a piecewise cubic at ``k`` first needs the segment index ``i``
+    with ``G[i] <= k < G[i+1]``. Searching for it per point is what makes the
+    JAX spline path slow: ``jnp.searchsorted`` (used internally by
+    ``interpax``) is emitted by XLA as an unvectorized loop, benchmarking
+    ~23x slower than a gather. Since the knot grid is fixed between calls,
+    the search can be replaced by a direct address computation done once.
+
+    Overlay ``nbucket`` buckets uniform in ``log k``. The bucket holding ``k``
+    is pure arithmetic, ``b = floor((log k - log G[0]) * inv_dlog)``, and
+    ``seg[b]`` gives the segment at that bucket's left edge. Sizing every
+    bucket narrower than the smallest segment means a bucket straddles at
+    most one breakpoint, so one comparison finishes the job::
+
+        i = seg[b];   i += (k >= G[i+1])
+
+    Log spacing suits a quasi-logarithmic k-table: linear spacing there
+    varies by ~380x across the range but log spacing by only ~16x, so log
+    buckets need ~1k entries where linear would need ~6.5k.
+
+    ``PPoly.from_spline`` repeats the boundary knots (a cubic B-spline emits
+    k+1 copies at each end), so ``G`` is not strictly increasing and carries
+    zero-width segments. Bucketing therefore runs over the distinct values
+    ``V``, each mapped back to the largest original index holding it --
+    exactly what ``searchsorted(..., side='right') - 1`` selects.
+
+    Returns ``(seg, last_index, V, log_lo, inv_dlog)``.
+    """
+    V = np.unique(G)
+    last_index = (np.searchsorted(G, V, side='right') - 1).astype(np.int32)
+    logV = np.log(V)
+    lo, hi = logV[0], logV[-1]
+    need = int(np.ceil((hi - lo)/np.diff(logV).min()))
+    if nbucket < need:
+        nbucket = 1 << int(np.ceil(np.log2(need)))
+    inv_dlog = nbucket/(hi - lo)
+    seg = np.clip(np.searchsorted(
+        V, np.exp(lo + np.arange(nbucket)/inv_dlog), side='right') - 1,
+        0, V.size - 1).astype(np.int32)
+    # Verify against searchsorted on the knots, the segment midpoints and both
+    # float neighbours of every knot -- where an off-by-one would hide.
+    probe = np.clip(np.concatenate(
+        [V, np.sqrt(V[:-1]*V[1:]), np.nextafter(V, hi), np.nextafter(V, 0.0)]),
+        V[0], V[-1])
+    b = np.clip(((np.log(probe) - lo)*inv_dlog).astype(int), 0, nbucket - 1)
+    j = seg[b]
+    j = np.minimum(j + (probe >= V[np.minimum(j + 1, V.size - 1)]), V.size - 1)
+    if not np.array_equal(
+            np.clip(last_index[j], 0, G.size - 2),
+            np.clip(np.searchsorted(G, probe, side='right') - 1, 0, G.size - 2)):
+        raise RuntimeError("bucket lookup disagrees with searchsorted")
+    return seg, last_index, V, float(lo), float(inv_dlog)
+
 
 
 def _is_jax_value(x):
     """Return True if x is a JAX array or tracer (not a plain numpy array)."""
     return not isinstance(x, np.ndarray)
+
+
+# Static part of the power-basis export of a not-a-knot cubic spline, keyed on
+# the knots (see _cubic_ppoly_basis)
+_PPOLY_BASIS_CACHE = {}
+
+
+def _cubic_ppoly_basis(x):
+    r"""Static part of the power-basis export of the interpolating spline
+    through ``(x, y)`` (``make_interp_spline``, i.e. cubic not-a-knot, as in
+    :meth:`Splines.build`), for any ``y``.
+
+    :meth:`Splines.as_ppoly` converts the built B-spline with
+    ``PPoly.from_spline``; for fixed knots the coefficients are linear in
+    ``y``, ``coeffs = M @ y``. Returns a dict with the breakpoints ``G``, the
+    map ``M`` (4, nseg, nx), and the bucket table of `_build_bucket_table`
+    (``seg``, ``last_index``, ``V``, ``log_lo``, ``inv_dlog``), which only
+    depend on ``x``. Cached on ``x``. Used by `ppoly_table_jax`.
+    """
+    x = np.ascontiguousarray(x, dtype=np.float64)
+    key = (x.size, x.tobytes())
+    basis = _PPOLY_BASIS_CACHE.get(key)
+    if basis is None:
+        pps = [PPoly.from_spline(make_interp_spline(x, e))
+               for e in np.eye(x.size)]
+        G = np.ascontiguousarray(pps[0].x)
+        M = np.ascontiguousarray(np.stack([pp.c for pp in pps], axis=-1))
+        seg, last_index, V, log_lo, inv_dlog = _build_bucket_table(G)
+        basis = dict(G=G, M=M, seg=seg, last_index=last_index, V=V,
+                     log_lo=log_lo, inv_dlog=inv_dlog)
+        _PPOLY_BASIS_CACHE[key] = basis
+    return basis
+
+
+def ppoly_table_jax(x, y, h=None, id_min=0, id_max=-1):
+    r"""JAX-traceable counterpart of :meth:`Splines.ppoly_table`, for values
+    ``y`` that may be JAX tracers.
+
+    :meth:`Splines.ppoly_table` exports a spline fitted by scipy, which needs
+    concrete values. Since for fixed knots the coefficients are a linear map
+    of ``y`` (`_cubic_ppoly_basis`), the same table is obtained here as
+    ``M @ y``, with the power-law tails of :meth:`Splines.build`. With
+    ``h`` (:math:`h^{-1}\,\mathrm{Mpc}` units, ``use_Mpc=False``) the
+    spline goes through :math:`(x/h, y h^3)`, i.e. it is the spline on
+    ``x`` with :math:`x \to hx`: the knots are scaled by ``scale = 1/h``
+    and the coefficient of :math:`dx^{3-p}` by :math:`h^{6-p}`.
+
+    Parameters
+    ----------
+    x: numpy.ndarray, shape (nx,)
+        Knots (static).
+    y: array, shape (nx, ncoef, nparams)
+        Values of ``ncoef`` functions per parameter set (e.g. the
+        coefficients of a polynomial in :math:`\mu^2`, see
+        `PTEmu._jax_Pdw_ppoly_table`). The tails are those of ``y[:, 0]``.
+    h: array or float, optional
+        Per-parameter-set :math:`h`, or **None** for :math:`\mathrm{Mpc}`
+        units.
+    id_min, id_max: int
+        Indices of the edge points used for the tails, as in
+        :class:`Splines`.
+
+    Returns
+    -------
+    table: dict
+        As :meth:`Splines.ppoly_table`, with the same reference knots ``G``
+        and bucket arrays for every parameter set, ``scale`` (nparams,),
+        ``coeffs`` (4, nseg, ncoef, nparams) and ``tails`` (4, nparams), the
+        last three as JAX arrays.
+    """
+    import jax.numpy as jnp
+    basis = _cubic_ppoly_basis(x)
+    npar = y.shape[-1]
+    coeffs = jnp.einsum('psk,knm->psnm', jnp.asarray(basis['M']), y)
+
+    # power-law tails of y[:, 0], with safe denominators so that no 0/0
+    # enters the gradient
+    y0 = y[:, 0, :]
+    lo, lo2, hi, hi2 = id_min, id_min + 2, id_max, id_max - 2
+    nz_min = y0[lo] != 0
+    ratio_min = jnp.abs(y0[lo2] / jnp.where(nz_min, y0[lo], 1.0))
+    dly_min = jnp.where(nz_min, jnp.log10(jnp.where(nz_min, ratio_min, 1.0)),
+                        0.0)
+    neff_min = dly_min / np.log10(x[lo2] / x[lo])
+    nz_max = y0[hi2] != 0
+    ratio_max = jnp.where(nz_max,
+                          jnp.abs(y0[hi] / jnp.where(nz_max, y0[hi2], 1.0)),
+                          1.0)
+    neff_max = jnp.log10(ratio_max) / np.log10(x[hi] / x[hi2])
+    neff_max = jnp.where(jnp.isnan(neff_max), 0.0, neff_max)
+    y_min = y0[lo]
+    y_max = y0[hi]
+
+    if h is None:
+        scale = jnp.ones(npar)
+    else:
+        h = jnp.broadcast_to(jnp.atleast_1d(jnp.asarray(h)), (npar,))
+        scale = 1.0 / h
+        hpow = h[None, :]**(6 - np.arange(4))[:, None]        # (4, npar)
+        coeffs = coeffs * hpow[:, None, None, :]
+        y_min = y_min * h**3
+        y_max = y_max * h**3
+    tails = jnp.stack([y_min, neff_min, y_max, neff_max], axis=0)
+    return dict(G=basis['G'], scale=scale, seg=basis['seg'],
+                last_index=basis['last_index'], V=basis['V'],
+                log_lo=basis['log_lo'], inv_dlog=basis['inv_dlog'],
+                coeffs=coeffs, tails=tails)
 
 
 class Splines:
@@ -21,8 +185,10 @@ class Splines:
         self.crossover_check = crossover_check
         self.x_raw = None
         self.y_raw = None
+        self._ppoly_table = None
 
     def build(self, x, y, h=None, axis=0):
+        self._ppoly_table = None    # invalidate the cached power-basis export
         self.x_raw = np.asarray(x, dtype=np.float64)  # force native endian (FITS uses big-endian)
         self.y_raw = y
         self.size_last = y.shape[-1]
@@ -151,6 +317,89 @@ class Splines:
                       for n in range(self.size_last)],
                      axis=-1)
         return np.atleast_2d(y)
+
+    def as_ppoly(self):
+        r"""Export the interpolating spline as power-basis piecewise-cubic
+        coefficients plus its power-law extrapolation tails, for consumption
+        by external kernels (e.g. the fused numba/jax bispectrum kernels)
+        that cannot call scipy at runtime.
+
+        The interior is an *exact* basis change of the already-built B-spline
+        (via ``scipy.interpolate.PPoly.from_spline``) — no re-interpolation,
+        reproducing :meth:`eval` to machine precision. The returned ``tails``
+        reproduce the power-law extrapolation :meth:`eval` applies outside
+        ``[breakpoints[0], breakpoints[-1]]`` (which coincide with the edge
+        knots ``x_min``/``x_max``):
+        :math:`P(k) = y_\mathrm{edge}\,(k / k_\mathrm{edge})^{n_\mathrm{eff}}`.
+        The optional high-k *linear* crossover (``crossover_check=True``) is
+        **not** represented; ``Pdw_spline`` does not use it.
+
+        Intended for scalar-valued splines (``ncol == 0``), such as
+        ``Pdw_spline``.
+
+        Returns
+        -------
+        breakpoints : numpy.ndarray, shape ``(nbp, size_last)``
+            Per-z knot vectors. These are identical across z when the spline
+            domain is shared (``use_Mpc=True``, or scalar ``h``), and differ
+            (each ``k_table / h_n``) for a per-z ``h`` array.
+        coeffs : numpy.ndarray, shape ``(4, nbp - 1, size_last)``
+            Power-basis coefficients about each breakpoint:
+            :math:`p_i(k) = c_{0i}\,dk^3 + c_{1i}\,dk^2 + c_{2i}\,dk + c_{3i}`
+            with :math:`dk = k - \mathrm{breakpoints}_i`.
+        tails : numpy.ndarray, shape ``(4, size_last)``
+            Per-z power-law tail parameters
+            ``[y_min, neff_min, y_max, neff_max]``. Below ``breakpoints[0]``
+            use ``y_min * (k / breakpoints[0])**neff_min``; above
+            ``breakpoints[-1]`` use ``y_max * (k / breakpoints[-1])**neff_max``.
+        """
+        n = self.size_last
+        pps = [PPoly.from_spline(self.spline[i]) for i in range(n)]
+        breakpoints = np.stack([pp.x for pp in pps], axis=-1)
+        coeffs = np.stack([pp.c for pp in pps], axis=-1)
+        # Tail parameters mirror extrapolation_min / extrapolation_max_plaw.
+        # The edge amplitudes/slopes are already h-rescaled by build() when
+        # use_Mpc is False, matching the units the breakpoints live in.
+        to_row = lambda a: np.broadcast_to(
+            np.atleast_1d(np.asarray(a, dtype=float)).ravel(), (n,))
+        tails = np.ascontiguousarray(np.stack(
+            [to_row(self.y_min), to_row(self.neff_min),
+             to_row(self.y_max), to_row(self.neff_max)], axis=0))
+        return breakpoints, coeffs, tails
+
+    def ppoly_table(self):
+        r"""Power-basis export of the spline (see :meth:`as_ppoly`) together
+        with an O(1) segment-lookup table (see `_build_bucket_table`), for
+        compiled kernels that evaluate the spline inline.
+
+        The per-z knot vectors are either identical or each ``x / h_n``, i.e.
+        proportional to a single reference grid ``G``, so one lookup table
+        serves every z: segment of ``k`` for z ``m`` is that of
+        ``k / scale[m]`` in ``G``. Cached until the next :meth:`build`.
+
+        Returns
+        -------
+        table: dict
+            ``G`` (nbp,), ``scale`` (nparams,), the bucket arrays ``seg``,
+            ``last_index`` and ``V``, the floats ``log_lo`` and ``inv_dlog``,
+            ``coeffs`` (4, nbp - 1, nparams) and ``tails`` (4, nparams) as in
+            :meth:`as_ppoly`.
+        """
+        if self._ppoly_table is None:
+            breakpoints, coeffs, tails = self.as_ppoly()
+            G = np.ascontiguousarray(breakpoints[:, 0])
+            scale = np.ascontiguousarray(breakpoints[0, :]/breakpoints[0, 0])
+            if not np.allclose(breakpoints, G[:, None]*scale[None, :],
+                               rtol=1e-12):
+                raise ValueError("Knot vectors are not proportional across "
+                                 "the parameter batch.")
+            seg, last_index, V, log_lo, inv_dlog = _build_bucket_table(G)
+            self._ppoly_table = dict(
+                G=G, scale=scale, seg=seg, last_index=last_index, V=V,
+                log_lo=log_lo, inv_dlog=inv_dlog,
+                coeffs=np.ascontiguousarray(coeffs),
+                tails=np.ascontiguousarray(tails))
+        return self._ppoly_table
 
     def _eval_spline(self, x):
         y = np.stack([np.squeeze(self.spline[n](x)) \

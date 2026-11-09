@@ -32,6 +32,24 @@ are therefore fully differentiable:
 
 ---
 
+## `comet/bispectrum.py` — JAX Pdw evaluation in the fused kernels
+
+Upstream's file, except the JAX spline evaluation used by
+`_fused_moments_jax` / `_fused_moments_diagrams_jax` (same values to
+rounding; the numba kernels are unchanged):
+
+- `_ppoly_eval_jax`: coefficients gathered from the flattened table at a
+  computed index, and one log + one exp per leg (shared by the bucket lookup
+  and both power-law tails) instead of three logs and two exps
+- `_ppoly_eval_legs_jax`: the three legs behind `lax.optimization_barrier`,
+  so XLA evaluates each once instead of inside every diagram's fusion
+- optional `damp` argument of both kernels (`extra_damping`)
+
+Kernel time, 2628 pairs, `Pdw_mu='leg'`: `Bell_Sugi` 46 → 27 ms, its
+gradient 344 → 283 ms, `BX_ell_Sugi` 229 → 110 ms (VDG_infty).
+
+---
+
 ## `comet/PTEmu.py` — main changes (~1 000 lines added, ~350 modified)
 
 ### New module-level utilities
@@ -50,9 +68,10 @@ are therefore fully differentiable:
 | Method | Purpose |
 |---|---|
 | `_init_jax_gp_arrays()` | Extracts GP hyperparameters from fitted sklearn models into plain numpy arrays so they can be captured as static constants during JAX tracing |
-| `_jax_pdw_at_ktable(ell_for_recon, mu)` | JAX evaluation of the damped power spectrum Pdw at the emulator k-table points (bridge to the bispectrum path) |
-| `_jax_bell_sugi(...)` | JAX-native `Bell_Sugi`: bias-combined Sugiyama bispectrum multipoles via numerical projection, calling `BispectrumNum._bispectrum_5d_jax_diagrams` |
-| `_jax_bx_ell_sugi(...)` | JAX-native `BX_ell_Sugi`: diagram-decomposed Sugiyama bispectrum multipoles; when `X_list` is provided returns `{ll: Array(npair, nx)}` matching the numpy path's format |
+| `_jax_Pdw_ppoly_table(ell_for_recon)` | JAX counterpart of `_PdwEvaluator.ppoly_table`: the power-basis table of the exact Pdw spline (as a polynomial in mu^2 for `Pdw_mu='leg'`), built from the traced emulator outputs by `splines.ppoly_table_jax` (the fixed linear map of `splines._cubic_ppoly_basis`) |
+| `_jax_sugi(...)` | Shared JAX Sugiyama path: static geometry and factorised-projection weights, traced Pdw table / AP / biases, fed to `BispectrumNum._fused_moments_jax` (or `_fused_moments_diagrams_jax`), called once on all the pairs |
+| `_jax_bell_sugi(...)` | JAX-native `Bell_Sugi`, on `_jax_sugi` |
+| `_jax_bx_ell_sugi(...)` | JAX-native `BX_ell_Sugi`, on `_jax_sugi`; when `X_list` is provided returns `{ll: Array(npair, nx)}` matching the numpy path's format |
 
 ### Dual-path modifications to existing methods
 
@@ -86,8 +105,11 @@ One-line fix for JAX compatibility.
 - Supported `model` values: `VDG_infty`, `EFT` (and `_nonu` variants).  `RS`
   (real-space) is not wired through desilike.
 - Supported `de_model` values: `'lambda'`, `'w0'`, `'w0wa'`.
-- Bispectrum: `Bell_Sugi` / `BX_ell_Sugi` with `model='VDG_infty'`,
-  `mu12_transform='k3'`, `cnloB=0`.
+- Bispectrum: `Bell_Sugi` / `BX_ell_Sugi` with `model='VDG_infty'` or
+  `'EFT'` (both `cnloB` types), any `mu12_transform`, and Pdw either at each
+  leg's mu (`change_Pdw_mu('leg')`, default) or at a fixed mu
+  (`change_Pdw_mu(0.6)` reproduces the previous results). `Bell_Scocc` is
+  numpy only.
 - `use_Mpc=False` (desilike always uses `h⁻¹ Mpc` units).
 - JIT vs eager numerical agreement: power-spectrum poles agree at
   `rtol ~ 2×10⁻³` (XLA floating-point fusion in the GP path is amplified
