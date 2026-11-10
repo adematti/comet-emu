@@ -60,6 +60,58 @@ def _build_bucket_table(G, nbucket=2048):
     return seg, last_index, V, float(lo), float(inv_dlog)
 
 
+# Linear-bucket lookup tables, keyed on the breakpoints (see
+# _linear_bucket_table)
+_LINEAR_BUCKET_CACHE = {}
+
+
+def _linear_bucket_table(G):
+    r"""Segment lookup for the JAX spline evaluation, with buckets uniform in
+    ``k`` instead of ``log k`` (see `_build_bucket_table`).
+
+    The bucket is then found without a log, which matters on the JAX path:
+    XLA evaluates the lookup in a separate pass over the nodes, and an f64
+    log costs as much as the rest of that pass. Linear buckets need more
+    entries (~5k for the emulator k-table), which is still small. As in
+    `_build_bucket_table`, every bucket is narrower than the smallest
+    segment, so the lookup is ``j = seg[b]; j += (q >= V[j+1])``, and the
+    clipped ``last_index[j]`` and the matching breakpoint are tabulated per
+    ``j`` so that the coefficients are one lookup away. Cached on ``G``.
+
+    Returns ``(seg, iseg, gseg, V, lo, inv_dk)``, with ``iseg[j]`` the
+    segment of ``G`` starting at ``V[j]`` and ``gseg[j] = G[iseg[j]]``.
+    """
+    G = np.ascontiguousarray(G, dtype=np.float64)
+    key = (G.size, G.tobytes())
+    hit = _LINEAR_BUCKET_CACHE.get(key)
+    if hit is not None:
+        return hit
+    V = np.unique(G)
+    last_index = np.searchsorted(G, V, side='right') - 1
+    iseg = np.clip(last_index, 0, G.size - 2).astype(np.int32)
+    lo, hi = V[0], V[-1]
+    nbucket = int(np.ceil((hi - lo)/np.diff(V).min()))
+    inv_dk = nbucket/(hi - lo)
+    seg = np.clip(np.searchsorted(V, lo + np.arange(nbucket)/inv_dk,
+                                  side='right') - 1,
+                  0, V.size - 1).astype(np.int32)
+    # Verify against searchsorted, as in _build_bucket_table
+    probe = np.clip(np.concatenate(
+        [V, 0.5*(V[:-1] + V[1:]), np.nextafter(V, np.inf),
+         np.nextafter(V, 0.0)]), lo, hi)
+    b = np.clip(((probe - lo)*inv_dk).astype(int), 0, nbucket - 1)
+    j = seg[b]
+    j = np.minimum(j + (probe >= V[np.minimum(j + 1, V.size - 1)]), V.size - 1)
+    if not np.array_equal(
+            iseg[j],
+            np.clip(np.searchsorted(G, probe, side='right') - 1, 0, G.size - 2)):
+        raise RuntimeError("bucket lookup disagrees with searchsorted")
+    out = (seg, iseg, np.ascontiguousarray(G[iseg]), V, float(lo),
+           float(inv_dk))
+    _LINEAR_BUCKET_CACHE[key] = out
+    return out
+
+
 
 def _is_jax_value(x):
     """Return True if x is a JAX array or tracer (not a plain numpy array)."""

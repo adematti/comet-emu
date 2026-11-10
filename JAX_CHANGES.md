@@ -29,24 +29,59 @@ are therefore fully differentiable:
   are JAX arrays
 - `_eval_varx_jax()`: new method for JAX-native spline evaluation using
   `jnp.interp` per column, returning a JAX array
+- `_linear_bucket_table()`: segment lookup with buckets uniform in k (no log
+  per node), cached on the breakpoints, for the JAX bispectrum kernels
 
 ---
 
-## `comet/bispectrum.py` — JAX Pdw evaluation in the fused kernels
+## `comet/bispectrum.py` — JAX fused kernels
 
-Upstream's file, except the JAX spline evaluation used by
-`_fused_moments_jax` / `_fused_moments_diagrams_jax` (same values to
-rounding; the numba kernels are unchanged):
+Upstream's file, except the JAX kernels `_fused_moments_jax` /
+`_fused_moments_diagrams_jax`, rewritten for XLA:CPU. Same values as the
+numba kernels to rounding (≤ 2e-15, checked on Bell/BX, VDG_infty and EFT
+with both counterterm types, `extra_damping`, `'logk3'`, a fixed `Pdw_mu`,
+and Scoccimarro); the numba kernels are unchanged:
 
-- `_ppoly_eval_jax`: coefficients gathered from the flattened table at a
-  computed index, and one log + one exp per leg (shared by the bucket lookup
-  and both power-law tails) instead of three logs and two exps
-- `_ppoly_eval_legs_jax`: the three legs behind `lax.optimization_barrier`,
-  so XLA evaluates each once instead of inside every diagram's fusion
+- spline table of the JAX kernels from `_jax_spline_table` (linear buckets,
+  segment index and breakpoint tabulated per bucket); `_ppoly_eval_jax` only
+  takes a log for the power-law tails
+- leg 1, which only depends on (pair, mu1), evaluated once on that grid
+  (`_legs_jax`)
+- model terms selected statically (`_jax_kernel_flags`): no W_infty
+  exponentials for EFT, no `cB1`/`cB2` terms unless IvaPhiNis, no `cnloB`
+  terms unless EggLeeSco
+- reciprocals and `rsqrt` instead of most divisions, `den**1.5` written with
+  `rsqrt`
+- diagram kernel: each diagram column is cheap arithmetic on per-node pieces
+  shared by all columns (`_pair_pieces_jax`, `_stoch_part_jax`), with the Pdw
+  of each leg kept in memory by `_keep_jax`. On XLA:CPU
+  `lax.optimization_barrier` does **not** stop fusion, so the previous
+  barriers were no-ops and every diagram column re-evaluated the spline from
+  16 stored coefficient arrays per leg; dividing by a traced 1.0 does, since
+  XLA never duplicates a division
+- diagram kernel on the (pair, mu12, mu1, phi) node grid (`_legs_jax(...,
+  mu12_major=True)`), so that the (mu1, phi) nodes contracted with `ang` are
+  contiguous: each diagram column is projected by a plain matmul with `ang`
+  and a small contraction with `rad`. On the (pair, mu1, mu12, phi) grid the
+  einsum made XLA stack the diagrams and transpose the whole stack (~70 MB)
+  first
 - optional `damp` argument of both kernels (`extra_damping`)
 
-Kernel time, 2628 pairs, `Pdw_mu='leg'`: `Bell_Sugi` 46 → 27 ms, its
-gradient 344 → 283 ms, `BX_ell_Sugi` 229 → 110 ms (VDG_infty).
+Speed-up of the forward pass of the full model (emulator included, jit),
+for 2628 pairs, 5 multipoles and quad (7, 16, 5) `'k3'` (old and new code
+timed alternately on the same machine; the factors depend on the hardware
+and on the number of pairs):
+
+| | VDG_infty | EFT |
+|---|---|---|
+| `Bell_Sugi` | x1.4 | x1.5 |
+| `BX_ell_Sugi`, desilike's 14 diagrams | x5.2 | x6.1 |
+| `BX_ell_Sugi`, all diagrams | x5.7 | x7.7 |
+| `BX_ell_Sugi`, desilike's diagrams, (4, 28, 3) `'logk3'` | | x4.4 |
+
+The emulator itself (mostly the GP triangular solves of the stable
+prediction) is unchanged and takes about a third of `Bell_Sugi` now, so
+`Bell_Sugi` gains less with fewer pairs.
 
 ---
 

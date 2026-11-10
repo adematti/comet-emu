@@ -5,6 +5,7 @@ import numba as nb
 import pickle
 from scipy.special import factorial, lpmv
 from comet.grid import Grid, CtypedGrid
+from comet.splines import _linear_bucket_table
 
 nb.config.THREADING_LAYER = 'workqueue'
 
@@ -2785,8 +2786,8 @@ def _bisp_node_total(k1, k2, k3, mu1, mu2, mu3, pd1, pd2, pd3,
                      ccB2, inb, iqs):
     """Bias-weighted VDG bispectrum at one quadrature node (AP-corrected
     wavemodes and cosines, ``pd*`` the Pdw of each leg), used by
-    `BispectrumNum._fused_moments_njit`. Its JAX counterpart is
-    `BispectrumNum._bispectrum_5d_jax_fused`."""
+    `BispectrumNum._fused_moments_njit`. Its JAX counterpart is the node
+    computation of `BispectrumNum._fused_moments_jax`."""
     mu1_sq = mu1*mu1; mu2_sq = mu2*mu2; mu3_sq = mu3*mu3
     # Z1 includes the IvaPhiNis counterterms. Z2 is written out
     # explicitly so its velocity term uses the bare Z1 = b1 + f mu^2.
@@ -2880,7 +2881,7 @@ def _bisp_node_diagrams(k1, k2, k3, mu1, mu2, mu3, pd1, pd2, pd3, ff, av,
     ``sum_i S[stoch_part[c]] W_i P_i / qiso6`` (times ``f^2 k_i^2 mu_i^2``
     if ``stoch_ctr[c]``). See `BispectrumNum._build_diagram_tables` for the
     A, Z and S pieces. Used by `BispectrumNum._fused_moments_diagrams_njit`;
-    its JAX counterpart is `BispectrumNum._bispectrum_5d_jax_diagrams`."""
+    its JAX counterpart is `BispectrumNum._fused_moments_diagrams_jax`."""
     n_terms = tree_col.size
     n_tree = tree_ctr.size
     n_stoch = stoch_part.size
@@ -2999,8 +3000,8 @@ def _ppoly_segment(q, j, V, seg, log_lo, inv_dlog):
     table of `Splines.ppoly_table`; otherwise by stepping from the guess
     ``j``, which is cheaper (no log) when ``q`` is in the guessed segment or
     a neighbouring one, as between consecutive quadrature nodes. Both give
-    the same index. Its JAX counterpart is `BispectrumNum._ppoly_segment_jax`
-    (bucket table only)."""
+    the same index. The JAX path (`BispectrumNum._ppoly_eval_jax`) uses
+    linear buckets instead (`comet.splines._linear_bucket_table`)."""
     nv = V.size
     if j < 0:
         b = min(max(int((np.log(q) - log_lo)*inv_dlog), 0), seg.size - 1)
@@ -4063,6 +4064,27 @@ class BispectrumNum:
                 np.atleast_1d(params['cB1'])), np.ascontiguousarray(
                 np.atleast_1d(params['cB2']))
 
+    def _jax_kernel_flags(self):
+        """Static model switches of the JAX kernels, ``(vdg, ctr)``: whether
+        the VDG_infty damping is on, and the counterterm type (None,
+        'EggLeeSco' or 'IvaPhiNis'), as `_get_damping_arrays` and
+        `_get_ctr_arrays` select them."""
+        return ('VDG_infty' in self.model,
+                self.cnlo_type if self._has_ctr() else None)
+
+    @staticmethod
+    def _jax_spline_table(tab):
+        """Spline table of the JAX kernels (see `_ppoly_eval_jax`) from the
+        tuple ``(G, scale, seg, last_index, V, log_lo, inv_dlog, coeffs,
+        tails)`` of `Splines.ppoly_table` (or `PTEmu._jax_Pdw_ppoly_table`),
+        whose breakpoints ``G`` are static: ``(scale, coeffs, tails, seg,
+        iseg, gseg, V, lo, inv_dk, log_g0, log_g1)``, with the linear
+        buckets of `comet.splines._linear_bucket_table`."""
+        G = np.asarray(tab[0], dtype=float)
+        seg, iseg, gseg, V, lo, inv_dk = _linear_bucket_table(G)
+        return (tab[1], tab[7], tab[8], seg, iseg, gseg, V, lo, inv_dk,
+                float(np.log(G[0])), float(np.log(G[-1])))
+
     @staticmethod
     def _merge_phi_nodes(cphi, ang):
         """Merge the ``phi`` nodes with the same ``cos(phi)``.
@@ -4135,9 +4157,12 @@ class BispectrumNum:
             bias = (b1, b2, g2, f, avir, sv, MB0, NP0, cnloB, cB1, cB2,
                     inv_nbar, inv_qiso6)
             if self.backend == 'jax':
+                stab = self._jax_spline_table(tab)
+                vdg, ctr = self._jax_kernel_flags()
                 out = self._jax_blocks(
                     lambda g, r: self._fused_moments_jax(
-                        *g, *tab, *bias, jnp.asarray(ang[ang_id]), r),
+                        *g, stab, *bias, jnp.asarray(ang[ang_id]), r,
+                        vdg=vdg, ctr=ctr),
                     geom, rad)
             else:
                 out = np.empty((n_pair, nq, nparams))
@@ -4155,10 +4180,12 @@ class BispectrumNum:
             tree_keep, stoch_keep)
         if self.backend == 'jax':
             ang_q = jnp.asarray(ang[ang_id])
+            stab = self._jax_spline_table(tab)
+            vdg = self._jax_kernel_flags()[0]
             out_t, out_s = self._jax_blocks(
                 lambda g, r: self._fused_moments_diagrams_jax(
-                    *g, *tab, f, avir, sv, inv_qiso6, ang_q, r, tree_spec,
-                    stoch_spec), geom, rad, n_out=2)
+                    *g, stab, f, avir, sv, inv_qiso6, ang_q, r, tree_spec,
+                    stoch_spec, vdg=vdg), geom, rad, n_out=2)
         else:
             out_t = np.empty((n_pair, nq, nparams, len(tree_keep)))
             out_s = np.empty((n_pair, nq, nparams, len(stoch_keep)))
@@ -4384,219 +4411,146 @@ class BispectrumNum:
     # JAX kernels
 
     if HAS_JAX:
-        @staticmethod
-        def _bispectrum_5d_jax_fused(
-                k1, k2, k3, mu1, mu2, mu3,
-                pdw1, pdw2, pdw3,
-                b1, b2, g2, f, avir, sv, MB0, NP0,
-                cnloB, cB1, cB2,
-                inv_nbar, inv_qiso6):
-            """JAX-traced fused bispectrum on the broadcast grid.
-            """
-            mu1_sq = mu1*mu1
-            mu2_sq = mu2*mu2
-            mu3_sq = mu3*mu3
-            # Z1 includes the IvaPhiNis counterterms. Z2 is written out
-            # explicitly so its velocity term uses the bare Z1 = b1 + f mu^2.
-            Z1_1 = b1 + f*mu1_sq - cB1*(k1*k1)*mu1_sq - cB2*(k1*k1)*mu1_sq*mu1_sq
-            Z1_2 = b1 + f*mu2_sq - cB1*(k2*k2)*mu2_sq - cB2*(k2*k2)*mu2_sq*mu2_sq
-            Z1_3 = b1 + f*mu3_sq - cB1*(k3*k3)*mu3_sq - cB2*(k3*k3)*mu3_sq*mu3_sq
+        # Per-node pieces of `_fused_moments_jax`. Each leg is a dict of the
+        # quantities shared by the tree and stochastic terms (`_leg_jax`),
+        # so that leg 1, which only depends on (pair, mu1), is computed once
+        # on that grid. ``vdg`` and ``ctr`` select the model terms
+        # statically (see `_jax_kernel_flags`): the terms of absent
+        # parameters are not evaluated, instead of being multiplied by zero.
 
-            def _leg(ki, kj, kk, mui, muj, muk, pp, Z1_i, Z1_j):
-                muij = (kk*kk - ki*ki - kj*kj) / (2.0*ki*kj)
-                muij2 = muij*muij
-                ratio = 0.5*(ki/kj + kj/ki)*muij
-                F2 = 5.0/7.0 + 2.0/7.0*muij2 + ratio
+        @staticmethod
+        def _leg_jax(kp, mup, pd, inv_kp, b1, f, cB1, cB2, ctr):
+            """AP-corrected wavemode, cosine, Pdw and 1/k of one leg, and the
+            products used by `_tree_leg_jax` and `_stoch_leg_jax`. Z1
+            includes the IvaPhiNis counterterms."""
+            mu_sq = mup*mup
+            ksq = kp*kp
+            u = ksq*mu_sq
+            Z1 = b1 + f*mu_sq
+            if ctr == 'IvaPhiNis':
+                Z1 = Z1 - cB1*u - cB2*u*mu_sq
+            return dict(mu_sq=mu_sq, ksq=ksq, u=u, Z1=Z1, pd=pd,
+                        a=mup*inv_kp, km=kp*mup, ik=inv_kp)
+
+        @staticmethod
+        def _tree_leg_jax(Li, Lj, Lk, b1, b2, g2, f):
+            """``2 Z1_i Z1_j Z2(k_i, k_j) P_i P_j``, with the angle between
+            ``k_i`` and ``k_j`` from the three (AP-corrected) sides. Z2 is
+            written with the bare ``Z1 = b1 + f mu^2`` in its velocity term,
+            and ``a = mu/k``."""
+            w = Li['ik']*Lj['ik']
+            muij = 0.5*(Lk['ksq'] - Li['ksq'] - Lj['ksq'])*w
+            muij2 = muij*muij
+            ratio = 0.5*(Li['ksq'] + Lj['ksq'])*w*muij
+            F2 = 5.0/7.0 + 2.0/7.0*muij2 + ratio
+            G2 = 3.0/7.0 + 4.0/7.0*muij2 + ratio
+            K2 = b1*F2 + 0.5*b2 + g2*(muij2 - 1.0)
+            Z2 = (K2 + f*Lk['mu_sq']*G2
+                  - 0.5*f*Lk['km']*(b1*(Li['a'] + Lj['a'])
+                                    + f*(Lj['mu_sq']*Li['a']
+                                         + Li['mu_sq']*Lj['a'])))
+            return 2.0*Li['Z1']*Lj['Z1']*Z2*(Li['pd']*Lj['pd'])
+
+        @staticmethod
+        def _stoch_leg_jax(L, b1, f, avir, sv, MB0, NP0, cnloB, vdg, ctr):
+            """Stochastic term of one leg, without 1/nbar:
+            ``W_i (b1 MB0 + f NP0 mu_i^2) Z1_i P_i``, times the EggLeeSco
+            counterterm."""
+            t = (b1*MB0 + f*NP0*L['mu_sq'])*L['Z1']*L['pd']
+            if ctr == 'EggLeeSco':
+                t = t*(1.0 + cnloB*f*f*L['u'])
+            if vdg:
+                lam = -f*f*L['u']
+                rs = jax.lax.rsqrt(1.0 - lam*avir*avir)
+                t = t*jnp.exp(lam*sv*sv*rs*rs)*rs
+            return t
+
+        @staticmethod
+        def _pair_pieces_jax(Li, Lj, Lk, f, a_need, b_need):
+            """Pieces ``A[a]`` and ``Z[b] P_i P_j`` of the tree diagrams for
+            the leg pair ``(i, j; k)`` (see `_BASE_TREE_TERMS`), for the
+            ``a`` and ``b`` in **a_need** and **b_need**, as in
+            `_bisp_node_diagrams`."""
+            w = Li['ik']*Lj['ik']
+            muij = 0.5*(Lk['ksq'] - Li['ksq'] - Lj['ksq'])*w
+            muij2 = muij*muij
+            ratio = 0.5*(Li['ksq'] + Lj['ksq'])*w*muij
+            pp = Li['pd']*Lj['pd']
+            fkm = f*Lk['km']
+            ai = fkm*Li['a']
+            aj = fkm*Lj['a']
+            Z = {}
+            if 0 in b_need:
+                Z[0] = (5.0/7.0 + 2.0/7.0*muij2 + ratio - 0.5*(ai + aj))*pp
+            if 1 in b_need:
+                Z[1] = 0.5*pp
+            if 2 in b_need:
+                Z[2] = (muij2 - 1.0)*pp
+            if 3 in b_need:
                 G2 = 3.0/7.0 + 4.0/7.0*muij2 + ratio
-                K2 = b1*F2 + 0.5*b2 + g2*(muij2 - 1.0)
-                muk_neg = -muk
-                Z2 = (K2 + f*muk_neg*muk_neg*G2
-                      + 0.5*f*kk*muk_neg*(b1*(mui/ki + muj/kj)
-                                          + f*mui*muj*(muj/ki + mui/kj)))
-                return 2.0*Z1_i*Z1_j*Z2 * pp
-
-            tree = (_leg(k1, k2, k3, mu1, mu2, mu3, pdw1*pdw2, Z1_1, Z1_2)
-                    + _leg(k2, k3, k1, mu2, mu3, mu1, pdw2*pdw3, Z1_2, Z1_3)
-                    + _leg(k3, k1, k2, mu3, mu1, mu2, pdw3*pdw1, Z1_3, Z1_1))
-
-            kmu1_sq = k1*k1*mu1_sq
-            kmu2_sq = k2*k2*mu2_sq
-            kmu3_sq = k3*k3*mu3_sq
-            lamb2 = -0.5*f*f*(kmu1_sq + kmu2_sq + kmu3_sq)
-            denom = 1.0 - lamb2*avir*avir
-            winfty = jnp.exp(lamb2*sv*sv/denom) / denom**1.5
-            eft = 1.0 + cnloB*f*f*(kmu1_sq + kmu2_sq + kmu3_sq)
-
-            def _stoch_leg(ki, mui, mui_sq, Z1_i, pdw_i):
-                lam = -f*f*ki*ki*mui_sq
-                den = 1.0 - lam*avir*avir
-                W = jnp.exp(lam*sv*sv/den) / den**0.5
-                return W * (b1*MB0 + f*NP0*mui_sq) * Z1_i * pdw_i * (1.0 + cnloB*f*f*ki*ki*mui_sq)
-
-            stoch = (_stoch_leg(k1, mu1, mu1_sq, Z1_1, pdw1)
-                     + _stoch_leg(k2, mu2, mu2_sq, Z1_2, pdw2)
-                     + _stoch_leg(k3, mu3, mu3_sq, Z1_3, pdw3)) * inv_nbar
-            return (tree*eft*winfty + stoch) * inv_qiso6
-
-        _bispectrum_5d_jax_fused = staticmethod(
-            jax.jit(_bispectrum_5d_jax_fused.__func__))
+                Z[3] = (f*Lk['mu_sq']*G2
+                        - 0.5*f*(ai*Lj['mu_sq'] + aj*Li['mu_sq']))*pp
+            mi, mj = Li['mu_sq'], Lj['mu_sq']
+            A = {0: 1.0, 1: f*(mi + mj), 2: f*f*mi*mj}
+            if max(a_need) >= 3:
+                ui, uj = Li['u'], Lj['u']
+                vi, vj = ui*mi, uj*mj
+                A.update({3: -(ui + uj), 4: -f*(mi*uj + mj*ui),
+                          5: -(vi + vj), 6: -f*(mi*vj + mj*vi), 7: ui*uj,
+                          8: ui*vj + vi*uj, 9: vi*vj})
+            return A, Z
 
         @staticmethod
-        def _bispectrum_5d_jax_diagrams(
-                k1, k2, k3, mu1, mu2, mu3,
-                pdw1, pdw2, pdw3,
-                f, avir, sv, inv_qiso6,
-                tree_spec, stoch_spec):
-            """JAX-traced per-diagram bispectrum on the broadcast grid.
-
-            Mirrors `_bisp_node_diagrams`. ``tree_spec`` is a static
-            tuple of ``(((a, b), ...), ctr)`` per requested tree diagram and
-            ``stoch_spec`` a static tuple of ``(s, ctr)`` per requested
-            stochastic diagram; JAX JIT specializes per combination.
-            """
-            mu1_sq = mu1*mu1
-            mu2_sq = mu2*mu2
-            mu3_sq = mu3*mu3
-            f2 = f*f
-
-            kmu1_sq = k1*k1*mu1_sq
-            kmu2_sq = k2*k2*mu2_sq
-            kmu3_sq = k3*k3*mu3_sq
-            kmu_sum = kmu1_sq + kmu2_sq + kmu3_sq
-
-            if tree_spec:
-                lamb2 = -0.5*f2*kmu_sum
-                denom = 1.0 - lamb2*avir*avir
-                winfac = jnp.exp(lamb2*sv*sv/denom) / denom**1.5 * inv_qiso6
-                need_ctr = any(a >= 3 for terms, _ in tree_spec
-                               for a, _ in terms)
-
-                def _leg(ki, kj, kk, mui, muj, muk,
-                         mui_sq, muj_sq, muk_sq, ui, uj):
-                    muij = (kk*kk - ki*ki - kj*kj) / (2.0*ki*kj)
-                    muij2 = muij*muij
-                    ratio = 0.5*(ki/kj + kj/ki)*muij
-                    F2 = 5.0/7.0 + 2.0/7.0*muij2 + ratio
-                    G2 = 3.0/7.0 + 4.0/7.0*muij2 + ratio
-                    fkm = f*kk*muk
-                    a_i = fkm * mui/ki
-                    a_j = fkm * muj/kj
-                    Z = (F2 - 0.5*(a_i + a_j),
-                         0.5,
-                         muij2 - 1.0,
-                         f*muk_sq*G2 - 0.5*f*(a_i*muj_sq + a_j*mui_sq))
-                    A = [1.0, f*(mui_sq + muj_sq), f2*mui_sq*muj_sq]
-                    if need_ctr:
-                        vi = ui*mui_sq
-                        vj = uj*muj_sq
-                        A += [-(ui + uj),
-                              -f*(mui_sq*uj + muj_sq*ui),
-                              -(vi + vj),
-                              -f*(mui_sq*vj + muj_sq*vi),
-                              ui*uj,
-                              ui*vj + vi*uj,
-                              vi*vj]
-                    return A, Z
-
-                legs = (
-                    _leg(k1, k2, k3, mu1, mu2, mu3,
-                         mu1_sq, mu2_sq, mu3_sq, kmu1_sq, kmu2_sq)
-                    + (pdw1*pdw2,),
-                    _leg(k2, k3, k1, mu2, mu3, mu1,
-                         mu2_sq, mu3_sq, mu1_sq, kmu2_sq, kmu3_sq)
-                    + (pdw2*pdw3,),
-                    _leg(k3, k1, k2, mu3, mu1, mu2,
-                         mu3_sq, mu1_sq, mu2_sq, kmu3_sq, kmu1_sq)
-                    + (pdw3*pdw1,),
-                )
-                spt_list = []
-                for terms, ctr in tree_spec:
-                    d = sum(2.0*A[a]*Z[b]*pp for A, Z, pp in legs
-                            for a, b in terms)
-                    d = d * winfac
-                    if ctr:
-                        d = d * f2*kmu_sum
-                    spt_list.append(d)
-                spt_shape = (k1*mu1*pdw1*f*avir*sv*inv_qiso6).shape
-                spt_stack = jnp.stack(
-                    [jnp.broadcast_to(d, spt_shape) for d in spt_list],
-                    axis=-1)
-            else:
-                spt_shape = (k1*mu1*pdw1*f*avir*sv*inv_qiso6).shape
-                spt_stack = jnp.zeros(spt_shape + (0,))
-
-            if stoch_spec:
-                def _stoch_parts(mui_sq, ui, pdw_i):
-                    lam = -f2*ui
-                    den = 1.0 - lam*avir*avir
-                    wp = jnp.exp(lam*sv*sv/den) / den**0.5 * pdw_i * inv_qiso6
-                    vi = ui*mui_sq
-                    S = (1.0, f*mui_sq, f2*mui_sq*mui_sq, -ui,
-                         -f*mui_sq*ui, -vi, -f*mui_sq*vi)
-                    return S, wp, ui
-                legs = (_stoch_parts(mu1_sq, kmu1_sq, pdw1),
-                        _stoch_parts(mu2_sq, kmu2_sq, pdw2),
-                        _stoch_parts(mu3_sq, kmu3_sq, pdw3))
-                stoch_shape = (k1*mu1*pdw1*f*avir*sv*inv_qiso6).shape
-                stoch_list = []
-                for s, ctr in stoch_spec:
-                    d = sum(S[s]*wp*(f2*ui if ctr else 1.0)
-                            for S, wp, ui in legs)
-                    stoch_list.append(jnp.broadcast_to(d, stoch_shape))
-                stoch_stack = jnp.stack(stoch_list, axis=-1)
-            else:
-                stoch_shape = (k1*mu1*pdw1*f*avir*sv*inv_qiso6).shape
-                stoch_stack = jnp.zeros(stoch_shape + (0,))
-
-            return spt_stack, stoch_stack
-
-        _bispectrum_5d_jax_diagrams = staticmethod(
-            jax.jit(_bispectrum_5d_jax_diagrams.__func__,
-                    static_argnums=(13, 14)))
+        def _stoch_part_jax(L, f, s):
+            """Piece ``s`` of the stochastic diagrams of one leg (see
+            `_BASE_STOCH_PARTS`)."""
+            m, u = L['mu_sq'], L['u']
+            return (1.0, f*m, f*f*m*m, -u, -f*m*u, -u*m, -f*m*u*m)[s]
 
         @staticmethod
-        def _ppoly_segment_jax(q, lq, V, seg, log_lo, inv_dlog):
-            """JAX counterpart of `_ppoly_segment`, with the bucket table
-            only (a guessed segment brings nothing to vectorised code), for
-            ``q`` and its log ``lq``."""
-            nv, nbucket = V.shape[0], seg.shape[0]
-            b = jnp.clip(((lq - log_lo)*inv_dlog).astype(jnp.int32),
-                         0, nbucket - 1)
-            j = seg[b]
-            return jnp.minimum(j + (q >= V[jnp.minimum(j + 1, nv - 1)]),
-                               nv - 1)
+        def _keep_jax(x, unit):
+            """``x``, stored once by XLA instead of being recomputed by each of
+            its consumers. On CPU, `jax.lax.optimization_barrier` does not
+            stop XLA from fusing cheap producers into every consumer: a
+            value used by many diagram columns is then recomputed in each.
+            XLA does not duplicate a division, so dividing by ``unit``, a
+            traced 1.0 (one XLA cannot constant-fold), keeps ``x`` (exactly)
+            in memory."""
+            return x/unit
 
         @staticmethod
-        def _ppoly_eval_jax(k, mu2, G, scale, seg, last_index, V, log_lo,
-                            inv_dlog, coeffs, tails):
+        def _ppoly_eval_jax(k, mu2, stab):
             """JAX counterpart of `_ppoly_node`, for ``k`` and ``mu2`` with
-            the parameter batch along their last axis.
+            the parameter batch along their last axis and the spline table
+            ``stab`` of `_jax_spline_table`.
 
             Arranged for XLA rather than as a copy of the numba code (same
-            values, to rounding): the coefficients are gathered from the
-            flattened table at a computed index (XLA handles these 1-D
-            gathers much better than indexing the 3-D table), and the log of
-            ``k`` serves both the bucket lookup and the power-law tails, so
-            each leg costs one log and one exp instead of three logs and two
-            exps."""
-            nk = G.shape[0]
+            values, to rounding): the segment comes from the linear buckets
+            of `comet.splines._linear_bucket_table`, so the lookup (which
+            XLA evaluates in a pass of its own) needs no log, and the
+            coefficients are gathered from the flattened table at a computed
+            index (XLA handles these 1-D gathers much better than indexing
+            the 3-D table). The log of ``k`` is only taken for the power-law
+            tails, which share one exp."""
+            scale, coeffs, tails, seg, iseg, gseg, V, lo, inv_dk, log_g0, \
+                log_g1 = stab
+            nv, nbucket = V.shape[0], seg.shape[0]
             nmu2, npar = coeffs.shape[2], coeffs.shape[3]
-            lraw = jnp.log(k/scale)                  # log of k in units of G
-            log_g0, log_g1 = jnp.log(G[0]), jnp.log(G[-1])
-            q = jnp.clip(k/scale, V[0], V[-1])
-            lq = jnp.clip(lraw, jnp.log(V[0]), jnp.log(V[-1]))
-            j = BispectrumNum._ppoly_segment_jax(q, lq, V, seg, log_lo,
-                                                 inv_dlog)
-            i = jnp.clip(last_index[j], 0, nk - 2)
-            dx = (q - G[i])*scale
+            x = k/scale                              # k in units of G
+            q = jnp.clip(x, V[0], V[-1])
+            b = jnp.clip(((q - lo)*inv_dk).astype(jnp.int32), 0, nbucket - 1)
+            j = seg[b]
+            j = jnp.minimum(j + (q >= V[jnp.minimum(j + 1, nv - 1)]), nv - 1)
+            dx = (q - gseg[j])*scale
             cf = coeffs.reshape(4, -1)
-            base = i*(nmu2*npar) + jnp.arange(npar)
+            base = iseg[j]*(nmu2*npar) + jnp.arange(npar, dtype=jnp.int32)
             val = 0.0
             for n in range(nmu2 - 1, -1, -1):
                 ix = base + n*npar
                 val = val*mu2 + ((cf[0][ix]*dx + cf[1][ix])*dx
                                  + cf[2][ix])*dx + cf[3][ix]
-            # power-law tails, y_edge (k/k_edge)^neff, both from one exp
+            # power-law tails, y_edge (k/k_edge)^neff
+            lraw = jnp.log(x)
             below = lraw < log_g0
             outside = below | (lraw > log_g1)
             amp = jnp.where(below, tails[0], tails[2])
@@ -4605,90 +4559,187 @@ class BispectrumNum:
             return jnp.where(outside, amp*jnp.exp(neff*(lraw - edge)), val)
 
         @staticmethod
-        def _ppoly_eval_legs_jax(k1p, k2p, k3p, mu1p, mu2p, mu3p, tab):
-            """Pdw at the three legs, for the 5D kernels. Leg 1 lives on the
-            (pair, mu1) grid and is broadcast to the full one, which the 5D
-            kernels take from it. The optimization barrier makes XLA compute
-            each leg once and store it: without it, the diagram kernel
-            recomputes the spline inside every diagram's fusion (~2x slower
-            for `_fused_moments_diagrams_jax`)."""
-            pd1, pd2, pd3 = jax.lax.optimization_barrier(tuple(
-                BispectrumNum._ppoly_eval_jax(kp, mup*mup, *tab)
-                for kp, mup in ((k1p, mu1p), (k2p, mu2p), (k3p, mu3p))))
-            return jnp.broadcast_to(pd1, mu2p.shape), pd2, pd3
-
-        @staticmethod
-        def _fused_geom_jax(k1, k2, k3, mu12, mu1, cphi, inv_qtr, inv_F, c):
-            """AP-corrected wavemodes and cosines of the three legs on the
-            (pair, mu1, mu12, phi, params) grid, as in the geometry part of
-            `_fused_moments_njit`."""
+        def _legs_jax(k1, k2, k3, mu12, mu1, cphi, inv_qtr, inv_F, c, stab,
+                      b1, f, cB1, cB2, ctr, keep=(0, 1, 2), mu12_major=False):
+            """The three legs (see `_leg_jax`) of the AP-corrected nodes:
+            leg 1 on the (pair, mu1) grid, legs 2 and 3 on the (pair, mu1,
+            mu12, phi, params) grid, or (pair, mu12, mu1, phi, params) if
+            **mu12_major**. The Pdw of the legs in **keep** (0 for leg 1) is
+            stored once instead of being recomputed by each of its consumers
+            (see `_keep_jax`)."""
+            BN = BispectrumNum
+            qtr = 1.0/inv_qtr
             k1_ = k1[:, None, None, None, None]
             k2_ = k2[:, None, None, None, None]
-            k3_ = k3[:, None, :, None, None]
-            mu1_ = mu1[None, :, None, None, None]
-            mu12_ = mu12[:, None, :, None, None]
             cphi_ = cphi[None, None, None, :, None]
+            if mu12_major:
+                k3_ = k3[:, :, None, None, None]
+                mu1_ = mu1[None, None, :, None, None]
+                mu12_ = mu12[:, :, None, None, None]
+            else:
+                k3_ = k3[:, None, :, None, None]
+                mu1_ = mu1[None, :, None, None, None]
+                mu12_ = mu12[:, None, :, None, None]
             sin1 = jnp.sqrt(jnp.clip(1.0 - mu1_*mu1_, 0.0))
             sin12 = jnp.sqrt(jnp.clip(1.0 - mu12_*mu12_, 0.0))
             mu2 = mu12_*mu1_ + sin12*sin1*cphi_
             mu3 = -(k1_*mu1_ + k2_*mu2)/k3_
-            fac1 = jnp.sqrt(1.0 + mu1_*mu1_*c)
-            fac2 = jnp.sqrt(1.0 + mu2*mu2*c)
-            fac3 = jnp.sqrt(1.0 + mu3*mu3*c)
-            return (k1_*inv_qtr*fac1, k2_*inv_qtr*fac2, k3_*inv_qtr*fac3,
-                    mu1_*inv_F/fac1, mu2*inv_F/fac2, mu3*inv_F/fac3)
+
+            # traced, so that XLA cannot fold the division of _keep_jax away
+            # (0*f is not simplified, because of nan and inf)
+            unit = 1.0 + 0.0*f
+
+            def leg(i, k_, mu_):
+                r = jax.lax.rsqrt(1.0 + mu_*mu_*c)
+                kp, mup = k_*inv_qtr/r, mu_*inv_F*r
+                pd = BN._ppoly_eval_jax(kp, mup*mup, stab)
+                if i in keep:
+                    pd = BN._keep_jax(pd, unit)
+                return BN._leg_jax(kp, mup, pd, r*qtr/k_, b1, f, cB1, cB2,
+                                   ctr)
+            return leg(0, k1_, mu1_), leg(1, k2_, mu2), leg(2, k3_, mu3)
+
+        @staticmethod
+        def _winfty_jax(U, f, avir, sv):
+            """VDG_infty damping ``exp(lamb2 sv^2/den)/den^1.5``, with
+            ``lamb2 = -f^2 U/2`` and ``den = 1 - lamb2 avir^2``."""
+            lamb2 = -0.5*f*f*U
+            rs = jax.lax.rsqrt(1.0 - lamb2*avir*avir)
+            return jnp.exp(lamb2*sv*sv*rs*rs)*rs*rs*rs
 
         @staticmethod
         def _fused_moments_jax(k1, k2, k3, mu12, mu1, cphi, inv_qtr, inv_F, c,
-                               G, scale, seg, last_index, V, log_lo, inv_dlog,
-                               coeffs, tails, b1, b2, g2, f, avir, sv, MB0,
-                               NP0, cnloB, cB1, cB2, inv_nbar, inv_qiso6,
-                               ang_q, rad, damp=None):
+                               stab, b1, b2, g2, f, avir, sv, MB0, NP0, cnloB,
+                               cB1, cB2, inv_nbar, inv_qiso6, ang_q, rad,
+                               damp=None, vdg=True, ctr=None):
             """JAX counterpart of `_fused_moments_njit` for a block of pairs,
-            with ``ang_q = ang[ang_id]``. Returns (n_pair, nq, nparams).
+            with ``ang_q = ang[ang_id]`` and the spline table ``stab`` of
+            `_jax_spline_table`. Returns (n_pair, nq, nparams).
+
+            Same values as the numba kernel to rounding, arranged for XLA:
+            leg 1 (which only depends on the pair and mu1) is evaluated on
+            the (pair, mu1) grid, with its Pdw stored once, the model terms are selected by the static
+            ``vdg`` (VDG_infty damping) and ``ctr`` (None, 'EggLeeSco' or
+            'IvaPhiNis') of `_jax_kernel_flags`, and reciprocals replace
+            most divisions. The rest of the node computation (geometry, AP,
+            Pdw of legs 2 and 3, bispectrum) is left to XLA as a single
+            fusion of small inputs, which XLA spreads over all threads (a
+            fusion that reads large precomputed node arrays is costed as
+            memory-bound and gets fewer).
 
             ``damp``, if given, multiplies the bispectrum at every node before
             the projection; it broadcasts against the (pair, mu1, mu12, phi,
             params) grid (see `PTEmu._jax_bell_sugi`)."""
-            k1p, k2p, k3p, mu1p, mu2p, mu3p = BispectrumNum._fused_geom_jax(
-                k1, k2, k3, mu12, mu1, cphi, inv_qtr, inv_F, c)
-            tab = (G, scale, seg, last_index, V, log_lo, inv_dlog, coeffs,
-                   tails)
-            pd1, pd2, pd3 = BispectrumNum._ppoly_eval_legs_jax(
-                k1p, k2p, k3p, mu1p, mu2p, mu3p, tab)
-            B = BispectrumNum._bispectrum_5d_jax_fused(
-                k1p, k2p, k3p, mu1p, mu2p, mu3p, pd1, pd2, pd3, b1, b2, g2,
-                f, avir, sv, MB0, NP0, cnloB, cB1, cB2, inv_nbar, inv_qiso6)
+            BN = BispectrumNum
+            L1, L2, L3 = BN._legs_jax(k1, k2, k3, mu12, mu1, cphi, inv_qtr,
+                                      inv_F, c, stab, b1, f, cB1, cB2, ctr,
+                                      keep=(0,))
+            tree = (BN._tree_leg_jax(L1, L2, L3, b1, b2, g2, f)
+                    + BN._tree_leg_jax(L2, L3, L1, b1, b2, g2, f)
+                    + BN._tree_leg_jax(L3, L1, L2, b1, b2, g2, f))
+            U = L1['u'] + L2['u'] + L3['u']
+            if ctr == 'EggLeeSco':
+                tree = tree*(1.0 + cnloB*f*f*U)
+            if vdg:
+                tree = tree*BN._winfty_jax(U, f, avir, sv)
+            stoch = sum(BN._stoch_leg_jax(L, b1, f, avir, sv, MB0, NP0, cnloB,
+                                          vdg, ctr) for L in (L1, L2, L3))
+            B = (tree + stoch*inv_nbar)*inv_qiso6
             if damp is not None:
-                B = B * damp
+                B = B*damp
             return jnp.einsum('pajbm,qab,pqj->pqm', B, ang_q, rad)
 
-        _fused_moments_jax = staticmethod(jax.jit(_fused_moments_jax.__func__))
+        _fused_moments_jax = staticmethod(jax.jit(
+            _fused_moments_jax.__func__, static_argnames=('vdg', 'ctr')))
 
         @staticmethod
         def _fused_moments_diagrams_jax(k1, k2, k3, mu12, mu1, cphi, inv_qtr,
-                                        inv_F, c, G, scale, seg, last_index, V,
-                                        log_lo, inv_dlog, coeffs, tails, f,
-                                        avir, sv, inv_qiso6, ang_q, rad,
-                                        tree_spec, stoch_spec, damp=None):
+                                        inv_F, c, stab, f, avir, sv, inv_qiso6,
+                                        ang_q, rad, tree_spec, stoch_spec,
+                                        damp=None, vdg=True):
             """JAX counterpart of `_fused_moments_diagrams_njit` for a block of
-            pairs. Returns (n_pair, nq, nparams, n_tree) and
-            (n_pair, nq, nparams, n_stoch). ``damp`` is as in
-            `_fused_moments_jax`."""
-            k1p, k2p, k3p, mu1p, mu2p, mu3p = BispectrumNum._fused_geom_jax(
-                k1, k2, k3, mu12, mu1, cphi, inv_qtr, inv_F, c)
-            tab = (G, scale, seg, last_index, V, log_lo, inv_dlog, coeffs,
-                   tails)
-            pd1, pd2, pd3 = BispectrumNum._ppoly_eval_legs_jax(
-                k1p, k2p, k3p, mu1p, mu2p, mu3p, tab)
-            spt, stoch = BispectrumNum._bispectrum_5d_jax_diagrams(
-                k1p, k2p, k3p, mu1p, mu2p, mu3p, pd1, pd2, pd3, f, avir, sv,
-                inv_qiso6, tree_spec, stoch_spec)
+            pairs, with the spline table ``stab`` of `_jax_spline_table`.
+            Returns (n_pair, nq, nparams, n_tree) and
+            (n_pair, nq, nparams, n_stoch). ``tree_spec`` is a static tuple
+            of ``(((a, b), ...), ctr)`` per requested tree diagram and
+            ``stoch_spec`` a static tuple of ``(s, ctr)`` per requested
+            stochastic diagram (see `_diagram_kernel_tables`); ``vdg`` is as
+            in `_fused_moments_jax`, and ``damp`` too.
+
+            Each diagram is a column of cheap arithmetic on per-node
+            quantities shared by all columns: the legs (with their Pdw kept
+            in memory, see `_keep_jax`), the damping and the stochastic
+            weights. XLA computes the columns in separate passes, so
+            anything expensive that is not stored is paid once per
+            diagram. The node grid is (pair, mu12, mu1, phi, params), so
+            that each column is projected by a plain matmul (see below)."""
+            BN = BispectrumNum
+            zero = jnp.zeros_like(f)
+            legs = BN._legs_jax(k1, k2, k3, mu12, mu1, cphi, inv_qtr, inv_F, c,
+                                stab, zero, f, zero, zero, None,
+                                mu12_major=True)
+            U = legs[0]['u'] + legs[1]['u'] + legs[2]['u']
+            shape = U.shape          # (pair, mu12, mu1, phi, params)
+            cols = []
+            if tree_spec:
+                winfac = (BN._winfty_jax(U, f, avir, sv)*inv_qiso6 if vdg
+                          else inv_qiso6)
+                a_need = {a for terms, _ in tree_spec for a, _ in terms}
+                b_need = {b for terms, _ in tree_spec for _, b in terms}
+                L1, L2, L3 = legs
+                pairs = (BN._pair_pieces_jax(L1, L2, L3, f, a_need, b_need),
+                         BN._pair_pieces_jax(L2, L3, L1, f, a_need, b_need),
+                         BN._pair_pieces_jax(L3, L1, L2, f, a_need, b_need))
+                for terms, ctr in tree_spec:
+                    d = sum(2.0*A[a]*Z[b] for A, Z in pairs for a, b in terms)
+                    d = d*winfac
+                    if ctr:
+                        d = d*(f*f*U)
+                    cols.append(jnp.broadcast_to(d, shape))
+            if stoch_spec:
+                wp = []
+                for L in legs:
+                    w = L['pd']*inv_qiso6
+                    if vdg:
+                        lam = -f*f*L['u']
+                        rs = jax.lax.rsqrt(1.0 - lam*avir*avir)
+                        w = w*jnp.exp(lam*sv*sv*rs*rs)*rs
+                    wp.append(w)
+                cols += [jnp.broadcast_to(sum(
+                    BN._stoch_part_jax(L, f, s)*w*(f*f*L['u'] if ctr else 1.0)
+                    for L, w in zip(legs, wp)), shape)
+                    for s, ctr in stoch_spec]
+            n_pair, nq = rad.shape[0], rad.shape[1]
+            nmu12, nmu1, nphi, npar = shape[1:]
+            if not cols:
+                empty = jnp.zeros((n_pair, nq, npar, 0))
+                return empty, empty
             if damp is not None:
-                spt = spt * damp[..., None]
-                stoch = stoch * damp[..., None]
-            return (jnp.einsum('pajbmd,qab,pqj->pqmd', spt, ang_q, rad),
-                    jnp.einsum('pajbmd,qab,pqj->pqmd', stoch, ang_q, rad))
+                # damp is on the (pair, mu1, mu12, phi, params) grid
+                damp = jnp.swapaxes(jnp.broadcast_to(
+                    damp, (n_pair, nmu1, nmu12, nphi, damp.shape[-1])), 1, 2)
+                cols = [d*damp for d in cols]
+            # Projection of each diagram: on this grid the (mu1, phi) nodes
+            # contracted with ang are contiguous, so that is a plain matmul
+            # (multithreaded, and without moving the diagram, unlike an
+            # einsum over the (pair, mu1, mu12, phi) grid, for which XLA
+            # first transposes all the diagrams), followed by the small
+            # contraction with rad over mu12
+            angT = ang_q.reshape(nq, nmu1*nphi).T
+
+            def project(d):
+                if npar == 1:
+                    y = (d.reshape(n_pair*nmu12, nmu1*nphi) @ angT
+                         ).reshape(n_pair, nmu12, nq)
+                    return jnp.einsum('pjq,pqj->pq', y, rad)[..., None]
+                y = jnp.einsum('nkm,kq->nqm', d.reshape(
+                    n_pair*nmu12, nmu1*nphi, npar), angT
+                    ).reshape(n_pair, nmu12, nq, npar)
+                return jnp.einsum('pjqm,pqj->pqm', y, rad)
+            mom = jnp.stack([project(d) for d in cols], axis=-1)
+            n_tree = len(tree_spec)
+            return mom[..., :n_tree], mom[..., n_tree:]
 
         _fused_moments_diagrams_jax = staticmethod(jax.jit(
-            _fused_moments_diagrams_jax.__func__, static_argnums=(24, 25)))
+            _fused_moments_diagrams_jax.__func__,
+            static_argnames=('tree_spec', 'stoch_spec', 'vdg')))

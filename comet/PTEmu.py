@@ -4616,7 +4616,8 @@ class PTEmu:
 
     def _jax_Pdw_ppoly_table(self, ell_for_recon):
         r"""JAX counterpart of `_PdwEvaluator.ppoly_table`, differentiable
-        through the emulator outputs, for `BispectrumNum._ppoly_eval_jax`.
+        through the emulator outputs, for `BispectrumNum._ppoly_eval_jax` (via
+        `BispectrumNum._jax_spline_table`).
 
         Builds the values of :math:`P_\mathrm{dw}` at ``k_table`` from the
         traced emulator outputs and turns them into the power-basis spline
@@ -4705,8 +4706,9 @@ class PTEmu:
                                  include_obs_syst_params=True)
         self._update_AP_params(params, de_model=de_model, q_tr_lo=q_tr_lo)
 
-        # 2. Traced spline table of Pdw(k, mu)
-        tab = self._jax_Pdw_ppoly_table(ell_for_recon)
+        # 2. Traced spline table of Pdw(k, mu), with the static lookup tables
+        # of the JAX kernels
+        stab = BN._jax_spline_table(self._jax_Pdw_ppoly_table(ell_for_recon))
 
         # 3. Static geometry and projection weights (numpy, cached)
         _, LM, combos, terms = BN._sugi_factorized_plan(ell)
@@ -4806,7 +4808,9 @@ class PTEmu:
                 np.asarray(BN.nbar, dtype=float).reshape(-1)), (npar,))
             bias = (b1, b2, g2, f, avirB, sv, MB0, NP0, cnloB, cB1, cB2,
                     inv_nbar, inv_qiso6)
-            mom = BN._fused_moments_jax(*geom, *tab, *bias, ang_q, rad, damp)
+            vdg, ctr = BN._jax_kernel_flags()
+            mom = BN._fused_moments_jax(*geom, stab, *bias, ang_q, rad, damp,
+                                        vdg=vdg, ctr=ctr)
             return _combine(mom), nb0, qiso6
 
         # Diagram selection (static Python tuples, for JIT specialisation)
@@ -4820,8 +4824,8 @@ class PTEmu:
         tree_spec, stoch_spec, _ = BN._diagram_kernel_tables(tree_keep,
                                                              stoch_keep)
         mt, ms = BN._fused_moments_diagrams_jax(
-            *geom, *tab, f, avirB, sv, inv_qiso6, ang_q, rad, tree_spec,
-            stoch_spec, damp)
+            *geom, stab, f, avirB, sv, inv_qiso6, ang_q, rad, tree_spec,
+            stoch_spec, damp, vdg=BN._jax_kernel_flags()[0])
         proj_t = _combine(mt)                   # (n_pair, npar, n_tree_keep)
         proj_s = _combine(ms)                   # (n_pair, npar, n_stoch_keep)
         for ll in ell:
