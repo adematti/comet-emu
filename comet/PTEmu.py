@@ -342,6 +342,9 @@ class PTEmu:
         self.Pk_lin = None
         self.Pk_nw = None
         self.Pk_ratios = {0: None, 2: None, 4: None}
+        # Whether c6 / NP4 may be non-zero (see _update_bias_params)
+        self._c6_active = self.counterterm_basis == 'DESIct'
+        self._NP4_active = self.counterterm_basis == 'DESIct'
 
         self.gl_x, self.gl_weights = np.polynomial.legendre.leggauss(10)
         self.gl_x = 0.5 * self.gl_x + 0.5
@@ -1394,11 +1397,19 @@ class PTEmu:
             else:
                 self.params[p] = _xp_zeros_like(self.params['wc'])
 
-        # Internal octopole (L6) counterterm, only non-zero in the
-        # DESIct basis, where alpha4 contributes to mu^6
-        self.params['c6'] = _xp_zeros_like(self.params['wc'])
-        # Internal k^4 mu^4 shot-noise term, only non-zero in the DESIct basis
-        self.params['NP4'] = _xp_zeros_like(self.params['wc'])
+        # Octopole (L6) counterterm and k^4 mu^4 shot-noise term: computed
+        # in the DESIct basis (alpha4 contributes to mu^6), and in any basis
+        # taken as is when passed directly in params. The flags are static
+        # (c6 / NP4 may be tracers): they switch the terms on in the JAX path
+        for p in ['c6', 'NP4']:
+            if p in params.keys():
+                self.params[p] = _xp_safe_param(params[p], self.params['wc'])
+            else:
+                self.params[p] = _xp_zeros_like(self.params['wc'])
+        self._c6_active = (self.counterterm_basis == 'DESIct'
+                           or 'c6' in params.keys())
+        self._NP4_active = (self.counterterm_basis == 'DESIct'
+                            or 'NP4' in params.keys())
 
         if 'VDG_infty' in self.model:
             self.params['cnlo'] = _xp_zeros_like(self.params['wc'])
@@ -2867,9 +2878,9 @@ class PTEmu:
                     bij_for_P6 = self._get_bias_coeff_for_P6()
                     Pell_cols.append(jnp.einsum("ab,bc->ac", jnp.asarray(self.P6), bij_for_P6))
             Pell = jnp.stack(Pell_cols, axis=1)  # (nk, n_ell, N)
-            # c6 is only non-zero in the DESIct basis (static check: c6 may
-            # be a tracer)
-            if self.counterterm_basis == 'DESIct':
+            # c6 is only non-zero in the DESIct basis or when passed
+            # directly (static check: c6 may be a tracer)
+            if self._c6_active:
                 c6 = self.params['c6'] if self.use_Mpc \
                     else self.params['c6'] / self.params['h']**2
                 Pell = Pell + self._Pctr_c6_table(ell) * c6
@@ -3369,9 +3380,9 @@ class PTEmu:
             mu2_val = mu**2
             t = self.params['NP0'] + q**2 * (self.params['NP20']
                 + self.params['NP22'] * (3.0*mu2_val - 1.0) / 2.0)
-            # NP4 is only non-zero in the DESIct basis (static check: NP4
-            # may be a tracer)
-            if self.counterterm_basis == 'DESIct':
+            # NP4 is only non-zero in the DESIct basis or when passed
+            # directly (static check: NP4 may be a tracer)
+            if self._NP4_active:
                 t = t + self.params['NP4'] * q**4 * mu2_val**2
             return t/self.nbar  # nk x nmu x N
 
@@ -3441,7 +3452,8 @@ class PTEmu:
                         for p in params.keys()
                     ]
                     params_nonzero = [x for x in self.bias_params_list +
-                                      self.RSD_params_list + self.obs_syst_params_list
+                                      self.RSD_params_list + self.obs_syst_params_list +
+                                      ['c6', 'NP4']
                                       if np.any(self.params_check[x] != 0)]
                     diff_shape = np.any(
                         [np.array(params[p]).shape != self.params_check[p].shape
@@ -4243,7 +4255,8 @@ class PTEmu:
                         for p in params.keys()
                     ]
                     params_nonzero = [x for x in self.bias_params_list +
-                                      self.RSD_params_list + self.obs_syst_params_list
+                                      self.RSD_params_list + self.obs_syst_params_list +
+                                      ['c6', 'NP4']
                                       if np.any(self.params_check[x] != 0)]
                     # Also recompute if Pk_lin is a JAX array from a previous JAX call:
                     # the numpy path needs numpy Pk_lin to correctly set _use_jax_build=False.
