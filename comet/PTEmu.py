@@ -4945,7 +4945,8 @@ class PTEmu:
         ell : iterable of (l1, l2, L) tuples
         de_model : str or None
         quad_deg : tuple of ints
-            Quadrature degrees for (mu1, mu12, phi) integrations.
+            Quadrature degrees for (mu1, mu12, phi) integrations. The number
+            of phi nodes must be odd (see `BispectrumNum._check_nphi`).
         mu12_transform : str
             Transformation to apply to the mu12 variable
             to improve stability around mu12~-1.

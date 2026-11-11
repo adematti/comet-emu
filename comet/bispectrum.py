@@ -3687,6 +3687,25 @@ class BispectrumNum:
     # Linear core of the 'logk3' map, in h/Mpc, close to the peak of P(k)
     _LOGK3_SCALE = 0.05
 
+    @staticmethod
+    def _check_nphi(nphi):
+        """Raise if ``nphi`` is even.
+
+        The bispectrum is invariant under the flip of the line of sight
+        (``mu1 -> -mu1``, ``phi -> phi + pi``), and the mu1 nodes are
+        symmetric, so for odd ``nphi`` the uniform ``phi`` grid acts as one
+        of ``2 nphi`` nodes. For even ``nphi``, ``phi + pi`` is already a
+        node and there is no such gain: ``nphi - 1`` is cheaper (one fewer
+        distinct ``cos(phi)``) and much more accurate. The multipoles with
+        ``M = nphi/2`` are worst: ``cos(M phi) = +-1`` at every node.
+        """
+        if int(nphi) % 2 == 0:
+            raise ValueError(
+                f"nphi must be odd, got {nphi}: an odd number of phi nodes "
+                f"integrates as accurately as twice as many, an even one does "
+                f"not, so nphi={int(nphi) - 1} is both cheaper and more "
+                f"accurate (and nphi={int(nphi) + 1} more accurate still).")
+
     def _sugi_get_quadrature(self, nmu1, nmu12, nphi, mu12_transform):
         """Build (and cache) the (mu1, mu12, phi) quadrature grids.
 
@@ -3707,7 +3726,12 @@ class BispectrumNum:
           `_k3_map`). This resolves the peak of P(k3) at small k3 for large
           k1 ~ k2, and needs about half the mu12 nodes of ``'k3'`` for the
           same accuracy.
+
+        ``nphi`` must be odd (see `_check_nphi`), and grow with the largest
+        ``M = min(l2, L)`` of the multipoles: 5 for ``M <= 2``, 7 for
+        ``M = 4``.
         """
+        self._check_nphi(nphi)
         key = (nmu1, nmu12, nphi, mu12_transform)
         cached = self._sugi_quad_cache.get(key)
         if cached is not None:
@@ -4041,7 +4065,9 @@ class BispectrumNum:
     # Scoccimarro quadrature and projection
 
     def _scocc_get_quadrature(self, nmu, nphi):
-        """Build (and cache) the (mu, phi) quadrature grids for Scoccimarro multipoles."""
+        """Build (and cache) the (mu, phi) quadrature grids for Scoccimarro
+        multipoles. ``nphi`` must be odd (see `_check_nphi`)."""
+        self._check_nphi(nphi)
         key = (nmu, nphi)
         cached = self._scocc_quad_cache.get(key)
         if cached is not None:
