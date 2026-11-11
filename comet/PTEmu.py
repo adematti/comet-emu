@@ -4684,9 +4684,48 @@ class PTEmu:
 
     def _jax_sugi(self, pair_arr, params, ell, de_model, q_tr_lo, quad_deg,
                   mu12_transform, ell_for_recon, X_list=None,
-                  extra_damping=None):
-        """JAX-traceable Sugiyama multipoles, shared by `_jax_bell_sugi` and
-        `_jax_bx_ell_sugi`.
+                  extra_damping=None, dedupe=True):
+        r"""JAX-traceable Sugiyama multipoles, shared by `_jax_bell_sugi` and
+        `_jax_bx_ell_sugi`; see `_jax_sugi_pairs` for the outputs.
+
+        As in `BispectrumNum.Bell_Sugi_factorized`, each pair is evaluated
+        once up to the order of ``(k1, k2)``, and the others are filled from
+        :math:`B_{\ell_1\ell_2L}(k_2,k_1)=B_{\ell_2\ell_1L}(k_1,k_2)`. The
+        pairs are static, so the deduplication
+        (`BispectrumNum._sugi_unique_pairs`) runs in numpy at trace time and
+        only adds a gather with a constant index to the traced graph. With an
+        **extra_damping**, the identity requires it to be symmetric in its
+        first two arguments, which is assumed (see `Bell_Sugi`).
+        """
+        import jax.numpy as jnp
+        BN = self.BispNum
+        ell = tuple(tuple(int(x) for x in ll) for ll in ell)
+        uniq = BN._sugi_unique_pairs(pair_arr) if dedupe else None
+        if uniq is None:
+            return self._jax_sugi_pairs(
+                pair_arr, params, ell, de_model, q_tr_lo, quad_deg,
+                mu12_transform, ell_for_recon, X_list=X_list,
+                extra_damping=extra_damping)
+        upair, src = uniq
+        out, nb0, qiso6 = self._jax_sugi_pairs(
+            upair, params, BN._sugi_swapped_ell(ell), de_model, q_tr_lo,
+            quad_deg, mu12_transform, ell_for_recon, X_list=X_list,
+            extra_damping=extra_damping)
+
+        def _fill(d, ll):
+            swap = (ll[1], ll[0], ll[2])
+            if isinstance(d[ll], dict):
+                return {name: jnp.concatenate((B, d[swap][name]))[src]
+                        for name, B in d[ll].items()}
+            return jnp.concatenate((d[ll], d[swap]))[src]
+
+        return ({ll: _fill(out, ll) for ll in ell},
+                {ll: _fill(nb0, ll) for ll in ell}, qiso6)
+
+    def _jax_sugi_pairs(self, pair_arr, params, ell, de_model, q_tr_lo,
+                        quad_deg, mu12_transform, ell_for_recon, X_list=None,
+                        extra_damping=None):
+        """`_jax_sugi` evaluated at every pair, as given.
 
         Same quadrature, factorised projection and fused kernels as the numpy
         path (`BispectrumNum.Bell_Sugi_factorized`): the geometry and the
@@ -4917,6 +4956,10 @@ class PTEmu:
             the three galaxies are independent -- a pair, in :meth:`Pell`,
             gives a single argument that the caller squares. It multiplies the
             whole integrand, the stochastic diagrams included. jax path only.
+            It must be symmetric in its first two arguments (e.g. a product
+            ``D(k1 mu1) D(k2 mu2) D(k3 mu3)`` with the same ``D``, as for a
+            single tracer): the pairs are only evaluated once up to the order
+            of ``(k1, k2)`` (see `BispectrumNum.Bell_Sugi_factorized`).
         """
         pair = np.atleast_2d(pair)
         if _is_jax(params.get('b1')):

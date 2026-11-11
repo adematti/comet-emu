@@ -1,5 +1,6 @@
 """Bispectrum module."""
 
+import math
 import numpy as np
 import numba as nb
 import pickle
@@ -3509,8 +3510,9 @@ class BispectrumNum:
 
     def Bell_Sugi_factorized(self, pair, Pdw_eval, params, ell,
                              nmu1=5, nmu12=12, nphi=5,
-                             mu12_transform='quadratic', X_list=None):
-        """Sugiyama multipoles for many ``(l1, l2, L)`` at once.
+                             mu12_transform='quadratic', X_list=None,
+                             dedupe=True):
+        r"""Sugiyama multipoles for many ``(l1, l2, L)`` at once.
 
         Same quadrature and conventions as `Bell_Sugi` (``X_list=None``) and
         `BX_ell_Sugi` (``X_list`` given), but with the factorised projection
@@ -3519,6 +3521,15 @@ class BispectrumNum:
         pairs and moments). The cost barely grows with the number of
         multipoles. ``Pdw_eval`` must provide ``ppoly_table()`` (see
         `PTEmu._get_pdw_fn`). Used by `Bell_Sugi` and `BX_ell_Sugi`.
+
+        Each pair is only evaluated once up to the order of ``(k1, k2)``
+        (see `_sugi_unique_pairs`): the pairs with ``k1 > k2``, or repeated,
+        are taken from the multipoles at ``k1 <= k2``, using
+        :math:`B_{\ell_1\ell_2L}(k_2,k_1)=B_{\ell_2\ell_1L}(k_1,k_2)`. On
+        the full ``(k1, k2)`` grid of a window convolution, this halves the
+        cost. ``dedupe=False`` skips this and its check, for pairs with
+        ``k1 <= k2`` and (almost) no repeats. The multipoles with odd
+        :math:`\ell_1+\ell_2` vanish by parity and are returned as zeros.
 
         Returns
         -------
@@ -3530,6 +3541,88 @@ class BispectrumNum:
 
         ell = tuple(tuple(int(x) for x in ll) for ll in ell)
         pair = np.atleast_2d(pair)
+        uniq = self._sugi_unique_pairs(pair) if dedupe else None
+        if uniq is None:
+            return self._bell_sugi_pairs(pair, Pdw_eval, params, ell, nmu1,
+                                         nmu12, nphi, mu12_transform, X_list)
+        upair, src = uniq
+        B = self._bell_sugi_pairs(upair, Pdw_eval, params,
+                                  self._sugi_swapped_ell(ell), nmu1, nmu12,
+                                  nphi, mu12_transform, X_list)
+        return {ll: np.concatenate((B[ll], B[(ll[1], ll[0], ll[2])]))[src]
+                for ll in ell}
+
+    # Deduplicate only if at most this fraction of the pairs is left
+    _SUGI_DEDUPE_MAX_FRAC = 0.9
+
+    @staticmethod
+    def _sugi_swapped_ell(ell):
+        """``ell`` together with its ``(l2, l1, L)`` swaps, needed to fill the
+        pairs with ``k1 > k2`` (see `_sugi_unique_pairs`)."""
+        return tuple(sorted(set(ell) | {(l2, l1, L) for (l1, l2, L) in ell}))
+
+    @staticmethod
+    def _sugi_unique_pairs(pair):
+        """Pairs to evaluate, up to the order of ``(k1, k2)`` and exact
+        repeats.
+
+        Returns **None** if fewer than 10% of the pairs would be saved
+        (`_SUGI_DEDUPE_MAX_FRAC`): the swapped multipoles can need extra
+        moments, which cost more than such a small saving. Otherwise returns
+        ``(upair, src)``: the ``(nu, 2)`` distinct pairs with ``k1 <= k2``,
+        and for every input pair the row of ``concatenate((B_l1l2L,
+        B_l2l1L))`` (both evaluated at ``upair``) that gives its
+        ``B_l1l2L``, i.e. ``i`` if it equals ``upair[i]`` and ``nu + i`` if
+        it equals ``upair[i]`` swapped.
+
+        Pure numpy on the (static) pairs, so the JAX path (`PTEmu._jax_sugi`)
+        uses it at trace time and applies ``src`` as a constant gather.
+
+        A square grid closed under the swap (``pair[i, j] == pair[j, i]``
+        swapped once reshaped to ``(m, m, 2)``, e.g. a meshgrid of the same
+        k for k1 and k2) is recognised in O(n), a few microseconds. Other
+        pairs are sorted (``lexsort``), about 50 us for 1500 pairs and 1 ms
+        for 1e4, i.e. 1-3% of their bispectrum.
+        """
+        pair = np.asarray(pair)
+        n = pair.shape[0]
+        if n < 2 or pair.ndim != 2 or pair.shape[1] != 2:
+            return None
+        m = math.isqrt(n)
+        if m*m == n:
+            sq = pair.reshape(m, m, 2)
+            if np.array_equal(sq[:, :, 0], sq[:, :, 1].T):
+                # (i, j) from the upper triangle, (j, i) from its swap; the
+                # diagonal is assigned last, so it is not swapped
+                iu, ju = np.triu_indices(m)
+                ntri = iu.size
+                src = np.empty((m, m), dtype=np.intp)
+                src[ju, iu] = np.arange(ntri, 2*ntri)
+                src[iu, ju] = np.arange(ntri)
+                return sq[iu, ju], src.ravel()
+        k1, k2 = pair[:, 0], pair[:, 1]
+        swapped = k1 > k2
+        lo = np.where(swapped, k2, k1)
+        hi = np.where(swapped, k1, k2)
+        order = np.lexsort((hi, lo))
+        lo_s, hi_s = lo[order], hi[order]
+        new = np.empty(n, dtype=bool)
+        new[0] = True
+        np.not_equal(lo_s[1:], lo_s[:-1], out=new[1:])
+        new[1:] |= hi_s[1:] != hi_s[:-1]
+        nu = int(np.count_nonzero(new))
+        if nu > BispectrumNum._SUGI_DEDUPE_MAX_FRAC * n:
+            return None
+        group = np.cumsum(new) - 1
+        src = np.empty(n, dtype=np.intp)
+        src[order] = group
+        src += nu * swapped
+        upair = np.column_stack((lo_s[new], hi_s[new]))
+        return upair, src
+
+    def _bell_sugi_pairs(self, pair, Pdw_eval, params, ell, nmu1, nmu12,
+                         nphi, mu12_transform, X_list):
+        """`Bell_Sugi_factorized` evaluated at every pair, as given."""
         n_pair = pair.shape[0]
         _, LM, combos, terms = self._sugi_factorized_plan(ell)
         qlo = np.atleast_1d(params['q_lo'])
@@ -3725,6 +3818,9 @@ class BispectrumNum:
         for ll in ell:
             l1, l2, L = ll
             terms[ll] = []
+            # odd l1 + l2 vanish by parity (the projection below assumes it)
+            if (l1 + l2) % 2:
+                continue
             h = self._wigner_3j_000M(l1, l2, L, 0)[0]
             if h == 0.0:
                 continue
