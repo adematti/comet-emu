@@ -11,9 +11,9 @@ from functools import reduce
 from comet.cosmology import Cosmology, JAXCosmology
 from comet.data import MeasuredData
 from comet.tables import Tables
-from comet.splines import Splines
+from comet.splines import Splines, ppoly_table_jax
 from comet.grid import Grid
-from comet.bispectrum import Bispectrum, BispectrumNum
+from comet.bispectrum import Bispectrum, BispectrumNum, _PdwEvaluator
 
 
 base_dir = os.path.dirname(__file__)
@@ -230,7 +230,8 @@ class PTEmu:
         elif self.counterterm_basis == 'PBJ':
             self.bias_params_list += ['c0t', 'c2t', 'c4t', 'cnlo', 'NP0', 'eps0', 'eps2']
         elif self.counterterm_basis == 'DESIct':
-            self.bias_params_list += ['a0', 'a2','a4', 'NP0', 'NP20', 'NP22']
+            self.bias_params_list += ['a0', 'a2', 'a4', 'cnlo',
+                                      'SN0', 'SN20', 'SN22', 'SN4']
         else:
             print('Warning. Counterterms and noise basis not recognised, defaulting to '
                   '"Comet".')
@@ -272,7 +273,8 @@ class PTEmu:
                              'P1L_b1b1', 'P1L_b1b2', 'P1L_b1g2',
                              'P1L_b1g21', 'P1L_b2b2', 'P1L_b2g2',
                              'P1L_g2g2', 'P1L_b2', 'P1L_g2', 'P1L_g21',
-                             'Pnoise_NP0', 'Pnoise_NP20', 'Pnoise_NP22']
+                             'Pnoise_NP0', 'Pnoise_NP20', 'Pnoise_NP22',
+                             'Pctr_c6']
 
         self.diagrams_to_marg = {'g21': ['P1L_b1g21', 'P1L_g21'],
                                  'bGam3': ['P1L_b1g21', 'P1L_g21'],
@@ -300,6 +302,10 @@ class PTEmu:
                                  'NP22*': ['Pnoise_NP22'],
                                  'eps0': ['Pnoise_NP20'],
                                  'eps2': ['Pnoise_NP22'],
+                                 'SN0': ['Pnoise_NP0'],
+                                 'SN20': ['Pnoise_NP20'],
+                                 'SN22': ['Pnoise_NP22'],
+                                 'SN4': ['Pnoise_NP4'],
                                  }
 
         if 'EFT' in self.model:
@@ -336,6 +342,9 @@ class PTEmu:
         self.Pk_lin = None
         self.Pk_nw = None
         self.Pk_ratios = {0: None, 2: None, 4: None}
+        # Whether c6 / NP4 may be non-zero (see _update_bias_params)
+        self._c6_active = self.counterterm_basis == 'DESIct'
+        self._NP4_active = self.counterterm_basis == 'DESIct'
 
         self.gl_x, self.gl_weights = np.polynomial.legendre.leggauss(10)
         self.gl_x = 0.5 * self.gl_x + 0.5
@@ -349,6 +358,10 @@ class PTEmu:
         self.lin_spline_up_to_date = False
         self.nw_spline_up_to_date = False
         self.dw_spline_up_to_date = False
+        self.dwmu_spline_up_to_date = False
+        self._dw_spline_key = None
+        self._dwmu_spline_key = None
+        self.Pdw_mu = 'leg'
         self.X_splines_up_to_date = {X: False for X in self.diagrams_all}
         self.X_obs_id = None
         self.X_binning = None
@@ -372,6 +385,7 @@ class PTEmu:
         self.PL_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
         self.Pnw_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
         self.Pdw_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
+        self.Pdw_mu_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
         self.PX_ell_spline = {}
         for X in self.diagrams_all:
             id_min = self.nk - self.nkloop if 'P1L' in X else 0
@@ -655,6 +669,7 @@ class PTEmu:
             self.PL_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
             self.Pnw_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
             self.Pdw_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
+            self.Pdw_mu_spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
             self.PX_ell_spline = {}
             for X in self.diagrams_all:
                 id_min = self.nk - self.nkloop if 'P1L' in X else 0
@@ -667,6 +682,7 @@ class PTEmu:
             self.lin_spline_up_to_date = False
             self.nw_spline_up_to_date = False
             self.dw_spline_up_to_date = False
+            self.dwmu_spline_up_to_date = False
             self.Bisp.define_units(self.use_Mpc)
             self.Bisp.define_nbar(self.nbar)
             self.BispNum.define_units(self.use_Mpc)
@@ -694,7 +710,7 @@ class PTEmu:
         counterterm_basis: str
             Type of parametrisation for the counterterm and shot-noise
             expansion. Must be specified from the following list:
-            ['Comet', 'ClassPT']. Defaults to 'ClassPT'.
+            ['Comet', 'ClassPT', 'PBJ', 'DESIct']. Defaults to 'ClassPT'.
         """
         bias_params = []
         counterterm_params = []
@@ -706,7 +722,8 @@ class PTEmu:
                 bias_params.append(param)
             elif param in ['c0', 'c2', 'c4', 'cnlo', 'NP0', 'NP20', 'NP22',
                            'c0*', 'c2*', 'c4*', 'cnlo*', 'NP20*', 'NP22*',
-                           'c0t', 'c2t', 'c4t', 'eps0', 'eps2']:
+                           'c0t', 'c2t', 'c4t', 'eps0', 'eps2',
+                           'a0', 'a2', 'a4', 'SN0', 'SN20', 'SN22', 'SN4']:
                 counterterm_params.append(param)
 
         if bias_basis is not None and bias_basis != self.bias_basis:
@@ -740,9 +757,13 @@ class PTEmu:
             elif counterterm_basis == 'PBJ':
                 counterterm_params.extend(['c0t', 'c2t', 'c4t', 'cnlo',
                                            'NP0', 'eps0', 'eps2'])
+            elif counterterm_basis == 'DESIct':
+                counterterm_params.extend(['a0', 'a2', 'a4', 'cnlo',
+                                           'SN0', 'SN20', 'SN22', 'SN4'])
             else:
                 print('Warning. Counterterm basis not recognised, choose '
-                      'between "Comet" or "ClassPT". Defaulting to "EggScoSmi"')
+                      'between "Comet", "ClassPT", "PBJ" or "DESIct". '
+                      'Defaulting to "Comet"')
                 self.counterterm_basis = 'Comet'
                 counterterm_params.extend(['c0', 'c2', 'c4', 'cnlo',
                                           'NP0', 'NP20', 'NP22'])
@@ -754,10 +775,33 @@ class PTEmu:
         self._init_params_dict()
         self.splines_up_to_date = False
         self.dw_spline_up_to_date = False
+        self.dwmu_spline_up_to_date = False
 
     def change_gauss_legendre_degree(self, degree):
         self.gl_x, self.gl_weights = np.polynomial.legendre.leggauss(degree)
         self.gl_x = 0.5 * self.gl_x + 0.5
+
+    def change_Pdw_mu(self, mu):
+        r"""Set the :math:`\mu` at which the numerical bispectrum
+        (**Bell_Sugi**, **Bell_Scocc** and their diagram-resolved companions)
+        evaluates the IR-resummed :math:`P_\mathrm{IR-res}^\mathrm{LO}(k,\mu)`
+        of each leg.
+
+        Parameters
+        ----------
+        mu: float or str
+            ``'leg'`` (default) to use the (AP-corrected) cosine of each
+            leg with the line of sight, reconstructing :math:`P(k,\mu)`
+            from the multipoles in **ell_for_recon** as **Pdw** does; or a
+            fixed value used for all legs. ``change_Pdw_mu(0.6)`` reproduces
+            the previous behaviour (and the analytic **Bell**).
+        """
+        if isinstance(mu, str):
+            if mu != 'leg':
+                raise ValueError("mu must be a float or 'leg'.")
+            self.Pdw_mu = mu
+        else:
+            self.Pdw_mu = float(mu)
 
     def change_cnloB_type(self, type):
         if type in ['EggLeeSco','IvaPhiNis']:
@@ -788,18 +832,20 @@ class PTEmu:
             self.Bisp.define_nbar(self.nbar)
             self.BispNum.define_nbar(self.nbar)
             self.splines_up_to_date = False
+
     def define_s12_ref(self, sigma12_ref):
-        r"""Define the reference value for the 12-mode covariance.
+        r"""Define the reference value for sigma12. Used for the reparametrisation of nuisance parameters.
 
         Sets the internal class attribute **sigma12_ref** to the value provided as
         input.
 
         Parameters
         ----------
-        sigma12_ref: float
-            Reference value for the 12-mode covariance.
+        sigma12_ref: float, np.ndarray
+            Reference value for sigma12.
         """
-        if np.any(sigma12_ref != self.sigma12_ref) or np.array(sigma12_ref).shape != self.sigma12_ref.shape:
+        if (np.shape(sigma12_ref) != np.shape(self.sigma12_ref)
+                or np.any(sigma12_ref != self.sigma12_ref)):
             self.sigma12_ref = np.copy(sigma12_ref)
     def define_data_set(self, obs_id, **kwargs):
         r"""Define data sample.
@@ -1194,7 +1240,7 @@ class PTEmu:
         elif de_model is None and not self.use_Mpc:
             try:
                 emu_params_updated = np.any([
-                  not np.array_equal(params[p], self.params[p])
+                  not np.array_equal(np.atleast_1d(params[p]), self.params[p])
                   for p in self.params_list + ['h']
                 ])
             except Exception:
@@ -1213,7 +1259,7 @@ class PTEmu:
                 expected_params.remove('Ok')
             try:
                 emu_params_updated = np.any([
-                  not np.array_equal(params[p], self.params[p])
+                  not np.array_equal(np.atleast_1d(params[p]), self.params[p])
                   for p in expected_params
                 ])
             except Exception:
@@ -1273,12 +1319,21 @@ class PTEmu:
             self.nparams = len(self.params['wc'])
             emu_params_updated = True
 
+        # Switching between numpy and JAX inputs: the cached emulator outputs
+        # and splines were built for the other array type (on JAX values
+        # Splines.build does not fit the scipy splines that the numpy path
+        # evaluates), so they must be rebuilt even if the values are equal
+        if self.Pk_lin is not None and \
+                _is_jax(self.params['wc']) != _is_jax(self.Pk_lin):
+            emu_params_updated = True
+
         if emu_params_updated:
             self.Pk_ratios = {0: None, 2: None, 4: None}
             self.splines_up_to_date = False
             self.lin_spline_up_to_date = False
             self.nw_spline_up_to_date = False
             self.dw_spline_up_to_date = False
+            self.dwmu_spline_up_to_date = False
             self.X_splines_up_to_date = {X: False for X
                                          in self.X_splines_up_to_date}
             self.chi2_decomposition = None
@@ -1342,6 +1397,20 @@ class PTEmu:
             else:
                 self.params[p] = _xp_zeros_like(self.params['wc'])
 
+        # Octopole (L6) counterterm and k^4 mu^4 shot-noise term: computed
+        # in the DESIct basis (alpha4 contributes to mu^6), and in any basis
+        # taken as is when passed directly in params. The flags are static
+        # (c6 / NP4 may be tracers): they switch the terms on in the JAX path
+        for p in ['c6', 'NP4']:
+            if p in params.keys():
+                self.params[p] = _xp_safe_param(params[p], self.params['wc'])
+            else:
+                self.params[p] = _xp_zeros_like(self.params['wc'])
+        self._c6_active = (self.counterterm_basis == 'DESIct'
+                           or 'c6' in params.keys())
+        self._NP4_active = (self.counterterm_basis == 'DESIct'
+                            or 'NP4' in params.keys())
+
         if 'VDG_infty' in self.model:
             self.params['cnlo'] = _xp_zeros_like(self.params['wc'])
             self.params['cnloB'] = _xp_zeros_like(self.params['wc'])
@@ -1394,6 +1463,14 @@ class PTEmu:
             self.params['c0'] = -0.5*(self.params['a0']*(self.params['b1']**2+self.params['b1']*self.params['f']/3)+self.params['a2']*(self.params['b1']*self.params['f']/3+(self.params['f']**2)/5)+self.params['a4']*(self.params['b1']*self.params['f']/5+(self.params['f']**2)/7))
             self.params['c2'] = -0.5*(2*self.params['a0']*self.params['b1']*self.params['f']/3+self.params['a2']*(2*self.params['b1']*self.params['f']/3+4*(self.params['f']**2)/7)+self.params['a4']*(4*self.params['b1']*self.params['f']/7+10*(self.params['f']**2)/21))
             self.params['c4'] = -0.5*(8*self.params['a2']*(self.params['f']**2)/35+self.params['a4']*(8*self.params['b1']*self.params['f']/35+24*(self.params['f']**2)/77))
+            # L6 part of the f^2 alpha4 mu^6 term: mu^6 = ... + 16/231 L6
+            self.params['c6'] = -0.5*(16.0/231.0)*self.params['a4']*self.params['f']**2
+            # DESI stochastic terms: SN0 + SN20 k^2 + SN22 k^2 mu^2
+            # + SN4 k^4 mu^4, with mu^2 = L0/3 + 2 L2/3
+            self.params['NP0'] = self.params['SN0']
+            self.params['NP20'] = self.params['SN20'] + self.params['SN22']/3.0
+            self.params['NP22'] = 2.0/3.0 * self.params['SN22']
+            self.params['NP4'] = self.params['SN4']
         try:
             self.params_check.update(deepcopy(self.params))
         except Exception:
@@ -1687,12 +1764,14 @@ class PTEmu:
             else self.params['NP20'] / self.params['h']**5
         N22 = self.params['NP22'] if self.use_Mpc \
             else self.params['NP22'] / self.params['h']**5
+        c6 = self.params['c6'] if self.use_Mpc \
+            else self.params['c6'] / self.params['h']**2
         b1sq = b1**2
 
         return _xp_stack([b1sq, b1, _xp_ones_like(b1), c0, c2, c4,
                           b1sq*cnlo, b1*cnlo, cnlo, b1sq, b1*b2, b1*g2, b1*g21,
                           b2**2, b2*g2, g2**2, b2, g2, g21, N0/self.nbar,
-                          N20/self.nbar, N22/self.nbar])
+                          N20/self.nbar, N22/self.nbar, c6])
 
     def _get_bias_coeff_for_Bisp_chi2_decomposition(self):
         r"""Get bias coefficients for the bispectrum :math:`\chi^2` tables.
@@ -1785,6 +1864,7 @@ class PTEmu:
         bias['Pnoise_NP0'] = 1.0 / (h*h2*self.nbar)
         bias['Pnoise_NP20'] = 1.0 / (h*h4*self.nbar)
         bias['Pnoise_NP22'] = 1.0 / (h*h4*self.nbar)
+        bias['Pnoise_NP4'] = 1.0 / (h*h2*h4*self.nbar)
         if self.counterterm_basis == 'ClassPT':
             bias['Pctr_c2'] *= (2.0/3.0 * self.params['f'])
             bias['Pctr_c4'] *= (8.0/35.0 * self.params['f']**2)
@@ -1803,6 +1883,7 @@ class PTEmu:
             bias['Pnoise_NP0'] /= Aap
             bias['Pnoise_NP20'] /= Aap
             bias['Pnoise_NP22'] /= Aap
+            bias['Pnoise_NP4'] /= Aap
 
         return np.array([bias[x] for x in diagrams_to_marg]).squeeze()
 
@@ -1861,6 +1942,15 @@ class PTEmu:
         emu_params_updated = self._update_params(params, de_model=de_model)
 
         _use_jax = _is_jax(self.params['wc'])
+
+        # The ratios only need to be re-emulated if the emulator inputs
+        # changed or some of the requested multipoles are missing. Always on
+        # the JAX path (fresh tracers), and if the cached ratios are JAX
+        # arrays left by a previous JAX call.
+        ratios_needed = _use_jax or self.Pk_lin is None \
+            or emu_params_updated \
+            or any(self.Pk_ratios.get(m) is None
+                   or _is_jax(self.Pk_ratios[m]) for m in ell)
 
         # Selecting all the parameters needed for the shape emulator
         if _use_jax:
@@ -1930,10 +2020,11 @@ class PTEmu:
                         if not self.use_Mpc:
                             self.params['sv'] *= self.params['h']
 
-            ratios_all = _gp_predict('ratios', params_all)
-            for i, m in enumerate(ell):
-                self.Pk_ratios[m] = self.training['FULL'].transform_inv(
-                    ratios_all[:,i*self.emu_output_length:(i+1)*self.emu_output_length], m).T
+            if ratios_needed:
+                ratios_all = _gp_predict('ratios', params_all)
+                for i, m in enumerate(ell):
+                    self.Pk_ratios[m] = self.training['FULL'].transform_inv(
+                        ratios_all[:,i*self.emu_output_length:(i+1)*self.emu_output_length], m).T
         else:
 
             if self.Pk_lin is None or emu_params_updated:
@@ -2042,12 +2133,13 @@ class PTEmu:
                         if not self.use_Mpc:
                             self.params['sv'] *= self.params['h']
 
-            params_all = _build_params(self.params_list)
-            ratios_all = _gp_predict('ratios', params_all)
-            for i, m in enumerate(ell):
-                self.Pk_ratios[m] = self.training['FULL'].transform_inv(
-                    ratios_all[:,i*self.emu_output_length:(i+1) \
-                               *self.emu_output_length], m).T
+            if ratios_needed:
+                params_all = _build_params(self.params_list)
+                ratios_all = _gp_predict('ratios', params_all)
+                for i, m in enumerate(ell):
+                    self.Pk_ratios[m] = self.training['FULL'].transform_inv(
+                        ratios_all[:,i*self.emu_output_length:(i+1) \
+                                   *self.emu_output_length], m).T
 
     def _rescale_params(self):
         if self.reparametrisation == 'TCM':
@@ -2063,9 +2155,12 @@ class PTEmu:
                 self.params['a0'] /= (Aap * s12**2)
                 self.params['a2'] /= (Aap * s12**2)
                 self.params['a4'] /= (Aap * s12**2)
-                self.params['NP0'] /= Aap
-                self.params['NP20'] /= Aap
-                self.params['NP22'] /= Aap
+                if 'EFT' in self.model:
+                    self.params['cnlo'] /= (Aap * s12**2)
+                self.params['SN0'] /= Aap
+                self.params['SN20'] /= Aap
+                self.params['SN22'] /= Aap
+                self.params['SN4'] /= Aap
                 self.params['NB0'] /= Aap**2
                 self.params['MB0'] /= Aap
             else:
@@ -2076,11 +2171,13 @@ class PTEmu:
                 self.params['c0'] /= (Aap * s12**2)
                 self.params['c2'] /= (Aap * s12**2)
                 self.params['c4'] /= (Aap * s12**2)
+                self.params['c6'] /= (Aap * s12**2)
                 if 'EFT' in self.model:
                     self.params['cnlo'] /= (Aap * s12**2)
                 self.params['NP0'] /= Aap
                 self.params['NP20'] /= Aap
                 self.params['NP22'] /= Aap
+                self.params['NP4'] /= Aap
                 self.params['NB0'] /= Aap**2
                 self.params['MB0'] /= Aap
             # Bispectrum counterterms, independent of the bias basis.
@@ -2552,23 +2649,174 @@ class PTEmu:
 
         self._eval_emulator(params, ell=ell_eval_emu, de_model=de_model)
 
+        # The spline also depends on mu and ell_for_recon
+        dw_key = (np.atleast_1d(mu).astype(float), tuple(ell_for_recon))
+        if self.dw_spline_up_to_date and (
+                self._dw_spline_key is None
+                or dw_key[1] != self._dw_spline_key[1]
+                or not np.array_equal(dw_key[0], self._dw_spline_key[0])):
+            self.dw_spline_up_to_date = False
+
         if not self.dw_spline_up_to_date:
-            Pdw_ell = np.zeros([self.nk, len(ell_for_recon), self.nparams])
-            for i, ell in enumerate(ell_for_recon):
-                if ell != 6:
-                    Pdw_ell[:, i] = self.Pk_ratios[ell][:self.nk]
-                else:
-                    Pdw_ell[:, i] = self.P6[:,0,None]
-            Pdw_ell[:, :len(ell_eval_emu)] = Pdw_ell[:, :len(ell_eval_emu)] \
-                                             * self.Pk_lin[:,None,:]
-            Pdw = np.einsum("abc,b", Pdw_ell,
+            Pdw = np.einsum("abc,b", self._Pdw_ell_ktable(ell_for_recon),
                             eval_legendre.outer(ell_for_recon, mu))
 
             self.Pdw_spline.build(self.k_table, Pdw, h=self.params['h'])
             self.dw_spline_up_to_date = True
+            self._dw_spline_key = dw_key
 
         Pdw = np.squeeze(self.Pdw_spline.eval(k))
         return Pdw
+
+    def _Pdw_ell_ktable(self, ell_for_recon):
+        r"""Multipoles of :math:`P_\mathrm{IR-res}^\mathrm{LO}(k,\mu)` at
+        the training wavemodes, shape (nk, len(ell_for_recon), nparams).
+        Assumes the emulator has already been evaluated (see **Pdw**).
+
+        Works on both paths: a JAX array is returned if the emulator outputs
+        are JAX arrays (see **_jax_Pdw_ppoly_table**)."""
+        cols = []
+        for ell in ell_for_recon:
+            if ell != 6:
+                cols.append(self.Pk_ratios[ell][:self.nk] * self.Pk_lin)
+            else:
+                cols.append(np.broadcast_to(
+                    np.asarray(self.P6[:, 0, None], dtype=float),
+                    (self.nk, self.nparams)))
+        if _is_jax(self.Pk_lin):
+            import jax.numpy as jnp
+            return jnp.stack([jnp.asarray(c) for c in cols], axis=1)
+        return np.stack(cols, axis=1)
+
+    @staticmethod
+    def _Pdw_mu2_matrix(ell_for_recon):
+        r"""Matrix ``A[l, n]`` of the coefficients of :math:`\mu^{2n}` in
+        :math:`\mathcal{L}_\ell(\mu)`, for the :math:`\ell` in
+        **ell_for_recon**, so that :math:`P(k,\mu) = \sum_n c_n(k)\,
+        \mu^{2n}` with :math:`c_n = \sum_\ell P_\ell A_{\ell n}`."""
+        nmu2 = max(ell_for_recon)//2 + 1
+        A = np.zeros((len(ell_for_recon), nmu2))
+        for i, ell in enumerate(ell_for_recon):
+            A[i, :ell//2 + 1] = np.polynomial.legendre.leg2poly(
+                np.eye(ell + 1)[ell])[::2]
+        return A
+
+    def _Pdw_mu_ppoly_table(self, ell_for_recon):
+        r"""Spline table of :math:`P_\mathrm{IR-res}^\mathrm{LO}(k,\mu)`
+        as a polynomial in :math:`\mu^2`, for the numerical bispectrum with
+        a per-leg :math:`\mu` (see **change_Pdw_mu**).
+
+        Writing :math:`P(k,\mu) = \sum_\ell P_\ell(k)\mathcal{L}_\ell(\mu)
+        = \sum_n c_n(k)\,\mu^{2n}`, each :math:`c_n` is splined on the
+        same knots as **Pdw_spline**, so a single segment lookup serves all
+        of them. The power-law tails are kept for :math:`c_0` only: outside
+        the k-table the BAO wiggles are either undamped or fully damped, so
+        the :math:`\mu` dependence vanishes there.
+
+        Returns the dict of :meth:`Splines.ppoly_table`, with ``coeffs``
+        reshaped to (4, nseg, nmu2, nparams), and ``tails`` and ``scale``
+        restricted to :math:`c_0`. Numpy path only; its JAX counterpart is
+        **_jax_Pdw_ppoly_table**.
+        """
+        dw_key = tuple(ell_for_recon)
+        if not self.dwmu_spline_up_to_date or dw_key != self._dwmu_spline_key:
+            A = self._Pdw_mu2_matrix(ell_for_recon)
+            nmu2 = A.shape[1]
+            c = np.einsum("alm,ln->anm", self._Pdw_ell_ktable(ell_for_recon),
+                          A)
+            h = np.tile(np.broadcast_to(self.params['h'], self.nparams),
+                        nmu2)
+            self.Pdw_mu_spline.build(
+                self.k_table, c.reshape(self.nk, nmu2*self.nparams), h=h)
+            t = dict(self.Pdw_mu_spline.ppoly_table())
+            nseg = t['coeffs'].shape[1]
+            t['coeffs'] = np.ascontiguousarray(
+                t['coeffs'].reshape(4, nseg, nmu2, self.nparams))
+            t['tails'] = np.ascontiguousarray(t['tails'][:, :self.nparams])
+            t['scale'] = np.ascontiguousarray(t['scale'][:self.nparams])
+            self._dwmu_table = t
+            self.dwmu_spline_up_to_date = True
+            self._dwmu_spline_key = dw_key
+        return self._dwmu_table
+
+    def _Pctr_c6_table(self, ell):
+        r"""Build the :math:`\ell=6` Legendre counterterm table.
+
+        Returns the multipoles of
+        :math:`-2k^2\mathcal{L}_6(\mu)P_\mathrm{IR}(k,\mu)`, i.e. the
+        analogue of `Pctr_c0`, `Pctr_c2` and `Pctr_c4` for :math:`\ell=6`. It
+        is not emulated, but obtained from the :math:`\mu^6` moment carried by
+        `Pctr_b1cnlo` (:math:`2k^4f^5\mu^6P_\mathrm{IR}`), using
+
+        .. math::
+            \mathcal{L}_6 = \frac{231}{16}\left[\mu^6 - \frac{1}{7}
+            \mathcal{L}_0 - \frac{10}{21}\mathcal{L}_2 - \frac{24}{77}
+            \mathcal{L}_4\right].
+
+        The octopole is taken from the fixed-shape :math:`P_6` table, where
+        the :math:`\ell=6` components of `Pctr_c0`, `Pctr_c2` and `Pctr_c4`
+        are not available (they only arise from the anisotropic IR damping
+        and are neglected).
+
+        Works on both paths: a JAX array is returned if the emulator outputs
+        are JAX arrays.
+
+        Parameters
+        ----------
+        ell: list
+            Multipoles at which to evaluate the table.
+
+        Returns
+        -------
+        Pc6: numpy.ndarray
+            Table with shape (nk, len(ell), nparams), on the internal
+            :math:`k` grid and in :math:`\mathrm{Mpc}` units.
+        """
+        k2 = (self.k_table**2)[:, None]
+        f = self.params['f']
+        cols = []
+        for m in ell:
+            if m != 6:
+                R = lambda n: self.Pk_ratios[m][n*self.nk:(n+1)*self.nk]
+                cols.append(231.0/16.0 * self.Pk_lin * (
+                    -R(7) / (k2 * f**5) - R(3)/7.0 - 10.0/21.0 * R(4)
+                    - 24.0/77.0 * R(5)))
+            else:
+                s12ratio = (self.params['s12']/self.s12_for_P6)**2
+                cols.append(-231.0/16.0 * self.P6[:, 26, None] * s12ratio
+                            / k2)
+        if _is_jax(self.Pk_lin):
+            import jax.numpy as jnp
+            return jnp.stack([jnp.broadcast_to(c, (self.nk, self.nparams))
+                              for c in cols], axis=1)
+        return np.stack([np.broadcast_to(c, (self.nk, self.nparams))
+                         for c in cols], axis=1)
+
+    def _Pnoise_NP4_table(self, ell):
+        r"""Build the multipoles of the :math:`k^4\mu^4` shot-noise term.
+
+        Uses :math:`\mu^4 = \mathcal{L}_0/5 + 4\mathcal{L}_2/7 +
+        8\mathcal{L}_4/35`, so the multipoles are exact for :math:`\ell\le4`
+        and vanish for :math:`\ell=6`. As for the other noise tables, the
+        :math:`1/\bar{n}` factor is not included.
+
+        Parameters
+        ----------
+        ell: list
+            Multipoles at which to evaluate the table.
+
+        Returns
+        -------
+        PN4: numpy.ndarray
+            Table with shape (nk, len(ell), nparams), on the internal
+            :math:`k` grid and in :math:`\mathrm{Mpc}` units.
+        """
+        coeff = {0: 1.0/5.0, 2: 4.0/7.0, 4: 8.0/35.0}
+        PN4 = np.zeros([self.nk, len(ell), self.nparams])
+        for i, m in enumerate(ell):
+            if m in coeff:
+                PN4[:, i] = (coeff[m] * self.k_table**4)[:, None]
+        return PN4
 
     def _Pell_fid_ktable(self, params, ell, de_model=None):
         r"""Compute the power spectrum multipoles at the training wavemodes.
@@ -2629,7 +2877,14 @@ class PTEmu:
                 else:
                     bij_for_P6 = self._get_bias_coeff_for_P6()
                     Pell_cols.append(jnp.einsum("ab,bc->ac", jnp.asarray(self.P6), bij_for_P6))
-            return jnp.stack(Pell_cols, axis=1)  # (nk, n_ell, N)
+            Pell = jnp.stack(Pell_cols, axis=1)  # (nk, n_ell, N)
+            # c6 is only non-zero in the DESIct basis or when passed
+            # directly (static check: c6 may be a tracer)
+            if self._c6_active:
+                c6 = self.params['c6'] if self.use_Mpc \
+                    else self.params['c6'] / self.params['h']**2
+                Pell = Pell + self._Pctr_c6_table(ell) * c6
+            return Pell
         else:
             Pell = np.zeros([self.nk, len(ell), self.nparams])
             for i, m in enumerate(ell):
@@ -2647,6 +2902,10 @@ class PTEmu:
                 else:
                     bij_for_P6 = self._get_bias_coeff_for_P6()
                     Pell[:, i] = np.einsum("ab,bc->ac", self.P6, bij_for_P6)
+            c6 = self.params['c6'] if self.use_Mpc \
+                else self.params['c6'] / self.params['h']**2
+            if np.any(c6 != 0):
+                Pell += self._Pctr_c6_table(ell) * c6
             return Pell
 
     # TODO
@@ -3121,6 +3380,10 @@ class PTEmu:
             mu2_val = mu**2
             t = self.params['NP0'] + q**2 * (self.params['NP20']
                 + self.params['NP22'] * (3.0*mu2_val - 1.0) / 2.0)
+            # NP4 is only non-zero in the DESIct basis or when passed
+            # directly (static check: NP4 may be a tracer)
+            if self._NP4_active:
+                t = t + self.params['NP4'] * q**4 * mu2_val**2
             return t/self.nbar  # nk x nmu x N
 
         def LOS_average_continuous():
@@ -3177,25 +3440,32 @@ class PTEmu:
             return avg
 
         if obs_id is None:
-            try:
-                params_updated = [
-                    not np.array_equal(np.array(params[p]), self.params_check[p])
-                    for p in params.keys()
-                ]
-                params_nonzero = [x for x in self.bias_params_list +
-                                  self.RSD_params_list + self.obs_syst_params_list
-                                  if np.any(self.params_check[x] != 0)]
-                diff_shape = np.any(
-                    [np.array(params[p]).shape != self.params_check[p].shape
-                     for p in params.keys()])
-                # Also recompute if Pk_lin is a JAX array from a previous JAX call:
-                # the numpy path needs numpy Pk_lin so the spline is rebuilt correctly.
-                _pk_lin_is_jax = self.Pk_lin is not None and _is_jax(self.Pk_lin)
-                should_recompute = (np.any(params_updated) or
-                                    np.any([p not in params.keys() for p in params_nonzero]) or
-                                    not self.splines_up_to_date or diff_shape or _pk_lin_is_jax)
-            except Exception:
-                should_recompute = True  # JAX tracers cannot be compared with numpy
+            # JAX inputs always recompute (as in PX_ell): concrete JAX arrays
+            # compare equal to the numpy values cached by a previous numpy
+            # call, which would otherwise be returned as the JAX result
+            if any(_is_jax(v) for v in params.values()):
+                should_recompute = True
+            else:
+                try:
+                    params_updated = [
+                        not np.array_equal(np.array(params[p]), self.params_check[p])
+                        for p in params.keys()
+                    ]
+                    params_nonzero = [x for x in self.bias_params_list +
+                                      self.RSD_params_list + self.obs_syst_params_list +
+                                      ['c6', 'NP4']
+                                      if np.any(self.params_check[x] != 0)]
+                    diff_shape = np.any(
+                        [np.array(params[p]).shape != self.params_check[p].shape
+                         for p in params.keys()])
+                    # Also recompute if Pk_lin is a JAX array from a previous JAX call:
+                    # the numpy path needs numpy Pk_lin so the spline is rebuilt correctly.
+                    _pk_lin_is_jax = self.Pk_lin is not None and _is_jax(self.Pk_lin)
+                    should_recompute = (np.any(params_updated) or
+                                        np.any([p not in params.keys() for p in params_nonzero]) or
+                                        not self.splines_up_to_date or diff_shape or _pk_lin_is_jax)
+                except Exception:
+                    should_recompute = True  # cannot compare with the cached values
 
             if should_recompute:
                 self._eval_emulator(params, ell_eval_emu, de_model=de_model)
@@ -3644,6 +3914,8 @@ class PTEmu:
                             np.einsum("abc,ac->abc",
                                 PXNL_ell[:, nx, :len(ell_eval_emu)],
                                 self.Pk_lin)
+                    elif X_emu == 'Pctr_c6':
+                        PXNL_ell[:, nx] = self._Pctr_c6_table(ell_for_recon)
                     else:
                         if X_emu == 'Pnoise_NP0':
                             PXNL_ell[:, nx, 0] = \
@@ -3652,13 +3924,15 @@ class PTEmu:
                             PXNL_ell[:, nx, 0] = (self.k_table**2)[:,None]
                         elif X_emu == 'Pnoise_NP22' \
                                 and len(ell_for_recon) > 1:
-                            if self.counterterm_basis == 'Comet':
+                            if self.counterterm_basis in ['Comet', 'PBJ',
+                                                          'DESIct']:
                                 PXNL_ell[:, nx, 1] = (self.k_table**2)[:,None]
-                            elif self.counterterm_basis == 'DESIct':
-                                PXNL_ell[:, nx, 1] = (self.k_table**2)[:, None]
                             elif self.counterterm_basis == 'ClassPT':
                                 PXNL_ell[:, nx, 0] = (1.0/3.0*self.k_table**2)[:,None]
                                 PXNL_ell[:, nx, 1] = (2.0/3.0*self.k_table**2)[:,None]
+                        elif X_emu == 'Pnoise_NP4':
+                            PXNL_ell[:, nx] = self._Pnoise_NP4_table(
+                                ell_for_recon)
 
                 nk_safety = 15
                 h = None if self.use_Mpc else self.params['h']
@@ -3981,7 +4255,8 @@ class PTEmu:
                         for p in params.keys()
                     ]
                     params_nonzero = [x for x in self.bias_params_list +
-                                      self.RSD_params_list + self.obs_syst_params_list
+                                      self.RSD_params_list + self.obs_syst_params_list +
+                                      ['c6', 'NP4']
                                       if np.any(self.params_check[x] != 0)]
                     # Also recompute if Pk_lin is a JAX array from a previous JAX call:
                     # the numpy path needs numpy Pk_lin to correctly set _use_jax_build=False.
@@ -4035,6 +4310,9 @@ class PTEmu:
                                     PXNL_ell[:, nx, :len(ell_eval_emu), :],
                                     self.Pk_lin)
                                 PXNL_ell = PXNL_ell.at[:, nx, :len(ell_eval_emu), :].set(new_emu)
+                            elif X_emu == 'Pctr_c6':
+                                PXNL_ell = PXNL_ell.at[:, nx].set(
+                                    self._Pctr_c6_table(ell_for_recon))
                             else:
                                 k2 = jnp.asarray(self.k_table**2)[:, None]
                                 if X_emu == 'Pnoise_NP0':
@@ -4043,11 +4321,13 @@ class PTEmu:
                                 elif X_emu == 'Pnoise_NP20':
                                     PXNL_ell = PXNL_ell.at[:, nx, 0, :].set(
                                         jnp.broadcast_to(k2, (self.nk, self.nparams)))
+                                elif X_emu == 'Pnoise_NP4':
+                                    PXNL_ell = PXNL_ell.at[:, nx].set(
+                                        jnp.asarray(self._Pnoise_NP4_table(
+                                            ell_for_recon)))
                                 elif X_emu == 'Pnoise_NP22' and len(ell_for_recon) > 1:
-                                    if self.counterterm_basis == 'Comet':
-                                        PXNL_ell = PXNL_ell.at[:, nx, 1, :].set(
-                                            jnp.broadcast_to(k2, (self.nk, self.nparams)))
-                                    elif self.counterterm_basis == 'DESIct':
+                                    if self.counterterm_basis in ['Comet', 'PBJ',
+                                                                  'DESIct']:
                                         PXNL_ell = PXNL_ell.at[:, nx, 1, :].set(
                                             jnp.broadcast_to(k2, (self.nk, self.nparams)))
                                     elif self.counterterm_basis == 'ClassPT':
@@ -4087,6 +4367,9 @@ class PTEmu:
                                         "abc,ac->abc",
                                         PXNL_ell[:, nx, :len(ell_eval_emu)],
                                         self.Pk_lin)
+                            elif X_emu == 'Pctr_c6':
+                                PXNL_ell[:, nx] = \
+                                    self._Pctr_c6_table(ell_for_recon)
                             else:
                                 if X_emu == 'Pnoise_NP0':
                                     PXNL_ell[:, nx, 0] = \
@@ -4095,13 +4378,15 @@ class PTEmu:
                                     PXNL_ell[:, nx, 0] = (self.k_table**2)[:, None]
                                 elif X_emu == 'Pnoise_NP22' \
                                         and len(ell_for_recon) > 1:
-                                    if self.counterterm_basis == 'Comet':
-                                        PXNL_ell[:, nx, 1] = (self.k_table**2)[:, None]
-                                    elif self.counterterm_basis == 'DESIct':
+                                    if self.counterterm_basis in ['Comet', 'PBJ',
+                                                                  'DESIct']:
                                         PXNL_ell[:, nx, 1] = (self.k_table**2)[:, None]
                                     elif self.counterterm_basis == 'ClassPT':
                                         PXNL_ell[:, nx, 0] = (1.0 / 3.0 * self.k_table**2)[:, None]
                                         PXNL_ell[:, nx, 1] = (2.0 / 3.0 * self.k_table**2)[:, None]
+                                elif X_emu == 'Pnoise_NP4':
+                                    PXNL_ell[:, nx] = self._Pnoise_NP4_table(
+                                        ell_for_recon)
 
                     nk_safety = 15
                     h = None if self.use_Mpc else self.params['h']
@@ -4340,50 +4625,43 @@ class PTEmu:
         self._update_bias_params(params, include_RSD_params=True,
                                  include_obs_syst_params=True)
         self._update_AP_params(params, de_model=de_model, q_tr_lo=q_tr_lo)
-        return lambda k: self.Pdw(k, params, de_model=de_model, mu=0.6,
-                                  ell_for_recon=ell_for_recon)
+        return _PdwEvaluator(self, params, de_model, ell_for_recon)
 
-    def _jax_pdw_at_ktable(self, ell_for_recon, mu):
-        """Return Pdw(k_table) as a JAX array, differentiable through emulator outputs.
+    def _jax_Pdw_ppoly_table(self, ell_for_recon):
+        r"""JAX counterpart of `_PdwEvaluator.ppoly_table`, differentiable
+        through the emulator outputs, for `BispectrumNum._ppoly_eval_jax` (via
+        `BispectrumNum._jax_spline_table`).
 
-        Must be called after _eval_emulator has populated self.Pk_ratios and
-        self.Pk_lin (both JAX arrays for nparams=1).
+        Builds the values of :math:`P_\mathrm{dw}` at ``k_table`` from the
+        traced emulator outputs and turns them into the power-basis spline
+        table with `comet.splines.ppoly_table_jax`, which reproduces
+        `Splines.ppoly_table` without scipy. Must be called after
+        `_eval_emulator`. As on the numpy path, ``Pdw_mu == 'leg'`` gives the
+        coefficients of :math:`P(k,\mu)` as a polynomial in :math:`\mu^2`
+        (see `_Pdw_mu_ppoly_table`), with the tails of :math:`c_0` only, and
+        a fixed ``Pdw_mu`` the spline of :math:`P(k,\mu=\mathrm{Pdw\_mu})`
+        (``nmu2 = 1``).
+
+        Returns
+        -------
+        tab: tuple
+            ``(G, scale, seg, last_index, V, log_lo, inv_dlog, coeffs,
+            tails)``, as unpacked from the dict of `Splines.ppoly_table` by
+            `BispectrumNum._fused_moments`; ``coeffs`` (4, nseg, nmu2,
+            nparams), ``scale`` (nparams,) and ``tails`` (4, nparams) are JAX
+            arrays.
         """
         import jax.numpy as jnp
-        from scipy.special import eval_legendre as _ev_leg
-        ell_eval = [e for e in ell_for_recon if e != 6]
-        Pdw = jnp.zeros(self.nk)
-        for e in ell_eval:
-            # Pk_ratios[e] shape (9*nk+10*nkloop, 1); [:nk, 0] -> (nk,)
-            ratio = self.Pk_ratios[e][:self.nk, 0]
-            lin   = self.Pk_lin[:, 0]             # (nk,)
-            Pdw   = Pdw + ratio * lin * float(_ev_leg(e, mu))
-        if 6 in ell_for_recon:
-            p6 = jnp.asarray(np.asarray(self.P6[:self.nk, 0], dtype=np.float64))
-            Pdw = Pdw + p6 * float(_ev_leg(6, mu))
-        return Pdw  # (nk,)
-
-    def _jax_pdw_on_kgrid(self, Pdw_kt, k1_np, k2_np, k3_np):
-        """Interpolate Pdw(k_table) onto the static kgrid the legs are read from.
-
-        The grid spans all three legs, k3 included (down to |k1 - k2|, i.e. ~0
-        for equal sides), with a factor-2 margin for the AP rescaling, which is
-        traced and so unknown here; jnp.interp clamps outside the grid.
-
-        Pdw(k_table) goes onto the grid through the same `Splines` as the numpy
-        `Pdw` (cubic inside k_table, power law outside, h units): linear
-        interpolation on the ~6%-spaced k table is off by ~0.2%, see
-        `Splines._eval_varx_jax`.
-        """
-        import jax.numpy as jnp
-        kmin = max(0.5 * min(k1_np.min(), k2_np.min(), k3_np.min()), 1e-5)
-        kmax = 2.0 * max(k1_np.max(), k2_np.max(), k3_np.max())
-        kgrid = BispectrumNum._kgrid_compression(kmin, kmax, nk=500)   # static numpy
-        spline = Splines(use_Mpc=self.use_Mpc, ncol=0)
-        spline.build(self.k_table, jnp.asarray(Pdw_kt)[:, None],
-                     h=None if self.use_Mpc else jnp.squeeze(jnp.asarray(self.params['h'])))
-        Pdw_kg = spline.eval_varx(jnp.asarray(kgrid)[:, None])[:, 0]
-        return kgrid, Pdw_kg
+        Pdw_ell = self._Pdw_ell_ktable(ell_for_recon)      # (nk, nell, npar)
+        if self.Pdw_mu == 'leg':
+            A = self._Pdw_mu2_matrix(ell_for_recon)        # (nell, nmu2)
+        else:
+            A = eval_legendre(np.array(ell_for_recon), self.Pdw_mu)[:, None]
+        y = jnp.einsum('alm,ln->anm', Pdw_ell, jnp.asarray(A))
+        t = ppoly_table_jax(self.k_table, y,
+                            h=None if self.use_Mpc else self.params['h'])
+        return (t['G'], t['scale'], t['seg'], t['last_index'], t['V'],
+                t['log_lo'], t['inv_dlog'], t['coeffs'], t['tails'])
 
     def _jax_bisp_damping(self, _p, npar):
         """(avirB, sv) for the JAX bispectrum kernels; zero (W_infty = 1) unless
@@ -4404,16 +4682,74 @@ class PTEmu:
             return _p('cnloB'), zeros, zeros
         return zeros, _p('cB1'), _p('cB2')
 
-    def _jax_bell_sugi(self, pair_arr, params, ell, de_model, q_tr_lo, quad_deg,
-                       mu12_transform, ell_for_recon, extra_damping=None):
-        """JAX-traceable Bell_Sugi for use with jax.grad / jax.jit."""
-        import jax.numpy as jnp
-        import interpax
-        self.BispNum._check_model('Bell_Sugi')
+    def _jax_sugi(self, pair_arr, params, ell, de_model, q_tr_lo, quad_deg,
+                  mu12_transform, ell_for_recon, X_list=None,
+                  extra_damping=None, dedupe=True):
+        r"""JAX-traceable Sugiyama multipoles, shared by `_jax_bell_sugi` and
+        `_jax_bx_ell_sugi`; see `_jax_sugi_pairs` for the outputs.
 
-        n_pair = pair_arr.shape[0]
+        As in `BispectrumNum.Bell_Sugi_factorized`, each pair is evaluated
+        once up to the order of ``(k1, k2)``, and the others are filled from
+        :math:`B_{\ell_1\ell_2L}(k_2,k_1)=B_{\ell_2\ell_1L}(k_1,k_2)`. The
+        pairs are static, so the deduplication
+        (`BispectrumNum._sugi_unique_pairs`) runs in numpy at trace time and
+        only adds a gather with a constant index to the traced graph. With an
+        **extra_damping**, the identity requires it to be symmetric in its
+        first two arguments, which is assumed (see `Bell_Sugi`).
+        """
+        import jax.numpy as jnp
+        BN = self.BispNum
+        ell = tuple(tuple(int(x) for x in ll) for ll in ell)
+        uniq = BN._sugi_unique_pairs(pair_arr) if dedupe else None
+        if uniq is None:
+            return self._jax_sugi_pairs(
+                pair_arr, params, ell, de_model, q_tr_lo, quad_deg,
+                mu12_transform, ell_for_recon, X_list=X_list,
+                extra_damping=extra_damping)
+        upair, src = uniq
+        out, nb0, qiso6 = self._jax_sugi_pairs(
+            upair, params, BN._sugi_swapped_ell(ell), de_model, q_tr_lo,
+            quad_deg, mu12_transform, ell_for_recon, X_list=X_list,
+            extra_damping=extra_damping)
+
+        def _fill(d, ll):
+            swap = (ll[1], ll[0], ll[2])
+            if isinstance(d[ll], dict):
+                return {name: jnp.concatenate((B, d[swap][name]))[src]
+                        for name, B in d[ll].items()}
+            return jnp.concatenate((d[ll], d[swap]))[src]
+
+        return ({ll: _fill(out, ll) for ll in ell},
+                {ll: _fill(nb0, ll) for ll in ell}, qiso6)
+
+    def _jax_sugi_pairs(self, pair_arr, params, ell, de_model, q_tr_lo,
+                        quad_deg, mu12_transform, ell_for_recon, X_list=None,
+                        extra_damping=None):
+        """`_jax_sugi` evaluated at every pair, as given.
+
+        Same quadrature, factorised projection and fused kernels as the numpy
+        path (`BispectrumNum.Bell_Sugi_factorized`): the geometry and the
+        projection weights are static (numpy), while the Pdw spline table
+        (`_jax_Pdw_ppoly_table`), the AP and the bias parameters are traced,
+        and fed to `BispectrumNum._fused_moments_jax` (or its diagram
+        companion), called once on all the pairs. Pdw is evaluated on the exact
+        emulator spline at each leg, with no resampling, and at the mu of
+        **change_Pdw_mu**.
+
+        Returns
+        -------
+        If **X_list** is None, ``(proj, nb0, qiso6)``, with ``proj``
+        ``{(l1, l2, L): (n_pair, nparams)}`` the projected bispectrum without
+        the constant NB0 term, and ``nb0`` ``{(l1, l2, L): (n_pair, nparams)}``
+        the projection of a unit constant (the damping, if any). Otherwise
+        ``(BX, nb0, qiso6)`` with ``BX`` ``{(l1, l2, L): {name: (n_pair,
+        nparams)}}`` for the diagrams in **X_list** other than NB0.
+        """
+        import jax.numpy as jnp
+        BN = self.BispNum
         nmu1, nmu12, nphi = quad_deg
-        ell = tuple(tuple(ll) for ll in ell)
+        n_pair = pair_arr.shape[0]
+        ell = tuple(tuple(int(x) for x in ll) for ll in ell)
 
         # 1. Evaluate emulator + update params (sets Pk_ratios, Pk_lin, q_lo, q_tr …)
         ell_eval = [e for e in ell_for_recon if e != 6]
@@ -4422,304 +4758,177 @@ class PTEmu:
                                  include_obs_syst_params=True)
         self._update_AP_params(params, de_model=de_model, q_tr_lo=q_tr_lo)
 
-        # 2. JAX Pdw at training k-table (onto a static kgrid once the geometry is known)
-        mu_pdw  = 0.6
-        Pdw_kt  = self._jax_pdw_at_ktable(ell_for_recon, mu_pdw)   # (nk,) JAX
+        # 2. Traced spline table of Pdw(k, mu), with the static lookup tables
+        # of the JAX kernels
+        stab = BN._jax_spline_table(self._jax_Pdw_ppoly_table(ell_for_recon))
 
-        # 3. Static quadrature geometry (all numpy — concrete at trace time)
-        mu1_g, _, t_g, _, cphi_g, phi_g, _ = \
-            self.BispNum._sugi_get_quadrature(nmu1, nmu12, nphi, mu12_transform)
+        # 3. Static geometry and projection weights (numpy, cached)
+        _, LM, combos, terms = BN._sugi_factorized_plan(ell)
+        q_lo = jnp.atleast_1d(jnp.asarray(self.params['q_lo']))
+        q_tr = jnp.atleast_1d(jnp.asarray(self.params['q_tr']))
+        qiso6 = q_lo**2 * q_tr**4
+        npar = int(q_lo.shape[0])
+        zeros = jnp.zeros((n_pair, npar))
+        if not combos:
+            # no multipole survives the Wigner-3j selection
+            proj = {ll: zeros for ll in ell}
+            nb0 = {ll: zeros + (1.0 if ll == (0, 0, 0) else 0.0)
+                   for ll in ell}
+            if X_list is None:
+                return proj, nb0, qiso6
+            return {ll: {} for ll in ell}, nb0, qiso6
+        k3, mu12, ang, ang_id, rad = BN._sugi_cached_weights(
+            LM, combos, pair_arr, nmu1, nmu12, nphi, mu12_transform)
+        mu1_g, _, _, _, cphi_g, _, _ = BN._sugi_get_quadrature(
+            nmu1, nmu12, nphi, mu12_transform)
+        mu1 = mu1_g.ravel()
+        cphi, ang = BN._merge_phi_nodes(cphi_g.ravel(), ang)
+        ang_q = jnp.asarray(ang[ang_id])
+        k1 = pair_arr[:, 0].astype(float)
+        k2 = pair_arr[:, 1].astype(float)
 
-        k1_np = pair_arr[:, 0][:, None, None, None, None]   # (n_pair, 1, 1, 1, 1)
-        k2_np = pair_arr[:, 1][:, None, None, None, None]
-        mu1_np = mu1_g[..., None]                           # (1, nmu1, 1, 1, 1)
-        cphi_np = cphi_g[..., None]                         # (1, 1, 1, nphi, 1)
-
-        if mu12_transform == 'k3':
-            t     = t_g[..., None]                          # (1, 1, nmu12, 1, 1)
-            k_lo  = np.abs(k1_np - k2_np)
-            k_hi  = k1_np + k2_np
-            k3_np, _ = BispectrumNum._k3_from_t(t, k_lo, k_hi)
-            k3_np = np.maximum(k3_np, 1e-30)
-            mu12_np = (k3_np**2 - k1_np**2 - k2_np**2) / (2.0 * k1_np * k2_np)
-            mu12_np = np.clip(mu12_np, -1.0, 1.0)
-        else:
-            mu12_np = t_g[..., None]
-            k3_np   = np.sqrt(np.maximum(
-                k1_np**2 + k2_np**2 + 2.0 * k1_np * k2_np * mu12_np, 0.0))
-            k3_np   = np.maximum(k3_np, 1e-30)
-
-        sin_mu12 = np.sqrt(np.maximum(1.0 - mu12_np**2, 0.0))
-        sin_mu1  = np.sqrt(np.maximum(1.0 - mu1_np**2,  0.0))
-        mu2_np   = mu12_np * mu1_np + sin_mu12 * sin_mu1 * cphi_np
-        mu3_np   = -(k1_np * mu1_np + k2_np * mu2_np) / k3_np
-        kgrid, Pdw_kg = self._jax_pdw_on_kgrid(Pdw_kt, k1_np, k2_np, k3_np)
-
-        # 4. AP correction in JAX
-        q_lo   = jnp.atleast_1d(jnp.asarray(self.params['q_lo']))
-        q_tr   = jnp.atleast_1d(jnp.asarray(self.params['q_tr']))
-        qiso6  = q_lo**2 * q_tr**4
-        npar   = int(q_lo.shape[0])
-
-        def _ap(k_np, mu_np):
-            k   = jnp.asarray(k_np)
-            mu  = jnp.asarray(mu_np)
-            F   = q_lo / q_tr
-            fac = jnp.sqrt(1.0 + mu**2 * (1.0 / F**2 - 1.0))
-            return k / q_tr * fac, mu / F / fac
-
-        k1_p, mu1_p = _ap(k1_np, mu1_np)
-        k2_p, mu2_p = _ap(k2_np, mu2_np)
-        k3_p, mu3_p = _ap(k3_np, mu3_np)
-
-        full_shape = (n_pair, nmu1, nmu12, nphi, npar)
-        k1_b  = jnp.broadcast_to(k1_p,  full_shape)
-        k2_b  = jnp.broadcast_to(k2_p,  full_shape)
-        k3_b  = jnp.broadcast_to(k3_p,  full_shape)
-        mu1_b = jnp.broadcast_to(mu1_p, full_shape)
-        mu2_b = jnp.broadcast_to(mu2_p, full_shape)
-        mu3_b = jnp.broadcast_to(mu3_p, full_shape)
-
-        # observed (pre-AP) k_i mu_i, one argument per field: the AP transform above
-        # maps to the model frame, while the extra damping acts on the coordinates
-        # the catalogue was built in
-        damp = None
-        if extra_damping is not None:
-            damp = jnp.broadcast_to(
-                extra_damping(k1_np * mu1_np, k2_np * mu2_np, k3_np * mu3_np),
-                full_shape)
-
-        # 5. Pdw at AP-distorted k-values via JAX interpolation
-        kg_j = jnp.asarray(kgrid)
-        def _pdw(k_b):
-            # cubic, as the numpy path's CubicSpline on the same kgrid
-            return interpax.interp1d(k_b.ravel(), kg_j, Pdw_kg, method='cubic2',
-                                     extrap=True).reshape(k_b.shape)
-
-        pdw1 = _pdw(k1_b)
-        pdw2 = _pdw(k2_b)
-        pdw3 = _pdw(k3_b)
-
-        # 6. Bias / damping params as JAX
-        def _p(k):
-            v = self.params.get(k)
-            return jnp.zeros(npar) if v is None else jnp.atleast_1d(jnp.asarray(v))
-
-        b1 = _p('b1'); b2 = _p('b2'); g2 = _p('g2'); f = _p('f')
-        avirB, sv = self._jax_bisp_damping(_p, npar)
-        MB0 = _p('MB0');  NP0 = _p('NP0');  NB0 = _p('NB0')
-        cnloB, cB1, cB2 = self._jax_bisp_ctr(_p, npar)
-        # nbar may be a scalar or a per-z array (define_nbar stores np.copy)
-        inv_nbar  = jnp.broadcast_to(
-            1.0 / jnp.asarray(np.asarray(self.BispNum.nbar, dtype=float).reshape(-1)),
-            (npar,))
+        # 4. AP parameters (traced), as in BispectrumNum._fused_moments
+        inv_qtr = 1.0 / q_tr
+        inv_F = q_tr / q_lo
+        c = inv_F*inv_F - 1.0
         inv_qiso6 = 1.0 / qiso6
 
-        # 7. JAX-jitted 5D bispectrum kernel
-        B_5d = self.BispNum._bispectrum_5d_jax_fused(
-            k1_b, k2_b, k3_b, mu1_b, mu2_b, mu3_b,
-            pdw1, pdw2, pdw3,
-            b1, b2, g2, f, avirB, sv, MB0, NP0,
-            cnloB, cB1, cB2, inv_nbar, inv_qiso6)
-        if damp is not None:
-            B_5d = B_5d * damp
+        # 5. Extra damping, on the observed (pre-AP) k_i mu_i, one argument
+        # per field: the AP transform maps to the model frame, while the extra
+        # damping acts on the coordinates the catalogue was built in. Grid
+        # (pair, mu1, mu12, phi, params), with the merged phi nodes (the
+        # damping only depends on phi through cos(phi), as the bispectrum).
+        damp = None
+        if extra_damping is not None:
+            k1_ = k1[:, None, None, None, None]
+            k2_ = k2[:, None, None, None, None]
+            k3_ = k3[:, None, :, None, None]
+            mu1_ = mu1[None, :, None, None, None]
+            mu12_ = mu12[:, None, :, None, None]
+            cphi_ = cphi[None, None, None, :, None]
+            sin1 = np.sqrt(np.clip(1.0 - mu1_*mu1_, 0.0, None))
+            sin12 = np.sqrt(np.clip(1.0 - mu12_*mu12_, 0.0, None))
+            mu2_ = mu12_*mu1_ + sin12*sin1*cphi_
+            mu3_ = -(k1_*mu1_ + k2_*mu2_) / k3_
+            damp = jnp.broadcast_to(
+                extra_damping(k1_*mu1_, k2_*mu2_, k3_*mu3_),
+                (n_pair, nmu1, nmu12, cphi.size, npar))
 
-        # 8. Project onto Sugiyama multipoles
-        B_flat   = B_5d.reshape(n_pair, nmu1 * nmu12 * nphi, npar)
-        proj_ops = self.BispNum._sugi_get_proj_ops_k3(
-            ell, pair_arr, nmu1, nmu12, nphi, mu12_transform)
-        damp_flat = None if damp is None else \
-            damp.reshape(n_pair, nmu1 * nmu12 * nphi, npar)
+        # 6. Fused kernels, called once on all the pairs. Splitting the pairs
+        # into blocks (as BispectrumNum._jax_blocks does) is not faster inside
+        # a jit: XLA keeps the node arrays of every block alive anyway, so it
+        # saves no memory, and the padding of the last block costs time
+        geom = (jnp.asarray(k1), jnp.asarray(k2), jnp.asarray(k3),
+                jnp.asarray(mu12), jnp.asarray(mu1), jnp.asarray(cphi),
+                inv_qtr, inv_F, c)
+        rad = jnp.asarray(rad)
 
-        Bell_dict = {}
+        def _combine(moments):
+            # Sugiyama multipoles from the (l2, L, M) moments, see
+            # BispectrumNum._sugi_factorized_plan
+            out = {}
+            for ll in ell:
+                B = jnp.zeros(moments.shape[:1] + moments.shape[2:])
+                for iq, coeff in terms[ll]:
+                    B = B + coeff * moments[:, iq]
+                out[ll] = B
+            return out
+
+        # projection of a unit constant: delta_{ll, (0, 0, 0)} undamped; with
+        # the damping the constant NB0 field is displaced like every other
+        # term, so it goes through the same damped angular integral
+        if damp is None:
+            nb0 = {ll: zeros + (1.0 if ll == (0, 0, 0) else 0.0)
+                   for ll in ell}
+        else:
+            nb0 = _combine(jnp.einsum('pajbm,qab,pqj->pqm', damp, ang_q, rad))
+
+        def _p(k):
+            v = self.params.get(k)
+            return jnp.zeros(npar) if v is None else \
+                jnp.broadcast_to(jnp.atleast_1d(jnp.asarray(v)), (npar,))
+
+        f = _p('f')
+        avirB, sv = self._jax_bisp_damping(_p, npar)
+
+        if X_list is None:
+            b1 = _p('b1'); b2 = _p('b2'); g2 = _p('g2')
+            MB0 = _p('MB0'); NP0 = _p('NP0')
+            cnloB, cB1, cB2 = self._jax_bisp_ctr(_p, npar)
+            # nbar may be a scalar or a per-z array (define_nbar stores np.copy)
+            inv_nbar = jnp.broadcast_to(1.0 / jnp.asarray(
+                np.asarray(BN.nbar, dtype=float).reshape(-1)), (npar,))
+            bias = (b1, b2, g2, f, avirB, sv, MB0, NP0, cnloB, cB1, cB2,
+                    inv_nbar, inv_qiso6)
+            vdg, ctr = BN._jax_kernel_flags()
+            mom = BN._fused_moments_jax(*geom, stab, *bias, ang_q, rad, damp,
+                                        vdg=vdg, ctr=ctr)
+            return _combine(mom), nb0, qiso6
+
+        # Diagram selection (static Python tuples, for JIT specialisation)
+        tree_keep = tuple(sorted({BN.tree_index[x] for x in X_list
+                                  if x in BN.tree_index}))
+        stoch_keep = tuple(sorted({BN.stoch_index[x] for x in X_list
+                                   if x in BN.stoch_diagrams[:-1]}))
+        BX = {ll: {} for ll in ell}
+        if not tree_keep and not stoch_keep:
+            return BX, nb0, qiso6
+        tree_spec, stoch_spec, _ = BN._diagram_kernel_tables(tree_keep,
+                                                             stoch_keep)
+        mt, ms = BN._fused_moments_diagrams_jax(
+            *geom, stab, f, avirB, sv, inv_qiso6, ang_q, rad, tree_spec,
+            stoch_spec, damp, vdg=BN._jax_kernel_flags()[0])
+        proj_t = _combine(mt)                   # (n_pair, npar, n_tree_keep)
+        proj_s = _combine(ms)                   # (n_pair, npar, n_stoch_keep)
         for ll in ell:
-            P_op = jnp.asarray(proj_ops[ll])
-            B = jnp.einsum('ijc,ij->ic', B_flat, P_op)
-            nb0 = NB0[None, :] * inv_nbar[None, :]**2 / qiso6[None, :]
-            if damp_flat is None:
-                if ll == (0, 0, 0):
-                    B = B + nb0
-            else:
-                # NB0 is a constant field, so undamped it projects onto (0, 0, 0)
-                # alone. It is displaced along the line of sight like every other
-                # term, so it goes through the same damped angular integral rather
-                # than being short-circuited; this reduces to the branch above at
-                # unit damping, since <S_a> = delta_{a, (0, 0, 0)}.
-                B = B + nb0 * jnp.einsum('ijc,ij->ic', damp_flat, P_op)
-            Bell_dict[ll] = jnp.squeeze(B)
-        return Bell_dict
+            for k, d in enumerate(tree_keep):
+                BX[ll][BN.tree_diagrams[d]] = proj_t[ll][..., k]
+            for k, d in enumerate(stoch_keep):
+                BX[ll][BN.stoch_diagrams[d]] = proj_s[ll][..., k]
+        return BX, nb0, qiso6
+
+    def _jax_bell_sugi(self, pair_arr, params, ell, de_model, q_tr_lo, quad_deg,
+                       mu12_transform, ell_for_recon, extra_damping=None):
+        """JAX-traceable Bell_Sugi for use with jax.grad / jax.jit."""
+        import jax.numpy as jnp
+        self.BispNum._check_model('Bell_Sugi')
+        proj, nb0, qiso6 = self._jax_sugi(
+            pair_arr, params, ell, de_model, q_tr_lo, quad_deg,
+            mu12_transform, ell_for_recon, extra_damping=extra_damping)
+        NB0 = jnp.atleast_1d(jnp.asarray(self.params['NB0']))
+        inv_nbar = 1.0 / jnp.asarray(
+            np.asarray(self.BispNum.nbar, dtype=float).reshape(-1))
+        nb0_coeff = (NB0 * inv_nbar**2 / qiso6)[None, :]
+        return {ll: jnp.squeeze(proj[ll] + nb0_coeff * nb0[ll])
+                for ll in proj}
 
     def _jax_bx_ell_sugi(self, pair_arr, params, ell, de_model, q_tr_lo, quad_deg,
                           mu12_transform, ell_for_recon, X_list, extra_damping=None):
-        """JAX-traceable BX_ell_Sugi for use with jax.grad / jax.jit."""
+        """JAX-traceable BX_ell_Sugi for use with jax.grad / jax.jit.
+
+        Returns ``{(l1, l2, L): {diagram_name: Array}}`` if **X_list** is None,
+        and otherwise ``{(l1, l2, L): Array(n_pair, nx[, nparams])}`` ordered
+        as **X_list**, matching the numpy `BX_ell_Sugi`. The `Bnoise_NB0`
+        slice is ``1/qiso6`` for ``(0, 0, 0)`` and zero otherwise (projected
+        with the damping, if any)."""
         import jax.numpy as jnp
-        import interpax
         self.BispNum._check_model('BX_ell_Sugi')
-
-        n_pair = pair_arr.shape[0]
-        nmu1, nmu12, nphi = quad_deg
-        ell = tuple(tuple(ll) for ll in ell)
-
-        # Diagram selection (must be static Python tuples for JIT specialisation)
-        n_tree  = len(self.BispNum.tree_diagrams)
-        n_stoch = len(self.BispNum.stoch_diagrams) - 1  # exclude NB0
-        if X_list is None:
-            tree_keep  = tuple(range(n_tree))
-            stoch_keep = tuple(range(n_stoch))
-        else:
-            names = [X_list] if isinstance(X_list, str) else list(X_list)
-            tree_set   = set(self.BispNum.tree_diagrams)
-            stoch_set  = set(self.BispNum.stoch_diagrams[:-1])
-            tree_keep  = tuple(sorted(
-                {self.BispNum.tree_index[x]  for x in names if x in tree_set}))
-            stoch_keep = tuple(sorted(
-                {self.BispNum.stoch_index[x] for x in names if x in stoch_set}))
-
-        # Shared geometry / Pdw — same as _jax_bell_sugi
-        ell_eval = [e for e in ell_for_recon if e != 6]
-        self._eval_emulator(params, ell=ell_eval, de_model=de_model)
-        self._update_bias_params(params, include_RSD_params=True,
-                                 include_obs_syst_params=True)
-        self._update_AP_params(params, de_model=de_model, q_tr_lo=q_tr_lo)
-
-        Pdw_kt = self._jax_pdw_at_ktable(ell_for_recon, 0.6)
-
-        mu1_g, _, t_g, _, cphi_g, phi_g, _ = \
-            self.BispNum._sugi_get_quadrature(nmu1, nmu12, nphi, mu12_transform)
-        k1_np = pair_arr[:, 0][:, None, None, None, None]
-        k2_np = pair_arr[:, 1][:, None, None, None, None]
-        mu1_np = mu1_g[..., None];  cphi_np = cphi_g[..., None]
-
-        if mu12_transform == 'k3':
-            t = t_g[..., None]
-            k_lo  = np.abs(k1_np - k2_np);  k_hi = k1_np + k2_np
-            k3_np, _ = BispectrumNum._k3_from_t(t, k_lo, k_hi)
-            k3_np   = np.maximum(k3_np, 1e-30)
-            mu12_np = np.clip(
-                (k3_np**2 - k1_np**2 - k2_np**2) / (2.0 * k1_np * k2_np), -1.0, 1.0)
-        else:
-            mu12_np = t_g[..., None]
-            k3_np   = np.maximum(np.sqrt(np.maximum(
-                k1_np**2 + k2_np**2 + 2.0*k1_np*k2_np*mu12_np, 0.0)), 1e-30)
-
-        sin_mu12 = np.sqrt(np.maximum(1.0 - mu12_np**2, 0.0))
-        sin_mu1  = np.sqrt(np.maximum(1.0 - mu1_np**2,  0.0))
-        mu2_np   = mu12_np*mu1_np + sin_mu12*sin_mu1*cphi_np
-        mu3_np   = -(k1_np*mu1_np + k2_np*mu2_np) / k3_np
-        kgrid, Pdw_kg = self._jax_pdw_on_kgrid(Pdw_kt, k1_np, k2_np, k3_np)
-
-        q_lo  = jnp.atleast_1d(jnp.asarray(self.params['q_lo']))
-        q_tr  = jnp.atleast_1d(jnp.asarray(self.params['q_tr']))
-        qiso6 = q_lo**2 * q_tr**4
-        npar  = int(q_lo.shape[0])
-
-        def _ap(k_np, mu_np):
-            k = jnp.asarray(k_np); mu = jnp.asarray(mu_np)
-            F = q_lo / q_tr
-            fac = jnp.sqrt(1.0 + mu**2 * (1.0/F**2 - 1.0))
-            return k / q_tr * fac, mu / F / fac
-
-        k1_p, mu1_p = _ap(k1_np, mu1_np)
-        k2_p, mu2_p = _ap(k2_np, mu2_np)
-        k3_p, mu3_p = _ap(k3_np, mu3_np)
-
-        full_shape = (n_pair, nmu1, nmu12, nphi, npar)
-        k1_b  = jnp.broadcast_to(k1_p,  full_shape)
-        k2_b  = jnp.broadcast_to(k2_p,  full_shape)
-        k3_b  = jnp.broadcast_to(k3_p,  full_shape)
-        mu1_b = jnp.broadcast_to(mu1_p, full_shape)
-        mu2_b = jnp.broadcast_to(mu2_p, full_shape)
-        mu3_b = jnp.broadcast_to(mu3_p, full_shape)
-
-        # observed (pre-AP) k_i mu_i, one argument per field; see _jax_bell_sugi
-        damp = None
-        if extra_damping is not None:
-            damp = jnp.broadcast_to(
-                extra_damping(k1_np * mu1_np, k2_np * mu2_np, k3_np * mu3_np),
-                full_shape)
-
-        kg_j = jnp.asarray(kgrid)
-        def _pdw(k_b):
-            # cubic, as the numpy path's CubicSpline on the same kgrid
-            return interpax.interp1d(k_b.ravel(), kg_j, Pdw_kg, method='cubic2',
-                                     extrap=True).reshape(k_b.shape)
-        pdw1 = _pdw(k1_b); pdw2 = _pdw(k2_b); pdw3 = _pdw(k3_b)
-
-        def _p(k):
-            v = self.params.get(k)
-            return jnp.zeros(npar) if v is None else jnp.atleast_1d(jnp.asarray(v))
-
-        f     = _p('f')
-        avirB, sv = self._jax_bisp_damping(_p, npar)
-        inv_qiso6 = 1.0 / qiso6
-        NB0 = _p('NB0')
-
-        # JAX-jitted per-diagram kernel; the specs are static, for JIT specialisation
-        tree_spec, stoch_spec, _ = self.BispNum._diagram_kernel_tables(
-            tree_keep, stoch_keep)
-        spt_jax, stoch_jax = self.BispNum._bispectrum_5d_jax_diagrams(
-            k1_b, k2_b, k3_b, mu1_b, mu2_b, mu3_b,
-            pdw1, pdw2, pdw3,
-            f, avirB, sv, inv_qiso6,
-            tree_spec, stoch_spec)
-        if damp is not None:
-            spt_jax = spt_jax * damp[..., None]
-            stoch_jax = stoch_jax * damp[..., None]
-
-        # spt_jax: (n_pair, nmu1, nmu12, nphi, npar, n_tree_keep)
-        # stoch_jax: (n_pair, nmu1, nmu12, nphi, npar, n_stoch_keep)
-
-        # Project each multipole
-        proj_ops = self.BispNum._sugi_get_proj_ops_k3(
-            ell, pair_arr, nmu1, nmu12, nphi, mu12_transform)
-        damp_flat = None if damp is None else \
-            damp.reshape(n_pair, nmu1 * nmu12 * nphi, npar)
-        nb0_val  = jnp.squeeze(1.0 / qiso6)       # scalar for npar=1
-
-        nb0_name   = self.BispNum.stoch_diagrams[-1]
-        tree_names = self.BispNum.tree_diagrams
-        stoch_names = self.BispNum.stoch_diagrams[:-1]
-
-        BX_dict = {}
-        for ll in ell:
-            P_op = jnp.asarray(proj_ops[ll])      # (n_pair, nmu1*nmu12*nphi)
-            BX   = {}
-            # SPT tree diagrams
-            if tree_keep:
-                flat_spt = spt_jax.reshape(n_pair, nmu1*nmu12*nphi, npar, len(tree_keep))
-                proj_spt = jnp.einsum('ijcd,ij->icd', flat_spt, P_op)   # (n_pair, npar, ntree)
-                tree_pos = {orig: k for k, orig in enumerate(tree_keep)}
-                for name in tree_names:
-                    idx = self.BispNum.tree_index[name]
-                    if idx in tree_pos:
-                        BX[name] = jnp.squeeze(proj_spt[:, :, tree_pos[idx]])
-            # Stochastic diagrams (excluding NB0)
-            if stoch_keep:
-                flat_st  = stoch_jax.reshape(n_pair, nmu1*nmu12*nphi, npar, len(stoch_keep))
-                proj_st  = jnp.einsum('ijcd,ij->icd', flat_st, P_op)
-                stoch_pos = {orig: k for k, orig in enumerate(stoch_keep)}
-                for name in stoch_names:
-                    idx = self.BispNum.stoch_index[name]
-                    if idx in stoch_pos:
-                        BX[name] = jnp.squeeze(proj_st[:, :, stoch_pos[idx]])
-            # NB0 noise term
-            if damp_flat is not None:
-                # a constant field, so undamped it lands on (0, 0, 0) alone; damped
-                # it is displaced like every other term, so it goes through the same
-                # angular integral -- see _jax_bell_sugi
-                BX[nb0_name] = jnp.squeeze(
-                    nb0_val * jnp.einsum('ijc,ij->ic', damp_flat, P_op))
-            elif ll == (0, 0, 0):
-                BX[nb0_name] = jnp.ones(n_pair) * nb0_val
+        names = self.BispNum._diagram_names(X_list)
+        BX, nb0, qiso6 = self._jax_sugi(
+            pair_arr, params, ell, de_model, q_tr_lo, quad_deg,
+            mu12_transform, ell_for_recon, X_list=names,
+            extra_damping=extra_damping)
+        nb0_name = self.BispNum.stoch_diagrams[-1]
+        out = {}
+        for ll, BX_ll in BX.items():
+            if nb0_name in names:
+                BX_ll[nb0_name] = nb0[ll] / qiso6[None, :]
+            if X_list is None:
+                out[ll] = {name: jnp.squeeze(BX_ll[name]) for name in names}
             else:
-                BX[nb0_name] = jnp.zeros(n_pair)
-            if X_list is not None:
-                # Match numpy BX_ell_Sugi's output format when X_list provided:
-                # {ll: Array(npair, nx)} ordered to match names.
-                BX_dict[ll] = jnp.stack([BX[name] for name in names], axis=1)
-            else:
-                BX_dict[ll] = BX
-        return BX_dict
+                out[ll] = jnp.squeeze(jnp.stack(
+                    [BX_ll[name] for name in names], axis=1))
+        return out
 
     def Bell_Sugi(self, pair, params, ell=((0, 0, 0), (2, 0, 2)),
                   de_model=None, q_tr_lo=None,
@@ -4736,7 +4945,8 @@ class PTEmu:
         ell : iterable of (l1, l2, L) tuples
         de_model : str or None
         quad_deg : tuple of ints
-            Quadrature degrees for (mu1, mu12, phi) integrations.
+            Quadrature degrees for (mu1, mu12, phi) integrations. The number
+            of phi nodes must be odd (see `BispectrumNum._check_nphi`).
         mu12_transform : str
             Transformation to apply to the mu12 variable
             to improve stability around mu12~-1.
@@ -4747,6 +4957,10 @@ class PTEmu:
             the three galaxies are independent -- a pair, in :meth:`Pell`,
             gives a single argument that the caller squares. It multiplies the
             whole integrand, the stochastic diagrams included. jax path only.
+            It must be symmetric in its first two arguments (e.g. a product
+            ``D(k1 mu1) D(k2 mu2) D(k3 mu3)`` with the same ``D``, as for a
+            single tracer): the pairs are only evaluated once up to the order
+            of ``(k1, k2)`` (see `BispectrumNum.Bell_Sugi_factorized`).
         """
         pair = np.atleast_2d(pair)
         if _is_jax(params.get('b1')):
@@ -5288,59 +5502,105 @@ class PTEmu:
     #
     #     return np.array(a)
 
-    def _rescale_marg_tables(self, input_tables, diagrams):
-        index = {s: np.where(np.array(diagrams) == s)[0][0]
-                 for s in ['P1L_b1g21', 'P1L_g21',
-                           'Pctr_c0', 'Pctr_c2', 'Pctr_c4',
-                           'Pctr_b1b1cnlo', 'Pctr_b1cnlo', 'Pctr_cnlo',
-                           'Pnoise_NP0', 'Pnoise_NP20', 'Pnoise_NP22']
-                 if s in diagrams}
+    def _marg_helper_diagrams(self, diagrams):
+        r"""Tables required to build the templates of the marginalised params.
 
-        output_tables = {k: v.copy() for k, v in input_tables.items()}
+        In the PBJ and DESIct counterterm bases, the template of a given
+        marginalised parameter is a linear combination of several of the
+        Comet tables (e.g. the template of :math:`a_0` involves both
+        `Pctr_c0` and `Pctr_c2`). This method returns the tables that are
+        needed for such combinations but are not already in `diagrams`.
+
+        Parameters
+        ----------
+        diagrams: list
+            List of tables that must be analytically marginalised.
+
+        Returns
+        -------
+        helpers: list
+            Additional tables to be evaluated, in a fixed order.
+        """
+        needed = set()
+        ctr = ['Pctr_c0', 'Pctr_c2', 'Pctr_c4']
+        if self.counterterm_basis == 'DESIct':
+            if any(d in diagrams for d in ctr):
+                needed.update(ctr + ['Pctr_c6'])
+            if 'Pnoise_NP22' in diagrams:
+                needed.add('Pnoise_NP20')
+        elif self.counterterm_basis == 'PBJ':
+            if 'Pctr_c4' in diagrams:
+                needed.update(ctr)
+            elif 'Pctr_c2' in diagrams:
+                needed.update(ctr[:2])
+            if 'Pnoise_NP22' in diagrams:
+                needed.add('Pnoise_NP20')
+        return [d for d in ctr + ['Pctr_c6', 'Pnoise_NP20']
+                if d in needed and d not in diagrams]
+
+    def _rescale_marg_tables(self, PX, diagrams):
+        r"""Combine the Comet tables into templates for the selected basis.
+
+        Parameters
+        ----------
+        PX: numpy.ndarray
+            Tables of the individual contributions, with the diagrams
+            along axis 1, i.e. with shape (nk, n_diagrams) or
+            (nk, n_diagrams, N). It must contain every table required by the
+            combinations (see **_marg_helper_diagrams**).
+        diagrams: list
+            Names of the tables along axis 1 of `PX`.
+
+        Returns
+        -------
+        out: numpy.ndarray
+            Copy of `PX` where the columns of the marginalised counterterm
+            and noise parameters are replaced by their templates.
+        """
+        if self.counterterm_basis not in ['PBJ', 'DESIct']:
+            return PX
+
+        idx = {d: i for i, d in reversed(list(enumerate(diagrams)))}
+        T = lambda d: PX[:, idx[d], ...]
+        out = PX.copy()
         f = self.params['f']
-        b1= self.params['b1']
-        b1sq=b1**2
+        b1 = self.params['b1']
+        b1sq = b1**2
 
         if self.counterterm_basis == 'PBJ':
-            for key, table in input_tables.items():
-                out = output_tables[key]
-                if 'Pctr_c2' in diagrams:
-                    out[:, index['Pctr_c2'], ...] = (
-                        2.0/3.0 * f *
-                        (table[:, index['Pctr_c2'], ...]
-                        + 0.5 * table[:, index['Pctr_c0'], ...]))
-                if 'Pctr_c4' in diagrams:
-                    out[:, index['Pctr_c4'], ...] = (
-                        8.0/35.0 * f**2 *
-                        (table[:, index['Pctr_c4'], ...]
-                        + 2.5 * table[:, index['Pctr_c2'], ...]
-                        + 7.0/8.0 * table[:, index['Pctr_c0'], ...]))
-                if 'Pnoise_NP22' in diagrams:
-                    out[:, index['Pnoise_NP22'], ...] = (
-                        1.0/3.0 *
-                        (2.0 * table[:, index['Pnoise_NP22'], ...]
-                        + table[:, index['Pnoise_NP20'], ...]))
-        if self.counterterm_basis == 'DESIct':
-            for key, table in input_tables.items():
-                out = output_tables[key]
-
-                if 'Pctr_c0' in diagrams:
-                    out[:, index['Pctr_c0'], ...] = (
-                        -0.5*(b1sq + b1*f/3) * table[:, index['Pctr_c0'], ...]
-                        - 0.5*(2/3*b1*f)    * table[:, index['Pctr_c2'], ...])
-
-                if 'Pctr_c2' in diagrams:
-                    out[:, index['Pctr_c2'], ...] = (
-                        -0.5*((1/3)*b1*f + (f**2)/5)          * table[:, index['Pctr_c0'], ...]  # ← chiudi qui
-                        - 0.5*((2/3)*b1*f + 4*(f**2)/7)       * table[:, index['Pctr_c2'], ...]
-                        - 0.5*(8/35*(f**2))                    * table[:, index['Pctr_c4'], ...])
-
-                if 'Pctr_c4' in diagrams:
-                    out[:, index['Pctr_c4'], ...] = (
-                        -0.5*(b1*f/5 + (f**2)/7)              * table[:, index['Pctr_c0'], ...]
-                        - 0.5*(4*b1*f/7 + 10*(f**2)/21)       * table[:, index['Pctr_c2'], ...]
-                        - 0.5*(8*b1*f/35 + 24*(f**2)/77)      * table[:, index['Pctr_c4'], ...])
-        return output_tables
+            if 'Pctr_c2' in idx:
+                out[:, idx['Pctr_c2'], ...] = 2.0/3.0 * f * (
+                    T('Pctr_c2') + 0.5 * T('Pctr_c0'))
+            if 'Pctr_c4' in idx:
+                out[:, idx['Pctr_c4'], ...] = 8.0/35.0 * f**2 * (
+                    T('Pctr_c4') + 2.5 * T('Pctr_c2')
+                    + 7.0/8.0 * T('Pctr_c0'))
+            if 'Pnoise_NP22' in idx:
+                out[:, idx['Pnoise_NP22'], ...] = 1.0/3.0 * (
+                    2.0 * T('Pnoise_NP22') + T('Pnoise_NP20'))
+        elif self.counterterm_basis == 'DESIct':
+            # Columns of the matrix M in (c0, c2, c4) = M (a0, a2, a4), see
+            # the DESIct conversion in _update_params
+            if 'Pctr_c0' in idx:
+                out[:, idx['Pctr_c0'], ...] = -0.5 * (
+                    (b1sq + b1*f/3.0) * T('Pctr_c0')
+                    + (2.0/3.0*b1*f) * T('Pctr_c2'))
+            if 'Pctr_c2' in idx:
+                out[:, idx['Pctr_c2'], ...] = -0.5 * (
+                    (b1*f/3.0 + f**2/5.0) * T('Pctr_c0')
+                    + (2.0/3.0*b1*f + 4.0*f**2/7.0) * T('Pctr_c2')
+                    + (8.0/35.0*f**2) * T('Pctr_c4'))
+            if 'Pctr_c4' in idx:
+                out[:, idx['Pctr_c4'], ...] = -0.5 * (
+                    (b1*f/5.0 + f**2/7.0) * T('Pctr_c0')
+                    + (4.0/7.0*b1*f + 10.0*f**2/21.0) * T('Pctr_c2')
+                    + (8.0/35.0*b1*f + 24.0*f**2/77.0) * T('Pctr_c4')
+                    + (16.0/231.0*f**2) * T('Pctr_c6'))
+            # SN22 multiplies k^2 mu^2 = k^2 (L0 + 2 L2)/3
+            if 'Pnoise_NP22' in idx:
+                out[:, idx['Pnoise_NP22'], ...] = 1.0/3.0 * (
+                    2.0 * T('Pnoise_NP22') + T('Pnoise_NP20'))
+        return out
 
     def _chi2_powerspectrum(self, obs_id, params,
                             ell, de_model=None, binning=None,
@@ -5487,25 +5747,25 @@ class PTEmu:
                              preserve_param_order=False)
 
             if any(do_analytic_marginalisation.values()):
-                if self.bias_basis=='DESI':
-                    diagrams_to_marg_all.append('Pctr_c4')
+                # Tables needed only to build the templates of the
+                # marginalised params (PBJ/DESIct) are appended at the end,
+                # and dropped once the templates are built
+                helpers = self._marg_helper_diagrams(diagrams_to_marg_all)
+                diagrams_eval = diagrams_to_marg_all + helpers
                 PX_ell = self.PX_ell(bins_kmax, params, ell_joint,
-                                        diagrams_to_marg_all, binning=binning,
-                                        obs_id=convolve_obs_id, de_model=de_model,
-                                        q_tr_lo=q_tr_lo, W_damping=W_damping,
-                                        ell_for_recon=ell_for_recon,
-                                        preserve_param_order=False)
-
-                PX_ell = self._rescale_marg_tables(PX_ell, diagrams_to_marg_all)
-
-                if self.bias_basis=='DESI':
-                    PX_ell_list = np.concatenate([PX_ell[ell] for ell in PX_ell])
-                    PX_ell_list = np.delete(PX_ell_list, diagrams_to_marg_all.index('Pctr_c4'), axis=1)
-                    diagrams_to_marg_all.remove('Pctr_c4')
-                else:
-                    PX_ell_list = np.concatenate([PX_ell[ell] for ell in PX_ell])
+                                     diagrams_eval, binning=binning,
+                                     obs_id=convolve_obs_id, de_model=de_model,
+                                     q_tr_lo=q_tr_lo, W_damping=W_damping,
+                                     ell_for_recon=ell_for_recon,
+                                     preserve_param_order=False)
+                PX_ell_list = np.concatenate([PX_ell[ell] for ell in PX_ell])
+                if len(diagrams_eval) > 1:
+                    PX_ell_list = self._rescale_marg_tables(PX_ell_list,
+                                                            diagrams_eval)
+                    if helpers:
+                        PX_ell_list = \
+                            PX_ell_list[:, :len(diagrams_to_marg_all), ...]
                 bX = self._get_bias_coeff_for_AM(diagrams_to_marg_all)
-
 
                 PX_ell_list *= bX
                 if 'g21' in params_to_marg_all or 'bGam3' in params_to_marg_all or 'btd' in params_to_marg_all:
@@ -5684,6 +5944,7 @@ class PTEmu:
             self._update_bias_params(params)
             self.splines_up_to_date = False
             self.dw_spline_up_to_date = False
+            self.dwmu_spline_up_to_date = False
 
             bX = self._get_bias_coeff_for_chi2_decomposition()
             for n in range(n_obs):
@@ -5911,6 +6172,7 @@ class PTEmu:
             self._update_bias_params(params)
             self.splines_up_to_date = False
             self.dw_spline_up_to_date = False
+            self.dwmu_spline_up_to_date = False
 
             bX = self._get_bias_coeff_for_Bisp_chi2_decomposition()
             chi2 += (bX @ self.Bisp_chi2_decomposition['XX'] @ bX -
